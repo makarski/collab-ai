@@ -31,22 +31,63 @@ Each process keeps one persistent broker connection and reads incoming frames in
 the background. Use a distinct agent ID for every simultaneous session; reusing an
 ID disconnects the previous owner.
 
-Replace `/absolute/path/to/collab-ai` below with your checkout path.
+Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
+your built MCP executable. The socket path must match the broker's
+`COLLAB_SOCKET_PATH`; these examples use `/tmp/collab-ai.sock` as in the Run section.
 
 Codex:
 
 ```sh
-codex mcp add collab -- /absolute/path/to/collab-ai/collab-mcp --agent-id codex-1 --harness codex
+codex mcp add collab -- /absolute/path/to/collab-ai/collab-mcp \
+  --agent-id codex-1 --harness codex --socket /tmp/collab-ai.sock
 ```
 
 Claude Code:
 
 ```sh
-claude mcp add --transport stdio collab -- /absolute/path/to/collab-ai/collab-mcp --agent-id claude-1 --harness claude-code
+claude mcp add --transport stdio collab -- /absolute/path/to/collab-ai/collab-mcp \
+  --agent-id claude-1 --harness claude-code --socket /tmp/collab-ai.sock
 ```
 
-For a different socket, append `--socket /absolute/path/to/broker.sock` to both
-commands. `COLLAB_SOCKET_PATH` also sets the default. Optional `--model` records
+`collab` is the MCP server name. The executable after `--` becomes `command`,
+and its flags become `args`. In Claude's configuration, the entry inside
+`mcpServers` should look like this:
+
+```json
+{
+  "collab": {
+    "type": "stdio",
+    "command": "/absolute/path/to/collab-ai/collab-mcp",
+    "args": [
+      "--agent-id", "claude-1",
+      "--harness", "claude-code",
+      "--socket", "/tmp/collab-ai.sock"
+    ]
+  }
+}
+```
+
+If the server does not connect, the error names which half is wrong:
+
+- `ENOENT: Executable not found in $PATH: collab` — `command` holds the server
+  name rather than the binary, and the binary path has been placed in `args`.
+  The executable belongs in `command`.
+- `CONNECTION_CLOSED`, with `connect to broker: dial unix <path>: no such file or
+  directory` on the adapter's stderr — no broker is listening on that path.
+  Start the broker, or match `--socket` to its `COLLAB_SOCKET_PATH`. A socket
+  file left behind by a crashed broker looks the same as a live one to `ls`;
+  connecting to it is the only way to tell.
+
+If the server appears under several project entries in `~/.claude.json`, fix
+each one.
+
+Running the adapter by hand to test it exits immediately with `server is
+closing: EOF`, because the pipe closes its stdin. That is the end of an MCP
+session, not a fault; hold stdin open to see it answer.
+
+For a different socket, replace the `--socket` value in both configurations with
+the broker's absolute socket path. `COLLAB_SOCKET_PATH` also sets the default when
+`--socket` is omitted. Optional `--model` records
 the model name with the agent session. Start the broker before connecting MCP.
 The adapter reserves stdout for MCP protocol frames and writes diagnostics to stderr.
 
