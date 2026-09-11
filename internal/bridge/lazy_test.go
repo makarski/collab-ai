@@ -23,6 +23,25 @@ func lazyAgent(t *testing.T, path, id string) *LazyClient {
 	return c
 }
 
+func waitForClientSignal(t *testing.T, signal <-chan struct{}, failure string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatal(failure)
+	}
+}
+
+func assertSinglePayload(t *testing.T, inbox Inbox, want string) {
+	t.Helper()
+	if len(inbox.Messages) != 1 {
+		t.Fatalf("expected one buffered message: %+v", inbox)
+	}
+	if got := string(inbox.Messages[0].Payload); got != want {
+		t.Fatalf("message payload = %s, want %s", got, want)
+	}
+}
+
 func TestMCPDiscoveryWithoutBroker(t *testing.T) {
 	c := lazyAgent(t, filepath.Join(t.TempDir(), "missing.sock"), "codex")
 	session := connectMCP(t, c)
@@ -60,9 +79,10 @@ func TestMCPDiscoveryDoesNotEvictActiveAgent(t *testing.T) {
 	}
 	call(t, session, "send", map[string]any{"to": "codex", "text": "still connected"})
 	out := inboxResult(t, call(t, session, "wait", map[string]any{"timeout_seconds": 1}))
-	if !out.Connected || len(out.Messages) != 1 || string(out.Messages[0].Payload) != `{"text":"still connected"}` {
+	if !out.Connected {
 		t.Fatalf("inventory probe displaced the active session: %+v", out)
 	}
+	assertSinglePayload(t, out, `{"text":"still connected"}`)
 }
 
 func TestLazyClientConcurrentFirstCallsDialOnce(t *testing.T) {
@@ -116,25 +136,24 @@ func TestLazyClientDoesNotReconnectAfterDisconnect(t *testing.T) {
 	if err := c.Send(context.Background(), "codex", "buffered"); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-c.client.notify:
-	case <-time.After(time.Second):
-		t.Fatal("message not buffered")
-	}
+	waitForClientSignal(t, c.client.notify, "message not buffered")
 	stop()
-	select {
-	case <-c.client.done:
-	case <-time.After(time.Second):
-		t.Fatal("disconnect not observed")
-	}
+	waitForClientSignal(t, c.client.done, "disconnect not observed")
 	c.dial = func(context.Context) (*Client, error) {
 		t.Fatal("silently reconnected after an established connection failed")
 		return nil, nil
 	}
 	out, err := c.Receive(context.Background(), 20, time.Second)
-	if err != nil || out.Connected || out.Error == "" || len(out.Messages) != 1 {
-		t.Fatalf("disconnect or buffered message lost: %+v %v", out, err)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if out.Connected {
+		t.Fatal("disconnected client reported connected")
+	}
+	if out.Error == "" {
+		t.Fatal("disconnect error lost")
+	}
+	assertSinglePayload(t, out, `{"text":"buffered"}`)
 	if err := c.Send(context.Background(), "claude", "late"); err == nil {
 		t.Fatal("send succeeded after disconnect")
 	}
