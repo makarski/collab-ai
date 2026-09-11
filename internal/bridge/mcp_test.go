@@ -84,7 +84,7 @@ func connectAgent(t *testing.T, path, id string) *Client {
 	return c
 }
 
-func connectMCP(t *testing.T, c *Client) *mcp.ClientSession {
+func connectMCP(t *testing.T, c messagingClient) *mcp.ClientSession {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -131,8 +131,8 @@ func inboxResult(t *testing.T, r *mcp.CallToolResult) Inbox {
 
 func TestMCPExchange(t *testing.T) {
 	path, _ := startBroker(t)
-	codex := connectMCP(t, connectAgent(t, path, "codex"))
-	claude := connectMCP(t, connectAgent(t, path, "claude"))
+	codex := connectMCP(t, lazyAgent(t, path, "codex"))
+	claude := connectMCP(t, lazyAgent(t, path, "claude"))
 	listed, err := codex.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +145,8 @@ func TestMCPExchange(t *testing.T) {
 		t.Fatalf("unexpected tools: %v", names)
 	}
 	// Start a real MCP wait before sending via the other MCP connection.
+	// Register first: discovery alone no longer makes this recipient online.
+	call(t, codex, "receive", map[string]any{})
 	waiting := make(chan *mcp.CallToolResult, 1)
 	waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

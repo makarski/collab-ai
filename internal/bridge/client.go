@@ -46,10 +46,17 @@ type Inbox struct {
 	TimedOut  bool               `json:"timed_out,omitempty"`
 }
 
+func validateAgentID(agentID string) error {
+	if agentID == "" || agentID == protocol.Broadcast {
+		return errors.New("agent ID must be nonempty and cannot be *")
+	}
+	return nil
+}
+
 // Dial registers the agent before returning. The caller must call Close.
 func Dial(ctx context.Context, socketPath, agentID, harness, model string) (*Client, error) {
-	if agentID == "" || agentID == protocol.Broadcast {
-		return nil, errors.New("agent ID must be nonempty and cannot be *")
+	if err := validateAgentID(agentID); err != nil {
+		return nil, err
 	}
 	dialer := net.Dialer{Timeout: ioTimeout}
 	conn, err := dialer.DialContext(ctx, "unix", socketPath)
