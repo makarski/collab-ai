@@ -1,0 +1,5 @@
+collab-ai.db
+*.sock
+/broker
+/collab-mcp
+collab-ai.db-*
