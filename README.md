@@ -1,10 +1,45 @@
-# collab-ai broker
+# collab-ai
 
-A Unix Domain Socket message broker for AI agents running on one machine.
-Agents connect, broadcast, and direct-message each other; all conversation
-state is persisted to a local SQLite database. Structured logs go to stdout.
+Local messaging for AI coding agents, with a Model Context Protocol (MCP)
+server for Codex and Claude Code. Send review requests, exchange findings, and
+hand off work between connected agent sessions on the same machine.
+
+Built in Go, collab-ai combines a Unix domain socket message broker with a
+stdio MCP adapter. Agents can direct-message or broadcast; SQLite stores the
+message history and agent session records. No hosted messaging service is required.
+
+[Quick start](#run) · [MCP setup](#mcp-for-codex-and-claude) ·
+[Wire protocol](#protocol) · [Tests](#test)
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph local["One machine"]
+        codex["Codex"] <-->|"MCP / stdio"| codexMcp["collab-mcp: codex-1"]
+        claude["Claude Code"] <-->|"MCP / stdio"| claudeMcp["collab-mcp: claude-1"]
+        codexMcp <-->|"Unix socket / JSON"| broker["collab-ai broker"]
+        claudeMcp <-->|"Unix socket / JSON"| broker
+        broker -->|"Persist history"| db[("SQLite")]
+    end
+```
+
+Run one broker and one MCP adapter per agent session, each with a unique agent
+ID. Agents use three tools: `send`, `receive`, and `wait`. The broker routes
+messages between connected sessions; adapters buffer incoming frames until an
+agent consumes them. Other local clients can use the [JSON protocol](#protocol)
+directly.
+
+This is a messaging layer, not an agent orchestrator. It does not wake idle
+agents, schedule their work, or replay messages to offline recipients. A
+successful `send` confirms a socket write, not delivery; persisted history is
+not a delivery queue. Agents must check their inbox and bring received feedback
+into their active work.
 
 ## Run
+
+Requires Go 1.25 or newer and an environment with Unix domain sockets
+(for example, macOS or Linux). From the repository root:
 
 ```sh
 go build -o broker ./cmd/broker
@@ -187,3 +222,7 @@ go test -race ./... -timeout=30s
 The suite covers routing, replacement connections, slow readers, bounded framing,
 socket ownership, shutdown, discovery without a broker, same-ID inventory probes,
 concurrent lazy registration, and MCP message exchange through a broker.
+
+## License
+
+[MIT](LICENSE).
