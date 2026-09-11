@@ -27,9 +27,15 @@ by that broker instance and waits for connections and session records to close.
 ## MCP for Codex and Claude
 
 Start one broker, then configure each agent to launch its own `collab-mcp` process.
-Each process keeps one persistent broker connection and reads incoming frames in
-the background. Use a distinct agent ID for every simultaneous session; reusing an
-ID disconnects the previous owner.
+Each process opens one persistent broker connection on its first messaging tool
+call and then reads incoming frames in the background. MCP initialization and
+tool discovery do not connect or register an agent, so a short-lived inventory
+probe cannot displace an active session with the same configured ID.
+
+Call `receive` once to register before another agent sends to you. Until that
+first `send`, `receive`, or `wait`, the broker considers the agent offline.
+Use a distinct agent ID for every simultaneous messaging session; reusing an ID
+in an actual messaging call still disconnects the previous owner.
 
 Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
 your built MCP executable. The socket path must match the broker's
@@ -72,8 +78,8 @@ If the server does not connect, the error names which half is wrong:
 - `ENOENT: Executable not found in $PATH: collab` — `command` holds the server
   name rather than the binary, and the binary path has been placed in `args`.
   The executable belongs in `command`.
-- `CONNECTION_CLOSED`, with `connect to broker: dial unix <path>: no such file or
-  directory` on the adapter's stderr — no broker is listening on that path.
+- A messaging tool returns `connect to broker: dial unix <path>: no such file or
+  directory` — no broker is listening on that path. Discovery can still succeed.
   Start the broker, or match `--socket` to its `COLLAB_SOCKET_PATH`. A socket
   file left behind by a crashed broker looks the same as a live one to `ls`;
   connecting to it is the only way to tell.
@@ -88,7 +94,8 @@ session, not a fault; hold stdin open to see it answer.
 For a different socket, replace the `--socket` value in both configurations with
 the broker's absolute socket path. `COLLAB_SOCKET_PATH` also sets the default when
 `--socket` is omitted. Optional `--model` records
-the model name with the agent session. Start the broker before connecting MCP.
+the model name with the agent session. Start the broker before the first messaging
+tool call. A failed initial connection can be retried with another tool call.
 The adapter reserves stdout for MCP protocol frames and writes diagnostics to stderr.
 
 These commands follow the official [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
@@ -100,7 +107,8 @@ and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 | `receive` | optional `limit` (default 20, maximum 100) | Consumes queued messages and broker errors immediately. |
 | `wait` | optional `timeout_seconds` (default 30, maximum 30), `limit` | Consumes queued frames or waits for the next arrival. |
 
-Example collaboration: Claude calls `send({"to":"codex-1","text":"Please review my changes"})`;
+Example collaboration: Codex first calls `receive({})` to register.
+Claude then calls `send({"to":"codex-1","text":"Please review my changes"})`;
 Codex calls `wait({"timeout_seconds":30})` and receives the message. `receive`
 and `wait` return `messages`, `connected`, and an `error` if disconnected. An empty
 wait that reaches its deadline also returns `timed_out: true`. These tools consume
@@ -177,4 +185,5 @@ go test -race ./... -timeout=30s
 ```
 
 The suite covers routing, replacement connections, slow readers, bounded framing,
-socket ownership, shutdown, and MCP discovery and message exchange through a broker.
+socket ownership, shutdown, discovery without a broker, same-ID inventory probes,
+concurrent lazy registration, and MCP message exchange through a broker.
