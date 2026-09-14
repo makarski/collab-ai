@@ -4,8 +4,11 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
+
+	"collab-ai/internal/protocol"
 
 	_ "modernc.org/sqlite"
 )
@@ -28,6 +31,24 @@ CREATE TABLE IF NOT EXISTS messages (
     recipient TEXT NOT NULL,
     payload   TEXT NOT NULL
 );
+
+-- Additive migration: existing history remains readable and unchanged.
+CREATE TABLE IF NOT EXISTS message_metadata (
+    message_id TEXT PRIMARY KEY,
+    seq INTEGER NOT NULL UNIQUE,
+    sender_session TEXT NOT NULL,
+    in_reply_to TEXT NOT NULL,
+    ack_requested INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS message_receipts (
+    message_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    adapter_received_at TIMESTAMP,
+    agent_acknowledged_at TIMESTAMP,
+    PRIMARY KEY (message_id, agent_id)
+);
+CREATE INDEX IF NOT EXISTS receipts_session ON message_receipts(session_id);
 `
 
 // Store wraps the SQLite database handle.
@@ -65,11 +86,18 @@ func (s *Store) LastSeq(ctx context.Context) (uint64, error) {
 	return seq, nil
 }
 
+type SessionRecord struct {
+	Identity    protocol.Recipient
+	Harness     string
+	Model       string
+	ConnectedAt time.Time
+}
+
 // RecordConnect inserts an agent session row.
-func (s *Store) RecordConnect(ctx context.Context, sessionID, agentID, harness, model string, ts time.Time) error {
+func (s *Store) RecordConnect(ctx context.Context, record SessionRecord) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO agents (agent_id, session_id, harness, model, connected_at) VALUES (?, ?, ?, ?, ?)`,
-		agentID, sessionID, harness, model, ts.UTC())
+		record.Identity.AgentID, record.Identity.SessionID, record.Harness, record.Model, record.ConnectedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("record connect: %w", err)
 	}
@@ -88,12 +116,125 @@ func (s *Store) RecordDisconnect(ctx context.Context, sessionID string, ts time.
 }
 
 // InsertMessage persists a routed message. seq must be unique and monotonically increasing.
-func (s *Store) InsertMessage(ctx context.Context, seq uint64, ts time.Time, from, to string, payload []byte) error {
+func (s *Store) InsertMessage(ctx context.Context, msg protocol.Message) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO messages (seq, ts, sender, recipient, payload) VALUES (?, ?, ?, ?, ?)`,
-		seq, ts.UTC(), from, to, string(payload))
+		msg.Seq, msg.TS.UTC(), msg.From, msg.To, string(msg.Payload))
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}
 	return nil
+}
+
+var ErrDuplicateMessage = errors.New("message ID already exists; this send was not routed again")
+var ErrInvalidAck = errors.New("message is not assigned to this recipient session, or adapter receipt is missing")
+
+// PersistMessage commits history, correlation and recipient membership atomically.
+// This is the acceptance boundary, not an offline delivery queue.
+func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, senderSession string, recipients []protocol.Recipient) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_metadata WHERE message_id = ?`, msg.MessageID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists != 0 {
+		return ErrDuplicateMessage
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (seq, ts, sender, recipient, payload) VALUES (?, ?, ?, ?, ?)`, msg.Seq, msg.TS.UTC(), msg.From, msg.To, string(msg.Payload)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO message_metadata (message_id, seq, sender_session, in_reply_to, ack_requested) VALUES (?, ?, ?, ?, ?)`, msg.MessageID, msg.Seq, senderSession, msg.InReplyTo, msg.AckRequested); err != nil {
+		return err
+	}
+	for _, r := range recipients {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO message_receipts (message_id, agent_id, session_id) VALUES (?, ?, ?)`, msg.MessageID, r.AgentID, r.SessionID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+type Acknowledgment struct {
+	MessageID string
+	Recipient protocol.Recipient
+	Stage     string
+}
+
+// Acknowledge authenticates receipt against the session that owned the inbox at
+// acceptance. Stages are monotonic and retries are idempotent.
+func (s *Store) Acknowledge(ctx context.Context, ack Acknowledgment) (protocol.Recipient, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return protocol.Recipient{}, err
+	}
+	defer tx.Rollback()
+	sender, received, err := ack.lookup(ctx, tx)
+	if err != nil {
+		return protocol.Recipient{}, err
+	}
+	query, err := ack.updateQuery(received)
+	if err != nil {
+		return protocol.Recipient{}, err
+	}
+	if _, err := tx.ExecContext(ctx, query, time.Now().UTC(), ack.MessageID, ack.Recipient.AgentID, ack.Recipient.SessionID); err != nil {
+		return protocol.Recipient{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return protocol.Recipient{}, err
+	}
+	return sender, nil
+}
+
+func (ack Acknowledgment) lookup(ctx context.Context, tx *sql.Tx) (protocol.Recipient, bool, error) {
+	var sender protocol.Recipient
+	var received sql.NullTime
+	err := tx.QueryRowContext(ctx, `SELECT m.sender, mm.sender_session, r.adapter_received_at FROM message_receipts r JOIN message_metadata mm ON mm.message_id = r.message_id JOIN messages m ON m.seq = mm.seq WHERE r.message_id = ? AND r.agent_id = ? AND r.session_id = ? AND mm.ack_requested = 1`, ack.MessageID, ack.Recipient.AgentID, ack.Recipient.SessionID).Scan(&sender.AgentID, &sender.SessionID, &received)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrInvalidAck
+	}
+	return sender, received.Valid, err
+}
+
+func (ack Acknowledgment) updateQuery(received bool) (string, error) {
+	switch ack.Stage {
+	case protocol.StageAdapterReceived:
+		return `UPDATE message_receipts SET adapter_received_at = COALESCE(adapter_received_at, ?) WHERE message_id = ? AND agent_id = ? AND session_id = ?`, nil
+	case protocol.StageAgentAcknowledged:
+		if !received {
+			return "", ErrInvalidAck
+		}
+		return `UPDATE message_receipts SET agent_acknowledged_at = COALESCE(agent_acknowledged_at, ?) WHERE message_id = ? AND agent_id = ? AND session_id = ?`, nil
+	default:
+		return "", ErrInvalidAck
+	}
+}
+
+type Unacknowledged struct {
+	Seq           uint64
+	MessageID     string
+	Sender        string
+	SenderSession string
+}
+
+// UnacknowledgedForSession pages retained receipts without loading an unbounded
+// history or holding a database cursor while the hub notifies other sessions.
+func (s *Store) UnacknowledgedForSession(ctx context.Context, session string, after uint64) ([]Unacknowledged, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT mm.seq, mm.message_id, m.sender, mm.sender_session FROM message_receipts r JOIN message_metadata mm ON mm.message_id = r.message_id JOIN messages m ON m.seq = mm.seq WHERE r.session_id = ? AND r.agent_acknowledged_at IS NULL AND mm.ack_requested = 1 AND mm.seq > ? ORDER BY mm.seq LIMIT 64`, session, after)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pending []Unacknowledged
+	for rows.Next() {
+		var p Unacknowledged
+		if err := rows.Scan(&p.Seq, &p.MessageID, &p.Sender, &p.SenderSession); err != nil {
+			return nil, err
+		}
+		pending = append(pending, p)
+	}
+	return pending, rows.Err()
 }

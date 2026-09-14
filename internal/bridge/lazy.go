@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"collab-ai/internal/protocol"
 )
 
 // LazyClient registers with the broker on the first messaging call, not during
@@ -16,14 +18,14 @@ type LazyClient struct {
 	closed bool
 }
 
-func NewLazyClient(socketPath, agentID, harness, model string) (*LazyClient, error) {
-	if err := validateAgentID(agentID); err != nil {
+func NewLazyClient(cfg ClientConfig) (*LazyClient, error) {
+	if err := protocol.ValidateAgentID(cfg.AgentID); err != nil {
 		return nil, err
 	}
 	return &LazyClient{
 		gate: make(chan struct{}, 1),
 		dial: func(ctx context.Context) (*Client, error) {
-			return Dial(ctx, socketPath, agentID, harness, model)
+			return Dial(ctx, cfg)
 		},
 	}, nil
 }
@@ -77,4 +79,20 @@ func (c *LazyClient) Close() {
 	if c.client != nil {
 		c.client.Close()
 	}
+}
+
+func (c *LazyClient) SendMessage(ctx context.Context, request SendRequest) (SendResult, error) {
+	client, err := c.connection(ctx)
+	if err != nil {
+		return SendResult{}, err
+	}
+	return client.SendMessage(ctx, request)
+}
+
+func (c *LazyClient) Acknowledge(ctx context.Context, id string) error {
+	client, err := c.connection(ctx)
+	if err != nil {
+		return err
+	}
+	return client.Acknowledge(ctx, id)
 }

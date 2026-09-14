@@ -28,45 +28,49 @@ type queuedMessage struct {
 // Client reads the socket continuously, independently of MCP tool calls.
 // A broken connection is terminal: reconnecting without replay would hide gaps.
 type Client struct {
-	conn       net.Conn
-	writeGate  chan struct{}
-	notify     chan struct{}
-	done       chan struct{}
-	readDone   chan struct{}
-	mu         sync.Mutex
-	inbox      []queuedMessage
-	inboxBytes int
-	err        error
+	conn            net.Conn
+	writeGate       chan struct{}
+	notify          chan struct{}
+	done            chan struct{}
+	readDone        chan struct{}
+	mu              sync.Mutex
+	inbox           []queuedMessage
+	inboxBytes      int
+	err             error
+	sessionID       string
+	protocolVersion int
 }
 
 type Inbox struct {
-	Messages  []protocol.Message `json:"messages"`
-	Connected bool               `json:"connected"`
-	Error     string             `json:"error,omitempty"`
-	TimedOut  bool               `json:"timed_out,omitempty"`
+	Messages                 []protocol.Message `json:"messages"`
+	Connected                bool               `json:"connected"`
+	Error                    string             `json:"error,omitempty"`
+	TimedOut                 bool               `json:"timed_out,omitempty"`
+	SessionID                string             `json:"session_id,omitempty"`
+	AcknowledgmentsSupported bool               `json:"acknowledgments_supported"`
 }
 
-func validateAgentID(agentID string) error {
-	if agentID == "" || agentID == protocol.Broadcast {
-		return errors.New("agent ID must be nonempty and cannot be *")
-	}
-	return nil
+type ClientConfig struct {
+	SocketPath string
+	AgentID    string
+	Harness    string
+	Model      string
 }
 
 // Dial registers the agent before returning. The caller must call Close.
-func Dial(ctx context.Context, socketPath, agentID, harness, model string) (*Client, error) {
-	if err := validateAgentID(agentID); err != nil {
+func Dial(ctx context.Context, cfg ClientConfig) (*Client, error) {
+	if err := protocol.ValidateAgentID(cfg.AgentID); err != nil {
 		return nil, err
 	}
 	dialer := net.Dialer{Timeout: ioTimeout}
-	conn, err := dialer.DialContext(ctx, "unix", socketPath)
+	conn, err := dialer.DialContext(ctx, "unix", cfg.SocketPath)
 	if err != nil {
 		return nil, fmt.Errorf("connect to broker: %w", err)
 	}
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
 	conn.SetDeadline(time.Now().Add(ioTimeout))
-	if err := protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeHello, AgentID: agentID, Harness: harness, Model: model}); err != nil {
+	if err := protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeHello, AgentID: cfg.AgentID, Harness: cfg.Harness, Model: cfg.Model, ProtocolVersion: protocol.Version}); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("send hello: %w", err)
 	}
@@ -76,12 +80,14 @@ func Dial(ctx context.Context, socketPath, agentID, harness, model string) (*Cli
 		conn.Close()
 		return nil, fmt.Errorf("read welcome: %w", err)
 	}
-	if welcome.Type != protocol.TypeWelcome || welcome.AgentID != agentID {
+	if welcome.Type != protocol.TypeWelcome || welcome.AgentID != cfg.AgentID {
 		conn.Close()
 		return nil, fmt.Errorf("unexpected welcome: type=%s code=%s detail=%s", welcome.Type, welcome.Code, welcome.Detail)
 	}
 	conn.SetDeadline(time.Time{})
 	c := &Client{conn: conn, writeGate: make(chan struct{}, 1), notify: make(chan struct{}, 1), done: make(chan struct{}), readDone: make(chan struct{})}
+	c.sessionID = welcome.SessionID
+	c.protocolVersion = welcome.ProtocolVersion
 	go c.readLoop(r)
 	return c, nil
 }
@@ -94,21 +100,44 @@ func (c *Client) readLoop(r *bufio.Reader) {
 			c.fail(fmt.Errorf("broker connection closed: %w; restart the MCP server to reconnect (missed messages are not replayed)", err))
 			return
 		}
-		data, _ := json.Marshal(msg)
-		c.mu.Lock()
-		if len(c.inbox) >= maxInboxMessages || c.inboxBytes+len(data) > maxInboxBytes {
-			c.mu.Unlock()
-			c.fail(errors.New("inbox overflow; connection closed and messages may be missing; drain the inbox and restart the MCP server"))
+		if err := c.bufferMessage(msg); err != nil {
+			c.fail(err)
 			return
 		}
-		c.inbox = append(c.inbox, queuedMessage{message: msg, size: len(data)})
-		c.inboxBytes += len(data)
-		c.mu.Unlock()
-		select {
-		case c.notify <- struct{}{}:
-		default:
-		}
 	}
+}
+
+func (c *Client) bufferMessage(msg protocol.Message) error {
+	data, _ := json.Marshal(msg)
+	c.mu.Lock()
+	full := len(c.inbox) >= maxInboxMessages || c.inboxBytes+len(data) > maxInboxBytes
+	c.mu.Unlock()
+	if full {
+		return errors.New("inbox overflow; connection closed and messages may be missing; drain the inbox and restart the MCP server")
+	}
+	// Only the read loop adds messages; concurrent consumers can only free space.
+	// Send receipt before exposing the decoded message so agent acknowledgment
+	// cannot overtake adapter receipt on the stream. Retain it even if writing fails.
+	receiptErr := c.sendAdapterReceipt(msg)
+	c.mu.Lock()
+	c.inbox = append(c.inbox, queuedMessage{message: msg, size: len(data)})
+	c.inboxBytes += len(data)
+	c.mu.Unlock()
+	select {
+	case c.notify <- struct{}{}:
+	default:
+	}
+	return receiptErr
+}
+
+func (c *Client) sendAdapterReceipt(msg protocol.Message) error {
+	if c.protocolVersion < protocol.Version {
+		return nil
+	}
+	if msg.Type != protocol.TypeMsg || !msg.AckRequested {
+		return nil
+	}
+	return c.writeFrame(context.Background(), protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: protocol.StageAdapterReceived})
 }
 
 func (c *Client) fail(err error) {
@@ -128,8 +157,8 @@ func (c *Client) Close() {
 	<-c.readDone
 }
 
-// Send reports only successful socket writes. Broker errors arrive in the inbox;
-// the current wire protocol has no delivery acknowledgement.
+// Send is a write-only convenience for legacy clients that do not request
+// acknowledgments. MCP uses SendMessage for correlated, staged acknowledgment.
 func (c *Client) Send(ctx context.Context, to, text string) error {
 	if to == "" {
 		return errors.New("to is required (agent ID or *)")
@@ -144,19 +173,50 @@ func (c *Client) Send(ctx context.Context, to, text string) error {
 		return err
 	}
 	msg := protocol.Message{Type: protocol.TypeMsg, To: to, Payload: payload}
-	data, err := json.Marshal(msg)
+	return c.writeFrame(ctx, msg)
+}
+
+type SendResult struct {
+	Status            string `json:"status"`
+	MessageID         string `json:"message_id"`
+	To                string `json:"to"`
+	DeliveryConfirmed bool   `json:"delivery_confirmed"`
+}
+
+// SendMessage assigns an ID before writing. Acceptance and receipt events arrive
+// through Receive; neither a successful write nor a timeout implies delivery.
+func (c *Client) SendMessage(ctx context.Context, request SendRequest) (SendResult, error) {
+	if c.protocolVersion < protocol.Version {
+		return SendResult{}, errors.New("broker does not support protocol version 2 acknowledgments; upgrade the broker")
+	}
+	msg, err := request.message()
 	if err != nil {
+		return SendResult{}, err
+	}
+	out := SendResult{Status: "written", MessageID: msg.MessageID, To: msg.To}
+	if err := c.writeFrame(ctx, msg); err != nil {
+		out.Status = "unconfirmed"
+		return out, fmt.Errorf("message %s: %w; broker acceptance is unconfirmed", msg.MessageID, err)
+	}
+	return out, nil
+}
+
+func (c *Client) Acknowledge(ctx context.Context, id string) error {
+	if c.protocolVersion < protocol.Version {
+		return errors.New("broker does not support acknowledgments; upgrade the broker")
+	}
+	if id == "" || len(id) > 128 {
+		return errors.New("message_id must be 1 to 128 bytes")
+	}
+	return c.writeFrame(ctx, protocol.Message{Type: protocol.TypeAck, MessageID: id, Stage: protocol.StageAgentAcknowledged})
+}
+
+func (c *Client) writeFrame(ctx context.Context, msg protocol.Message) error {
+	if err := validateFrameSize(msg); err != nil {
 		return err
 	}
-	if len(data)+1 > protocol.MaxFrameBytes {
-		return errors.New("message exceeds the 1 MiB frame limit")
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-c.done:
-		return c.connectionError()
-	case c.writeGate <- struct{}{}:
+	if err := c.acquireWriter(ctx); err != nil {
+		return err
 	}
 	defer func() { <-c.writeGate }()
 	if err := ctx.Err(); err != nil {
@@ -165,6 +225,32 @@ func (c *Client) Send(ctx context.Context, to, text string) error {
 	if err := c.connectionError(); err != nil {
 		return err
 	}
+	return c.writeWithDeadline(ctx, msg)
+}
+
+func validateFrameSize(msg protocol.Message) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	if len(data)+1 > protocol.MaxFrameBytes {
+		return errors.New("message exceeds the 1 MiB frame limit")
+	}
+	return nil
+}
+
+func (c *Client) acquireWriter(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.done:
+		return c.connectionError()
+	case c.writeGate <- struct{}{}:
+		return nil
+	}
+}
+
+func (c *Client) writeWithDeadline(ctx context.Context, msg protocol.Message) error {
 	deadline := time.Now().Add(ioTimeout)
 	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
 		deadline = d
@@ -204,7 +290,7 @@ func (c *Client) Receive(ctx context.Context, limit int, wait time.Duration) (In
 			return Inbox{}, err
 		}
 		c.mu.Lock()
-		out := Inbox{Messages: make([]protocol.Message, 0), Connected: c.err == nil}
+		out := Inbox{Messages: make([]protocol.Message, 0), Connected: c.err == nil, SessionID: c.sessionID, AcknowledgmentsSupported: c.protocolVersion >= protocol.Version}
 		if c.err != nil {
 			out.Error = c.err.Error()
 		}

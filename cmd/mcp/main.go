@@ -19,7 +19,7 @@ func main() {
 		socketDefault = "/tmp/collab-ai.sock"
 	}
 	socket := flag.String("socket", socketDefault, "broker Unix socket path")
-	agent := flag.String("agent-id", "", "unique agent ID (required)")
+	agent := flag.String("agent-id", "", "logical inbox ID; one active session per ID (required)")
 	harness := flag.String("harness", "mcp", "agent harness name")
 	model := flag.String("model", "", "agent model name (optional)")
 	flag.Parse()
@@ -33,7 +33,7 @@ func main() {
 }
 
 func run(ctx context.Context, socket, agent, harness, model string) error {
-	c, err := bridge.NewLazyClient(socket, agent, harness, model)
+	c, err := bridge.NewLazyClient(bridge.ClientConfig{SocketPath: socket, AgentID: agent, Harness: harness, Model: model})
 	if err != nil {
 		return err
 	}

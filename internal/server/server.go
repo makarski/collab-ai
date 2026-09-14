@@ -179,16 +179,17 @@ func (s *Server) handshake(conn net.Conn, r *bufio.Reader) (*hub.Client, error) 
 	if msg.Type != protocol.TypeHello {
 		return nil, fmt.Errorf("first frame must be %q, got %q", protocol.TypeHello, msg.Type)
 	}
-	if msg.AgentID == "" {
-		return nil, errors.New("hello requires agent_id")
+	if err := protocol.ValidateAgentID(msg.AgentID); err != nil {
+		return nil, err
 	}
 
 	return &hub.Client{
-		ID:        msg.AgentID,
-		SessionID: uuid.NewString(),
-		Harness:   msg.Harness,
-		Model:     msg.Model,
-		Send:      make(chan protocol.Message, sendBufSize),
+		ID:              msg.AgentID,
+		SessionID:       uuid.NewString(),
+		Harness:         msg.Harness,
+		Model:           msg.Model,
+		ProtocolVersion: min(msg.ProtocolVersion, protocol.Version),
+		Send:            make(chan protocol.Message, sendBufSize),
 	}, nil
 }
 

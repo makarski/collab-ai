@@ -24,17 +24,18 @@ flowchart LR
     end
 ```
 
-Run one broker and one MCP adapter per agent session, each with a unique agent
-ID. Agents use three tools: `send`, `receive`, and `wait`. The broker routes
-messages between connected sessions; adapters buffer incoming frames until an
+Run one broker and one MCP adapter per agent session, each with a logical agent
+ID and a broker-assigned session ID. Agents use four tools: `send`, `receive`,
+`wait`, and `acknowledge`. The broker routes messages between connected sessions; adapters buffer incoming frames until an
 agent consumes them. Other local clients can use the [JSON protocol](#protocol)
 directly.
 
 This is a messaging layer, not an agent orchestrator. It does not wake idle
 agents, schedule their work, or replay messages to offline recipients. A
-successful `send` confirms a socket write, not delivery; persisted history is
-not a delivery queue. Agents must check their inbox and bring received feedback
-into their active work.
+successful `send` returns a message ID and confirms a write. Correlated events
+report broker acceptance, adapter receipt, and explicit agent acknowledgment;
+persisted history is not a delivery queue. Agents must check their inbox and bring
+received feedback into their active work.
 
 ## Run
 
@@ -69,8 +70,18 @@ probe cannot displace an active session with the same configured ID.
 
 Call `receive` once to register before another agent sends to you. Until that
 first `send`, `receive`, or `wait`, the broker considers the agent offline.
-Use a distinct agent ID for every simultaneous messaging session; reusing an ID
-in an actual messaging call still disconnects the previous owner.
+An `agent_id` is a logical inbox name (1–128 bytes, other than `*`). Each accepted
+connection receives a unique `session_id`, also returned by `receive` and `wait`.
+One session owns an inbox. A second messaging connection using the same agent ID
+is rejected with `duplicate_id`, its own session ID, and `owner_session_id`; the
+owner stays connected. Use a distinct agent ID for a separate simultaneous agent.
+
+Discovery-only probes remain connection-free. To transfer inbox ownership, close
+the owning adapter, then connect again; there is no takeover flag or observer
+mode. A failed initial registration can be retried. An established connection
+that disconnects remains terminal: restart that adapter to obtain a new session.
+Reconnect does not recover buffered messages or acknowledgment events. A separate
+listener cannot share the working agent's logical inbox by claiming the same ID.
 
 Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
 your built MCP executable. The socket path must match the broker's
@@ -138,13 +149,18 @@ and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 
 | Tool | Arguments | Behavior |
 |------|-----------|----------|
-| `send` | `to`, `text` | Writes a direct message, or broadcasts with `to: "*"`. |
+| `send` | `to`, `text`, optional `message_id`, `in_reply_to` | Writes a direct message or broadcast (`to: "*"`); returns its ID for tracking. |
+| `acknowledge` | `message_id` | Writes an explicit agent acknowledgment; its persisted confirmation arrives through `receive`/`wait`. |
 | `receive` | optional `limit` (default 20, maximum 100) | Consumes queued messages and broker errors immediately. |
 | `wait` | optional `timeout_seconds` (default 30, maximum 30), `limit` | Consumes queued frames or waits for the next arrival. |
 
 Example collaboration: Codex first calls `receive({})` to register.
 Claude then calls `send({"to":"codex-1","text":"Please review my changes"})`;
-Codex calls `wait({"timeout_seconds":30})` and receives the message. `receive`
+Codex calls `wait({"timeout_seconds":30})` and receives the message. After
+considering it in the active conversation, Codex calls
+`acknowledge({"message_id":"<request ID>"})` and can reply using
+`send({"to":"claude-1","text":"Review findings…","in_reply_to":"<request ID>"})`.
+Claude uses `receive` or `wait` to observe the acknowledgment stages and reply. `receive`
 and `wait` return `messages`, `connected`, and an `error` if disconnected. An empty
 wait that reaches its deadline also returns `timed_out: true`. These tools consume
 frames, so repeated calls do not return the same message. Concurrent consumers
@@ -155,46 +171,115 @@ blocks on socket arrivals rather than querying SQLite repeatedly. This adapter
 does not push input into a model's conversation or wake an idle agent after its
 turn ends; unattended collaboration still needs session orchestration.
 
-`send` returns `status: "written"` and `delivery_confirmed: false`: the broker
-protocol has no acknowledgement. Routing errors arrive asynchronously through
-`receive` or `wait`. Messages are persisted, but offline delivery, replay, and
-deduplication are not implemented. A connection loss is reported without automatic
-reconnection; restart the MCP server to reconnect. Buffered frames remain available
-until that restart. The inbox is bounded to 256 frames and 4 MiB of encoded frame
-data; overflow closes the connection and reports that messages may be missing.
+`send` returns `status: "written"`, `message_id`, and
+`delivery_confirmed: false`. `receive` and `wait` include correlated `ack` and
+`error` frames alongside messages:
+
+| Stage | What the broker can confirm |
+|-------|-----------------------------|
+| `accepted` | SQLite committed the message, reply correlation, and recipient/session membership atomically. No recipient receipt is implied. |
+| `adapter_received` | The intended recipient session reported buffering the message; the broker committed that receipt. This does not mean the model has seen it. |
+| `agent_acknowledged` | The recipient explicitly called `acknowledge`, and the broker committed it. This does not assert understanding or task completion. |
+
+The adapter automatically reports receipt after decoding and checking inbox
+capacity, before exposing a message to inbox consumers. It never automatically
+acknowledges on behalf of the agent. `acknowledge` itself confirms only a write;
+the subsequent `agent_acknowledged` event confirms persistence to both the
+recipient and the original sender session. Repeating a receipt is idempotent.
+Only the recipient session selected at acceptance can acknowledge that message.
+
+Errors carry the original `message_id`. Unknown direct recipients are rejected
+before persistence. A full outgoing queue reports `recipient_unavailable`; a
+recipient disconnect before explicit acknowledgment reports
+`recipient_disconnected` to the original sender session, even if adapter receipt
+was already confirmed. A broker disconnect, write failure, or wait timeout leaves
+missing stages **unconfirmed**. `timed_out` describes an empty wait, not message
+expiry or successful delivery. Check each message ID independently.
+
+Messages and receipt records are retained, but offline delivery and replay are
+not implemented. Connection loss is reported without automatic reconnection;
+restart the MCP server to reconnect. Buffered frames remain available until that
+restart. The inbox is bounded to 256 frames and 4 MiB of encoded frame data;
+overflow closes the connection and reports that messages may be missing. Receipt
+events count toward these limits, so senders must also drain their inboxes.
 
 ## Protocol
 
 Newline-delimited JSON, one object per line. First frame must be a hello:
 
 ```json
-{"type":"hello","agent_id":"claude-1","harness":"claude-code 1.5","model":"claude-sonnet-4"}
+{"type":"hello","protocol_version":2,"agent_id":"claude-1","harness":"claude-code","model":"optional-model-name"}
 ```
 
-Broker replies with a welcome:
+Broker replies with a welcome. Its `protocol_version` is the negotiated version
+(the lower of the client and broker versions); legacy clients that omit it
+receive a welcome without that field:
 
 ```json
-{"type":"welcome","seq":1,"agent_id":"claude-1"}
+{"type":"welcome","protocol_version":2,"seq":1,"agent_id":"claude-1","session_id":"<unique-session-ID>"}
 ```
 
 Send a broadcast (`to: "*"`) or a direct message (`to: "<agent_id>"`):
 
 ```json
-{"type":"msg","to":"*","payload":{"text":"hello everyone"}}
-{"type":"msg","to":"gpt-1","payload":{"text":"hi"}}
+{"type":"msg","message_id":"request-1","ack_requested":true,"to":"*","payload":{"text":"hello everyone"}}
+{"type":"msg","message_id":"reply-1","in_reply_to":"request-1","ack_requested":true,"to":"gpt-1","payload":{"text":"hi"}}
 ```
 
 Delivered messages carry a broker-assigned global monotonic `seq`:
 
 ```json
-{"type":"msg","seq":2,"from":"claude-1","to":"gpt-1","payload":{...},"ts":"..."}
+{"type":"msg","message_id":"reply-1","in_reply_to":"request-1","ack_requested":true,"seq":2,"from":"claude-1","session_id":"<sender-session-ID>","to":"gpt-1","payload":{"text":"hi"},"ts":"..."}
 ```
 
 Routing and protocol errors go back to the sender:
 
 ```json
-{"type":"error","code":"unknown_recipient","detail":"no connected agent with id gpt-1"}
+{"type":"error","message_id":"reply-1","code":"unknown_recipient","detail":"no connected agent with id gpt-1"}
 ```
+
+A tracked message produces an acceptance event with a fixed recipient list:
+
+```json
+{"type":"ack","message_id":"reply-1","stage":"accepted","seq":2,"recipients":[{"agent_id":"gpt-1","session_id":"<recipient-session-ID>"}]}
+```
+
+The recipient sends receipt stages using its existing connection:
+
+```json
+{"type":"ack","message_id":"reply-1","stage":"adapter_received"}
+{"type":"ack","message_id":"reply-1","stage":"agent_acknowledged"}
+```
+
+The broker validates the connection's identity, commits the stage, and reports
+it with `agent_id` and `session_id`. An unknown ID, wrong recipient session, or
+agent acknowledgment before adapter receipt is rejected with `invalid_ack`.
+Client-supplied sender/session fields cannot override the connection identity.
+
+Broadcast membership consists of the connected sessions other than the sender at
+acceptance. Each member acknowledges independently; late arrivals are excluded.
+An empty membership means nobody was targeted (the omitted `recipients` field is
+an empty list). Broadcasts above 256 recipients are rejected before persistence.
+Queue failures affect only the corresponding member; healthy members still get
+the message. The acceptance list remains the scope even if a member disconnects.
+
+Message and reply IDs are opaque strings of at most 128 bytes. The adapter
+generates a UUID when `message_id` is omitted; the broker also assigns IDs to
+legacy wire messages. Reusing a persisted ID returns `duplicate_message` and
+does not route again, even after broker restart. This is duplicate rejection,
+not retry/replay or an exactly-once delivery promise. `in_reply_to` is a
+correlation reference; it does not grant access or acknowledge the referenced
+message.
+
+Protocol compatibility: old clients may omit `protocol_version` and
+`ack_requested` and continue using write-only messaging with additive metadata
+in incoming frames. Staged events require `protocol_version: 2` in hello and
+`ack_requested: true` on the message; the new MCP adapter requests both. A legacy
+recipient can still receive a tracked message but may never report receipt or
+agent acknowledgment. Missing stages remain unconfirmed. An old broker is
+exposed by `acknowledgments_supported: false` in the inbox response; the new
+MCP `send` and `acknowledge` tools require an upgraded broker and report an error
+instead of silently losing correlation. Tool discovery remains offline-capable.
 
 Test interactively with `nc -U /tmp/collab-ai.sock`.
 
@@ -206,8 +291,13 @@ slow reader can discard pending frames; persistence is a log, not a delivery que
 
 ## State
 
-SQLite file with two tables: `agents` (connect/disconnect events incl.
-harness + model) and `messages` (seq, ts, sender, recipient, payload).
+SQLite retains `agents` (session lifecycle and harness/model) and `messages`
+(history), plus `message_metadata` (stable IDs, reply references, sender session,
+and acknowledgment request) and `message_receipts` (recipient/session membership
+and receipt timestamps). Opening an existing database adds the new tables and
+index without rewriting history. Pre-upgrade messages have no new metadata or
+receipts and cannot be acknowledged retroactively. These are retained records,
+not a durable inbox: no replay, expiry, or retention policy is implemented yet.
 Message sequence allocation resumes across broker restarts via `MAX(messages.seq)`.
 Welcome frames also consume sequence numbers, but are not persisted; a trailing
 welcome sequence can therefore be reused after a restart. Do not use welcome
@@ -219,9 +309,36 @@ sequences as durable replay cursors.
 go test -race ./... -timeout=30s
 ```
 
-The suite covers routing, replacement connections, slow readers, bounded framing,
-socket ownership, shutdown, discovery without a broker, same-ID inventory probes,
-concurrent lazy registration, and MCP message exchange through a broker.
+The suite covers routing, duplicate-session rejection and reconnect, slow readers,
+bounded framing, socket ownership, shutdown, discovery without a broker, same-ID
+inventory probes, concurrent lazy registration, and an MCP review request/reply
+through a broker. Receipt tests cover delayed explicit acknowledgment, recipient
+disconnects between stages, broadcast membership, unauthorized acknowledgments,
+duplicate IDs after restart, and migration/transaction rollback.
+
+## Next work
+
+Session ownership ([#3](https://github.com/makarski/collab-ai/issues/3)) and staged
+acknowledgments ([#4](https://github.com/makarski/collab-ai/issues/4)) provide the
+foundation for the remaining collaboration work:
+
+1. [Host integration #5](https://github.com/makarski/collab-ai/issues/5): establish
+   a supported path from incoming context to the active conversation, then an
+   explicit agent acknowledgment. Verify each host's actual notification/wake
+   capabilities; a background adapter alone is not an active reviewer.
+2. [Durable inboxes #6](https://github.com/makarski/collab-ai/issues/6): define
+   at-least-once replay across sessions using stable message IDs, a deliberate
+   agent acknowledgment boundary, and bounded retention/queue behavior.
+3. [Status #7](https://github.com/makarski/collab-ai/issues/7): inspect session and
+   acknowledgment state without registering an agent or consuming its inbox.
+   Durable pending counts must wait for the durable inbox contract.
+4. Add another transport. Keep identity, persistence, recipient membership, and
+   acknowledgment rules in the hub/protocol/store. Isolate listener creation and
+   dialing from the existing stream framing; run the same collaboration contract
+   tests against UDS and the new transport. Choose the transport from the intended
+   clients and deployment boundary (remote agents, browser clients, or local
+   cross-platform use), with the relevant connection authentication and lifecycle
+   defined before exposing the broker beyond its current local boundary.
 
 ## License
 
