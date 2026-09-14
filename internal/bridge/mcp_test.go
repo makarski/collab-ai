@@ -129,6 +129,23 @@ func inboxResult(t *testing.T, r *mcp.CallToolResult) Inbox {
 	return out
 }
 
+// awaitMCPFrame consumes a single frame at a time so later stages stay observable.
+func awaitMCPFrame(t *testing.T, c *mcp.ClientSession) protocol.Message {
+	t.Helper()
+	out := inboxResult(t, call(t, c, "wait", map[string]any{"timeout_seconds": 1, "limit": 1}))
+	if !out.Connected || len(out.Messages) != 1 {
+		t.Fatalf("expected one frame: %+v", out)
+	}
+	return out.Messages[0]
+}
+
+func assertStage(t *testing.T, msg protocol.Message, id, stage string) {
+	t.Helper()
+	if msg.Type != protocol.TypeAck || msg.MessageID != id || msg.Stage != stage {
+		t.Fatalf("expected %s for %s: %+v", stage, id, msg)
+	}
+}
+
 func TestMCPExchange(t *testing.T) {
 	path, _ := startBroker(t)
 	codex := connectMCP(t, lazyAgent(t, path, "codex"))
@@ -141,50 +158,53 @@ func TestMCPExchange(t *testing.T) {
 	for _, tool := range listed.Tools {
 		names[tool.Name] = true
 	}
-	if len(names) != 3 || !names["send"] || !names["receive"] || !names["wait"] {
+	if len(names) != 4 || !names["send"] || !names["receive"] || !names["wait"] || !names["acknowledge"] {
 		t.Fatalf("unexpected tools: %v", names)
 	}
-	// Start a real MCP wait before sending via the other MCP connection.
-	// Register first: discovery alone no longer makes this recipient online.
-	call(t, codex, "receive", map[string]any{})
-	waiting := make(chan *mcp.CallToolResult, 1)
-	waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	go func() {
-		r, err := codex.CallTool(waitCtx, &mcp.CallToolParams{Name: "wait", Arguments: map[string]any{"timeout_seconds": 1}})
-		if err != nil {
-			t.Error(err)
-		}
-		waiting <- r
-	}()
+	registered := inboxResult(t, call(t, codex, "receive", map[string]any{}))
+	if registered.SessionID == "" || !registered.AcknowledgmentsSupported {
+		t.Fatalf("missing capabilities: %+v", registered)
+	}
 	sent := call(t, claude, "send", map[string]any{"to": "codex", "text": "review ready"})
 	data, _ := json.Marshal(sent.StructuredContent)
-	if !strings.Contains(string(data), `"delivery_confirmed":false`) {
-		t.Fatalf("send overclaims delivery: %s", data)
+	var result SendResult
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatal(err)
 	}
-	result := <-waiting
-	if result == nil || result.IsError {
-		t.Fatal("wait failed")
+	if result.MessageID == "" || result.Status != "written" || result.DeliveryConfirmed {
+		t.Fatalf("send result: %s", data)
 	}
-	inbox := inboxResult(t, result)
-	if len(inbox.Messages) != 1 || inbox.Messages[0].From != "claude" || string(inbox.Messages[0].Payload) != `{"text":"review ready"}` {
-		t.Fatalf("unexpected inbox: %+v", inbox)
+	accepted := awaitMCPFrame(t, claude)
+	assertStage(t, accepted, result.MessageID, protocol.StageAccepted)
+	if len(accepted.Recipients) != 1 || accepted.Recipients[0].AgentID != "codex" || accepted.Recipients[0].SessionID != registered.SessionID {
+		t.Fatalf("missing recipient ownership: %+v", accepted)
 	}
-	empty := inboxResult(t, call(t, codex, "receive", map[string]any{}))
-	if !empty.Connected || len(empty.Messages) != 0 {
-		t.Fatalf("receive did not consume messages: %+v", empty)
+	request := awaitMCPFrame(t, codex)
+	if request.Type != protocol.TypeMsg || request.From != "claude" || request.MessageID != result.MessageID || string(request.Payload) != `{"text":"review ready"}` {
+		t.Fatalf("bad review request: %+v", request)
 	}
-	call(t, claude, "send", map[string]any{"to": "*", "text": "broadcast"})
-	broadcast := inboxResult(t, call(t, codex, "wait", map[string]any{"timeout_seconds": 1}))
-	if len(broadcast.Messages) != 1 || broadcast.Messages[0].To != "*" {
-		t.Fatalf("bad broadcast: %+v", broadcast)
+	assertStage(t, awaitMCPFrame(t, claude), result.MessageID, protocol.StageAdapterReceived)
+	// Transport receipt must never turn into an automatic agent acknowledgment.
+	empty := inboxResult(t, call(t, claude, "wait", map[string]any{"timeout_seconds": 1}))
+	if len(empty.Messages) != 0 || !empty.TimedOut {
+		t.Fatalf("invented agent acknowledgment: %+v", empty)
 	}
-	if self := inboxResult(t, call(t, claude, "receive", map[string]any{})); len(self.Messages) != 0 {
-		t.Fatal("sender received its own broadcast")
+	call(t, codex, "acknowledge", map[string]any{"message_id": result.MessageID})
+	assertStage(t, awaitMCPFrame(t, codex), result.MessageID, protocol.StageAgentAcknowledged)
+	assertStage(t, awaitMCPFrame(t, claude), result.MessageID, protocol.StageAgentAcknowledged)
+	call(t, codex, "send", map[string]any{"to": "claude", "text": "reviewed: add a disconnect test", "message_id": "review-reply", "in_reply_to": result.MessageID})
+	assertStage(t, awaitMCPFrame(t, codex), "review-reply", protocol.StageAccepted)
+	reply := awaitMCPFrame(t, claude)
+	if reply.InReplyTo != result.MessageID || reply.MessageID != "review-reply" || reply.From != "codex" {
+		t.Fatalf("reply correlation lost: %+v", reply)
 	}
-	call(t, claude, "send", map[string]any{"to": "missing", "text": "hello"})
-	routingError := inboxResult(t, call(t, claude, "wait", map[string]any{"timeout_seconds": 1}))
-	if len(routingError.Messages) != 1 || routingError.Messages[0].Code != protocol.ErrUnknownRecipient {
+	assertStage(t, awaitMCPFrame(t, codex), "review-reply", protocol.StageAdapterReceived)
+	call(t, claude, "acknowledge", map[string]any{"message_id": "review-reply"})
+	assertStage(t, awaitMCPFrame(t, claude), "review-reply", protocol.StageAgentAcknowledged)
+	assertStage(t, awaitMCPFrame(t, codex), "review-reply", protocol.StageAgentAcknowledged)
+	call(t, claude, "send", map[string]any{"to": "missing", "text": "hello", "message_id": "missing-request"})
+	routingError := awaitMCPFrame(t, claude)
+	if routingError.Code != protocol.ErrUnknownRecipient || routingError.MessageID != "missing-request" {
 		t.Fatalf("routing error lost: %+v", routingError)
 	}
 	for _, tc := range []struct {
@@ -194,6 +214,7 @@ func TestMCPExchange(t *testing.T) {
 		{"send", map[string]any{"to": "codex"}},
 		{"receive", map[string]any{"limit": 101}},
 		{"wait", map[string]any{"timeout_seconds": 31}},
+		{"acknowledge", map[string]any{"message_id": ""}},
 	} {
 		r, err := codex.CallTool(context.Background(), &mcp.CallToolParams{Name: tc.name, Arguments: tc.args})
 		if err == nil && !r.IsError {

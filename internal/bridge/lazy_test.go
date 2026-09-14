@@ -46,7 +46,7 @@ func TestMCPDiscoveryWithoutBroker(t *testing.T) {
 	c := lazyAgent(t, filepath.Join(t.TempDir(), "missing.sock"), "codex")
 	session := connectMCP(t, c)
 	listed, err := session.ListTools(context.Background(), nil)
-	if err != nil || len(listed.Tools) != 3 {
+	if err != nil || len(listed.Tools) != 4 {
 		t.Fatalf("discovery needs a broker: %+v %v", listed, err)
 	}
 	if c.client != nil {
@@ -77,7 +77,9 @@ func TestMCPDiscoveryDoesNotEvictActiveAgent(t *testing.T) {
 	if probe.client != nil {
 		t.Fatal("inventory probe opened a broker connection")
 	}
-	call(t, session, "send", map[string]any{"to": "codex", "text": "still connected"})
+	if err := active.Send(context.Background(), "codex", "still connected"); err != nil {
+		t.Fatal(err)
+	}
 	out := inboxResult(t, call(t, session, "wait", map[string]any{"timeout_seconds": 1}))
 	if !out.Connected {
 		t.Fatalf("inventory probe displaced the active session: %+v", out)

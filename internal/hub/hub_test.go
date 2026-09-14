@@ -142,8 +142,8 @@ func TestSeqMonotonicAndResumed(t *testing.T) {
 		t.Fatalf("welcome seq = %d, want 101 (resumed from 100)", welcome.Seq)
 	}
 
-	h.Submit(ctx, Inbound{From: a, Msg: protocol.Message{Type: protocol.TypeMsg, To: "x", Payload: json.RawMessage(`{}`)}})
-	recv(t, a) // unknown_recipient error; seq was consumed by the failed route
+	h.Submit(ctx, Inbound{From: a, Msg: protocol.Message{Type: protocol.TypeMsg, To: "alice", Payload: json.RawMessage(`{}`)}})
+	recv(t, a) // delivered message; sequence persisted
 
 	// two frames consumed -> last persisted seq must be 102
 	last, err := st.LastSeq(context.Background())
@@ -155,36 +155,40 @@ func TestSeqMonotonicAndResumed(t *testing.T) {
 	}
 }
 
-func TestReplacementRejectsStaleSubmissions(t *testing.T) {
+func TestDuplicateOwnerRejectedAndStaleSubmissionsIgnored(t *testing.T) {
 	h := newTestHub(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() { cancel(); <-h.Done() }()
 	go h.Run(ctx)
-	old, b := newClient("codex"), newClient("claude")
-	disconnected := make(chan struct{})
-	old.Disconnect = func() { close(disconnected) }
-	h.Register(ctx, old)
-	h.Register(ctx, b)
-	recv(t, old)
-	recv(t, b)
-	// Even a full old queue cannot block replacement.
-	for i := 0; i < cap(old.Send); i++ {
-		old.Send <- protocol.Message{}
+	owner, peer := newClient("codex"), newClient("claude")
+	h.Register(ctx, owner)
+	h.Register(ctx, peer)
+	recv(t, owner)
+	recv(t, peer)
+	rejected := newClient("codex")
+	rejected.SessionID = "rejected-session"
+	h.Register(ctx, rejected)
+	got := recv(t, rejected)
+	if got.Code != protocol.ErrDuplicateID || got.OwnerSessionID != owner.SessionID || got.SessionID != rejected.SessionID {
+		t.Fatalf("missing actionable rejection: %+v", got)
 	}
+	h.Submit(ctx, Inbound{From: rejected, Msg: protocol.Message{Type: protocol.TypeMsg, To: "claude", Payload: json.RawMessage(`"rejected"`)}})
+	h.Unregister(rejected)
+	h.Submit(ctx, Inbound{From: owner, Msg: protocol.Message{Type: protocol.TypeMsg, To: "claude", Payload: json.RawMessage(`"owner"`)}})
+	if got := recv(t, peer); string(got.Payload) != `"owner"` {
+		t.Fatalf("owner displaced: %+v", got)
+	}
+	h.Unregister(owner)
 	replacement := newClient("codex")
-	replacement.SessionID = "replacement"
+	replacement.SessionID = "replacement-session"
 	h.Register(ctx, replacement)
-	recv(t, replacement)
-	select {
-	case <-disconnected:
-	default:
-		t.Fatal("old transport not closed")
+	if got := recv(t, replacement); got.SessionID != replacement.SessionID || got.Type != protocol.TypeWelcome {
+		t.Fatalf("reconnect rejected: %+v", got)
 	}
-	h.Submit(ctx, Inbound{From: old, Msg: protocol.Message{Type: protocol.TypeMsg}})
-	h.Submit(ctx, Inbound{From: old, Msg: protocol.Message{Type: protocol.TypeMsg, To: "claude", Payload: json.RawMessage(`"stale"`)}})
-	h.Unregister(old) // Must not unregister the new owner.
+	h.Unregister(owner)
+	h.Submit(ctx, Inbound{From: owner, Msg: protocol.Message{Type: protocol.TypeMsg, To: "claude", Payload: json.RawMessage(`"stale"`)}})
 	h.Submit(ctx, Inbound{From: replacement, Msg: protocol.Message{Type: protocol.TypeMsg, To: "claude", Payload: json.RawMessage(`"current"`)}})
-	if got := recv(t, b); string(got.Payload) != `"current"` {
+	if got := recv(t, peer); string(got.Payload) != `"current"` {
 		t.Fatalf("stale submission delivered: %+v", got)
 	}
 }
@@ -320,5 +324,37 @@ func TestBrokerMetadataCannotOverflowRecipientFrame(t *testing.T) {
 	h.Submit(ctx, Inbound{From: a, Msg: protocol.Message{Type: protocol.TypeMsg, To: "bob"}})
 	if got := recv(t, b); len(got.Payload) != 0 {
 		t.Fatal("oversized message reached recipient")
+	}
+}
+
+func TestStorageFailureNeverConfirmsAcceptanceOrAcknowledgment(t *testing.T) {
+	h := newTestHub(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); <-h.Done() }()
+	go h.Run(ctx)
+	sender, recipient := newClient("claude"), newClient("codex")
+	sender.ProtocolVersion = protocol.Version
+	h.Register(ctx, sender)
+	h.Register(ctx, recipient)
+	recv(t, sender)
+	recv(t, recipient)
+	h.Submit(ctx, Inbound{From: sender, Msg: protocol.Message{Type: protocol.TypeMsg, To: recipient.ID, MessageID: "persisted", AckRequested: true}})
+	if got := recv(t, sender); got.Stage != protocol.StageAccepted {
+		t.Fatalf("acceptance missing: %+v", got)
+	}
+	recv(t, recipient)
+	h.store.Close()
+	h.Submit(ctx, Inbound{From: sender, Msg: protocol.Message{Type: protocol.TypeMsg, To: recipient.ID, MessageID: "failed", AckRequested: true}})
+	if got := recv(t, sender); got.Code != protocol.ErrInternal || got.MessageID != "failed" {
+		t.Fatalf("false acceptance: %+v", got)
+	}
+	h.Submit(ctx, Inbound{From: recipient, Msg: protocol.Message{Type: protocol.TypeAck, MessageID: "persisted", Stage: protocol.StageAdapterReceived}})
+	if got := recv(t, recipient); got.Code != protocol.ErrInternal || got.MessageID != "persisted" {
+		t.Fatalf("false acknowledgment: %+v", got)
+	}
+	select {
+	case got := <-sender.Send:
+		t.Fatalf("unpersisted receipt forwarded: %+v", got)
+	case <-time.After(10 * time.Millisecond):
 	}
 }

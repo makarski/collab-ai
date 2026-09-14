@@ -13,6 +13,14 @@ const (
 	TypeWelcome = "welcome" // broker -> client, confirms registration
 	TypeMsg     = "msg"     // bidirectional, chat payload
 	TypeError   = "error"   // broker -> client, protocol or routing error
+	TypeAck     = "ack"     // client -> broker receipt; broker -> client persisted acknowledgment
+)
+
+const (
+	Version                = 2
+	StageAccepted          = "accepted"
+	StageAdapterReceived   = "adapter_received"
+	StageAgentAcknowledged = "agent_acknowledged"
 )
 
 // Broadcast is the reserved recipient for messages to all connected agents.
@@ -20,27 +28,44 @@ const Broadcast = "*"
 
 // Error codes sent in TypeError frames.
 const (
-	ErrExpectedHello        = "expected_hello"
-	ErrDuplicateID          = "duplicate_id"
-	ErrUnknownRecipient     = "unknown_recipient"
-	ErrRecipientUnavailable = "recipient_unavailable"
-	ErrMalformedFrame       = "malformed_frame"
-	ErrMissingRecipient     = "missing_recipient"
-	ErrInternal             = "internal"
+	ErrExpectedHello         = "expected_hello"
+	ErrDuplicateID           = "duplicate_id"
+	ErrUnknownRecipient      = "unknown_recipient"
+	ErrRecipientUnavailable  = "recipient_unavailable"
+	ErrRecipientDisconnected = "recipient_disconnected"
+	ErrMalformedFrame        = "malformed_frame"
+	ErrMissingRecipient      = "missing_recipient"
+	ErrInternal              = "internal"
+	ErrDuplicateMessage      = "duplicate_message"
+	ErrInvalidAck            = "invalid_ack"
 )
+
+// Recipient freezes broadcast membership at acceptance, including inbox ownership.
+type Recipient struct {
+	AgentID   string `json:"agent_id"`
+	SessionID string `json:"session_id"`
+}
 
 // Message is the single frame type used in both directions.
 // Fields are populated depending on Type.
 type Message struct {
-	Type    string          `json:"type"`
-	Seq     uint64          `json:"seq,omitempty"`      // broker-assigned global order (msg, welcome)
-	AgentID string          `json:"agent_id,omitempty"` // hello, welcome
-	Harness string          `json:"harness,omitempty"`  // hello: e.g. "claude-code 1.5"
-	Model   string          `json:"model,omitempty"`    // hello: e.g. "claude-sonnet-4"
-	From    string          `json:"from,omitempty"`     // msg (broker -> client)
-	To      string          `json:"to,omitempty"`       // msg: agent id or "*"
-	Payload json.RawMessage `json:"payload,omitempty"`  // msg: opaque JSON
-	Code    string          `json:"code,omitempty"`     // error
-	Detail  string          `json:"detail,omitempty"`   // error
-	TS      *time.Time      `json:"ts,omitempty"`       // msg (broker -> client), UTC; pointer so zero is omitted
+	Type            string          `json:"type"`
+	ProtocolVersion int             `json:"protocol_version,omitempty"` // hello/welcome capability negotiation
+	MessageID       string          `json:"message_id,omitempty"`
+	InReplyTo       string          `json:"in_reply_to,omitempty"`
+	AckRequested    bool            `json:"ack_requested,omitempty"`    // msg: request staged acknowledgments
+	Stage           string          `json:"stage,omitempty"`            // ack
+	Recipients      []Recipient     `json:"recipients,omitempty"`       // accepted: fixed membership
+	Seq             uint64          `json:"seq,omitempty"`              // broker-assigned global order (msg, welcome)
+	AgentID         string          `json:"agent_id,omitempty"`         // hello, welcome
+	SessionID       string          `json:"session_id,omitempty"`       // broker-assigned connection identity
+	OwnerSessionID  string          `json:"owner_session_id,omitempty"` // duplicate_id: current inbox owner
+	Harness         string          `json:"harness,omitempty"`          // hello: e.g. "claude-code 1.5"
+	Model           string          `json:"model,omitempty"`            // hello: e.g. "claude-sonnet-4"
+	From            string          `json:"from,omitempty"`             // msg (broker -> client)
+	To              string          `json:"to,omitempty"`               // msg: agent id or "*"
+	Payload         json.RawMessage `json:"payload,omitempty"`          // msg: opaque JSON
+	Code            string          `json:"code,omitempty"`             // error
+	Detail          string          `json:"detail,omitempty"`           // error
+	TS              *time.Time      `json:"ts,omitempty"`               // msg (broker -> client), UTC; pointer so zero is omitted
 }

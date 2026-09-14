@@ -78,3 +78,19 @@ func (c *LazyClient) Close() {
 		c.client.Close()
 	}
 }
+
+func (c *LazyClient) SendMessage(ctx context.Context, to, text, id, reply string) (SendResult, error) {
+	client, err := c.connection(ctx)
+	if err != nil {
+		return SendResult{}, err
+	}
+	return client.SendMessage(ctx, to, text, id, reply)
+}
+
+func (c *LazyClient) Acknowledge(ctx context.Context, id string) error {
+	client, err := c.connection(ctx)
+	if err != nil {
+		return err
+	}
+	return client.Acknowledge(ctx, id)
+}

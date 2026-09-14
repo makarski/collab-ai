@@ -5,21 +5,26 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"sort"
 	"time"
 
 	"collab-ai/internal/protocol"
 	"collab-ai/internal/store"
+
+	"github.com/google/uuid"
 )
 
 // Client represents one connected agent.
 type Client struct {
-	ID         string
-	SessionID  string
-	Harness    string
-	Model      string
-	Send       chan protocol.Message // buffered; sent to and closed only by the hub
-	Disconnect func()                // closes the transport; must return promptly
+	ID              string
+	SessionID       string
+	Harness         string
+	Model           string
+	ProtocolVersion int
+	Send            chan protocol.Message // buffered; sent to and closed only by the hub
+	Disconnect      func()                // closes the transport; must return promptly
 }
 
 // Inbound is a message received from a client, tagged with its sender.
@@ -114,20 +119,23 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case c := <-h.register:
 			if existing, ok := clients[c.ID]; ok {
-				select {
-				case existing.Send <- protocol.Message{
-					Type:   protocol.TypeError,
-					Code:   protocol.ErrDuplicateID,
-					Detail: "agent id " + c.ID + " taken over by new connection",
-				}:
-				default:
+				// The rejected connection's writer drains this error before closing
+				// its transport. Never close the owner's connection or inbox.
+				c.Send <- protocol.Message{
+					Type:           protocol.TypeError,
+					Code:           protocol.ErrDuplicateID,
+					AgentID:        c.ID,
+					SessionID:      c.SessionID,
+					OwnerSessionID: existing.SessionID,
+					Detail:         "agent id " + c.ID + " is owned by session " + existing.SessionID + "; disconnect that owner before retrying, or use a distinct agent_id",
 				}
-				h.disconnect(clients, existing)
+				close(c.Send)
+				continue
 			}
 			clients[c.ID] = c
 			h.seq++
 			h.recordConnect(c)
-			h.enqueue(clients, c, protocol.Message{Type: protocol.TypeWelcome, AgentID: c.ID, Seq: h.seq})
+			h.enqueue(clients, c, protocol.Message{Type: protocol.TypeWelcome, AgentID: c.ID, SessionID: c.SessionID, Seq: h.seq, ProtocolVersion: protocol.Version})
 			h.log.Info("agent connected",
 				"agent_id", c.ID, "harness", c.Harness, "model", c.Model, "online", len(clients))
 
@@ -142,72 +150,112 @@ func (h *Hub) Run(ctx context.Context) {
 
 // route assigns the global sequence, persists, then delivers the message.
 func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound) {
-	// A replaced connection may already have submissions in the inbound queue.
 	if clients[in.From.ID] != in.From {
 		return
 	}
 	msg := in.Msg
+	if msg.Type == protocol.TypeAck {
+		h.acknowledge(ctx, clients, in)
+		return
+	}
+	fail := func(code, detail string) { h.sendError(clients, in.From, code, detail, msg.MessageID) }
 	if msg.Type != protocol.TypeMsg {
-		h.sendError(clients, in.From, protocol.ErrMalformedFrame, "expected type \"msg\"")
+		fail(protocol.ErrMalformedFrame, "expected type msg or ack")
+		return
+	}
+	if msg.MessageID == "" {
+		msg.MessageID = uuid.NewString()
+	}
+	if len(msg.MessageID) > 128 || len(msg.InReplyTo) > 128 {
+		fail(protocol.ErrMalformedFrame, "message_id and in_reply_to must be at most 128 bytes")
+		return
+	}
+	if msg.AckRequested && in.From.ProtocolVersion < protocol.Version {
+		fail(protocol.ErrMalformedFrame, "ack_requested requires protocol_version 2 in hello")
 		return
 	}
 	if msg.To == "" {
-		h.sendError(clients, in.From, protocol.ErrMissingRecipient, "field \"to\" is required")
+		fail(protocol.ErrMissingRecipient, "field to is required")
 		return
 	}
-
+	var recipients []protocol.Recipient
+	if msg.To == protocol.Broadcast {
+		for id, c := range clients {
+			if id != in.From.ID {
+				recipients = append(recipients, protocol.Recipient{AgentID: id, SessionID: c.SessionID})
+			}
+		}
+		if len(recipients) > 256 {
+			fail(protocol.ErrRecipientUnavailable, "broadcast exceeds 256 connected recipients; send to smaller groups directly")
+			return
+		}
+		sort.Slice(recipients, func(i, j int) bool { return recipients[i].AgentID < recipients[j].AgentID })
+	} else {
+		c := clients[msg.To]
+		if c == nil {
+			fail(protocol.ErrUnknownRecipient, "no connected agent with id "+msg.To)
+			return
+		}
+		recipients = append(recipients, protocol.Recipient{AgentID: c.ID, SessionID: c.SessionID})
+	}
 	h.seq++
 	ts := time.Now().UTC()
 	out := protocol.Message{
-		Type:    protocol.TypeMsg,
-		Seq:     h.seq,
-		From:    in.From.ID,
-		To:      msg.To,
-		Payload: msg.Payload,
-		TS:      &ts,
+		Type: protocol.TypeMsg, Seq: h.seq, TS: &ts,
+		From: in.From.ID, SessionID: in.From.SessionID, To: msg.To,
+		Payload: msg.Payload, MessageID: msg.MessageID,
+		InReplyTo: msg.InReplyTo, AckRequested: msg.AckRequested,
 	}
-	// Broker metadata can make a valid incoming frame too large for a receiver.
-	// Reject it before persistence instead of disconnecting the recipient on write.
+	// Added broker metadata must still fit the receiver's frame limit.
 	encoded, err := json.Marshal(out)
 	if err != nil || len(encoded)+1 > protocol.MaxFrameBytes {
-		h.sendError(clients, in.From, protocol.ErrMalformedFrame, "routed message exceeds the 1 MiB frame limit")
+		fail(protocol.ErrMalformedFrame, "routed message exceeds the 1 MiB frame limit")
 		return
 	}
-
-	if err := h.store.InsertMessage(ctx, out.Seq, *out.TS, out.From, out.To, out.Payload); err != nil {
-		h.log.Error("persist message failed", "seq", out.Seq, "error", err)
-		h.sendError(clients, in.From, protocol.ErrInternal, "message not persisted")
-		return
-	}
-
-	if msg.To == protocol.Broadcast {
-		delivered := 0
-		for id, c := range clients {
-			if id == in.From.ID {
-				continue // sender already knows its own message
-			}
-			if h.enqueue(clients, c, out) {
-				delivered++
-			}
+	if err := h.store.PersistMessage(ctx, out, in.From.SessionID, recipients); err != nil {
+		if errors.Is(err, store.ErrDuplicateMessage) {
+			fail(protocol.ErrDuplicateMessage, err.Error())
+			return
 		}
-		h.log.Debug("broadcast", "seq", out.Seq, "from", out.From, "delivered", delivered)
+		h.log.Error("persist message failed", "message_id", msg.MessageID, "error", err)
+		fail(protocol.ErrInternal, "message not persisted")
 		return
 	}
-
-	rcpt, ok := clients[msg.To]
-	if !ok {
-		h.sendError(clients, in.From, protocol.ErrUnknownRecipient, "no connected agent with id "+msg.To)
-		return
+	if msg.AckRequested {
+		h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: protocol.StageAccepted, Seq: out.Seq, Recipients: recipients})
 	}
-	if !h.enqueue(clients, rcpt, out) {
-		h.sendError(clients, in.From, protocol.ErrRecipientUnavailable, "recipient "+msg.To+" disconnected: outgoing queue full")
-		return
+	for _, r := range recipients {
+		c := clients[r.AgentID]
+		if c == nil || c.SessionID != r.SessionID || !h.enqueue(clients, c, out) {
+			h.sendError(clients, in.From, protocol.ErrRecipientUnavailable, "recipient "+r.AgentID+" session "+r.SessionID+" disconnected before enqueue", msg.MessageID)
+		}
 	}
-	h.log.Debug("direct message", "seq", out.Seq, "from", out.From, "to", out.To)
 }
 
-func (h *Hub) sendError(clients map[string]*Client, c *Client, code, detail string) {
-	h.enqueue(clients, c, protocol.Message{Type: protocol.TypeError, Code: code, Detail: detail})
+func (h *Hub) acknowledge(ctx context.Context, clients map[string]*Client, in Inbound) {
+	msg := in.Msg
+	sender, session, err := h.store.Acknowledge(ctx, msg.MessageID, in.From.ID, in.From.SessionID, msg.Stage)
+	if err != nil {
+		code, detail := protocol.ErrInternal, "acknowledgment not persisted"
+		if errors.Is(err, store.ErrInvalidAck) {
+			code, detail = protocol.ErrInvalidAck, err.Error()
+		}
+		h.sendError(clients, in.From, code, detail, msg.MessageID)
+		return
+	}
+	out := protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: msg.Stage, AgentID: in.From.ID, SessionID: in.From.SessionID}
+	// Adapter receipts are confirmed to the sender. Explicit agent acknowledgments
+	// are also confirmed to the acknowledging agent, only after the database commit.
+	if msg.Stage == protocol.StageAgentAcknowledged {
+		h.enqueue(clients, in.From, out)
+	}
+	if c := clients[sender]; c != nil && c.SessionID == session && (c != in.From || msg.Stage != protocol.StageAgentAcknowledged) {
+		h.enqueue(clients, c, out)
+	}
+}
+
+func (h *Hub) sendError(clients map[string]*Client, c *Client, code, detail, id string) {
+	h.enqueue(clients, c, protocol.Message{Type: protocol.TypeError, Code: code, Detail: detail, MessageID: id})
 }
 
 // enqueue evicts slow clients instead of blocking routing for every agent.
@@ -235,7 +283,35 @@ func (h *Hub) disconnect(clients map[string]*Client, c *Client) {
 	}
 	close(c.Send)
 	h.recordDisconnect(c)
+	h.notifyDisconnect(clients, c)
 	h.log.Info("agent disconnected", "agent_id", c.ID, "online", len(clients))
+}
+
+func (h *Hub) notifyDisconnect(clients map[string]*Client, c *Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var after uint64
+	for len(clients) > 0 {
+		pending, err := h.store.UnacknowledgedForSession(ctx, c.SessionID, after)
+		if err != nil {
+			h.log.Error("query unacknowledged receipts failed", "session_id", c.SessionID, "error", err)
+			// A session-level error makes failure to enumerate affected messages
+			// visible without inventing a delivery outcome.
+			for _, sender := range clients {
+				h.enqueue(clients, sender, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrInternal, AgentID: c.ID, SessionID: c.SessionID, Detail: "recipient disconnected; could not determine unacknowledged messages"})
+			}
+			return
+		}
+		for _, p := range pending {
+			after = p.Seq
+			if sender := clients[p.Sender]; sender != nil && sender.SessionID == p.SenderSession {
+				h.enqueue(clients, sender, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrRecipientDisconnected, MessageID: p.MessageID, AgentID: c.ID, SessionID: c.SessionID, Detail: "recipient session disconnected before agent acknowledgment; no replay is available"})
+			}
+		}
+		if len(pending) < 64 {
+			return
+		}
+	}
 }
 
 func (h *Hub) recordConnect(c *Client) {
