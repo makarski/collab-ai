@@ -169,8 +169,14 @@ func TestDuplicateOwnerRejectedAndStaleSubmissionsIgnored(t *testing.T) {
 	rejected.SessionID = "rejected-session"
 	h.Register(ctx, rejected)
 	got := recv(t, rejected)
-	if got.Code != protocol.ErrDuplicateID || got.OwnerSessionID != owner.SessionID || got.SessionID != rejected.SessionID {
-		t.Fatalf("missing actionable rejection: %+v", got)
+	if got.Code != protocol.ErrDuplicateID {
+		t.Fatalf("missing duplicate error: %+v", got)
+	}
+	if got.OwnerSessionID != owner.SessionID {
+		t.Fatalf("wrong owner identity: %+v", got)
+	}
+	if got.SessionID != rejected.SessionID {
+		t.Fatalf("wrong rejected identity: %+v", got)
 	}
 	h.Submit(ctx, Inbound{From: rejected, Msg: protocol.Message{Type: protocol.TypeMsg, To: "claude", Payload: json.RawMessage(`"rejected"`)}})
 	h.Unregister(rejected)

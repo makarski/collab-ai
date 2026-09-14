@@ -4,6 +4,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -25,6 +26,17 @@ const (
 
 // Broadcast is the reserved recipient for messages to all connected agents.
 const Broadcast = "*"
+
+// ValidateAgentID is shared by wire and MCP registration.
+func ValidateAgentID(id string) error {
+	if len(id) == 0 || len(id) > 128 {
+		return errors.New("agent ID must be 1 to 128 bytes")
+	}
+	if id == Broadcast {
+		return errors.New("agent ID cannot be *")
+	}
+	return nil
+}
 
 // Error codes sent in TypeError frames.
 const (

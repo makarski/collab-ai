@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"collab-ai/internal/protocol"
 )
 
 func openTemp(t *testing.T) *Store {
@@ -24,8 +26,9 @@ func TestLastSeqResumesAcrossOpen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	now := time.Now()
 	for seq := uint64(1); seq <= 3; seq++ {
-		if err := st.InsertMessage(ctx, seq, time.Now(), "a", "*", []byte(`{}`)); err != nil {
+		if err := st.InsertMessage(ctx, protocol.Message{Seq: seq, TS: &now, From: "a", To: "*", Payload: []byte(`{}`)}); err != nil {
 			t.Fatalf("InsertMessage: %v", err)
 		}
 	}
@@ -49,7 +52,7 @@ func TestConnectAndDisconnect(t *testing.T) {
 	st := openTemp(t)
 	ctx := context.Background()
 
-	if err := st.RecordConnect(ctx, "s1", "alice", "harness", "model", time.Now()); err != nil {
+	if err := st.RecordConnect(ctx, SessionRecord{Identity: protocol.Recipient{AgentID: "alice", SessionID: "s1"}, Harness: "harness", Model: "model", ConnectedAt: time.Now()}); err != nil {
 		t.Fatalf("RecordConnect: %v", err)
 	}
 	if err := st.RecordDisconnect(ctx, "s1", time.Now()); err != nil {

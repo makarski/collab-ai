@@ -76,7 +76,7 @@ func startBroker(t *testing.T) (string, context.CancelFunc) {
 
 func connectAgent(t *testing.T, path, id string) *Client {
 	t.Helper()
-	c, err := Dial(context.Background(), path, id, "test", "")
+	c, err := Dial(context.Background(), ClientConfig{SocketPath: path, AgentID: id, Harness: "test", Model: ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +141,23 @@ func awaitMCPFrame(t *testing.T, c *mcp.ClientSession) protocol.Message {
 
 func assertStage(t *testing.T, msg protocol.Message, id, stage string) {
 	t.Helper()
-	if msg.Type != protocol.TypeAck || msg.MessageID != id || msg.Stage != stage {
-		t.Fatalf("expected %s for %s: %+v", stage, id, msg)
+	assertEqual(t, "frame type", msg.Type, protocol.TypeAck)
+	assertEqual(t, "message ID", msg.MessageID, id)
+	assertEqual(t, "acknowledgment stage", msg.Stage, stage)
+}
+
+func TestMCPToolDiscovery(t *testing.T) {
+	path, _ := startBroker(t)
+	codex := connectMCP(t, lazyAgent(t, path, "codex"))
+	listed, err := codex.ListTools(context.Background(), nil)
+	requireNoError(t, err)
+	names := map[string]bool{}
+	for _, tool := range listed.Tools {
+		names[tool.Name] = true
+	}
+	assertEqual(t, "tool count", len(names), 4)
+	for _, name := range []string{"send", "receive", "wait", "acknowledge"} {
+		assertEqual(t, name, names[name], true)
 	}
 }
 
@@ -150,63 +165,67 @@ func TestMCPExchange(t *testing.T) {
 	path, _ := startBroker(t)
 	codex := connectMCP(t, lazyAgent(t, path, "codex"))
 	claude := connectMCP(t, lazyAgent(t, path, "claude"))
-	listed, err := codex.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, tool := range listed.Tools {
-		names[tool.Name] = true
-	}
-	if len(names) != 4 || !names["send"] || !names["receive"] || !names["wait"] || !names["acknowledge"] {
-		t.Fatalf("unexpected tools: %v", names)
-	}
-	registered := inboxResult(t, call(t, codex, "receive", map[string]any{}))
-	if registered.SessionID == "" || !registered.AcknowledgmentsSupported {
-		t.Fatalf("missing capabilities: %+v", registered)
-	}
-	sent := call(t, claude, "send", map[string]any{"to": "codex", "text": "review ready"})
-	data, _ := json.Marshal(sent.StructuredContent)
-	var result SendResult
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.MessageID == "" || result.Status != "written" || result.DeliveryConfirmed {
-		t.Fatalf("send result: %s", data)
-	}
-	accepted := awaitMCPFrame(t, claude)
-	assertStage(t, accepted, result.MessageID, protocol.StageAccepted)
-	if len(accepted.Recipients) != 1 || accepted.Recipients[0].AgentID != "codex" || accepted.Recipients[0].SessionID != registered.SessionID {
-		t.Fatalf("missing recipient ownership: %+v", accepted)
-	}
-	request := awaitMCPFrame(t, codex)
-	if request.Type != protocol.TypeMsg || request.From != "claude" || request.MessageID != result.MessageID || string(request.Payload) != `{"text":"review ready"}` {
-		t.Fatalf("bad review request: %+v", request)
-	}
-	assertStage(t, awaitMCPFrame(t, claude), result.MessageID, protocol.StageAdapterReceived)
+	requestID := sendMCPReview(t, claude, codex)
 	// Transport receipt must never turn into an automatic agent acknowledgment.
 	empty := inboxResult(t, call(t, claude, "wait", map[string]any{"timeout_seconds": 1}))
-	if len(empty.Messages) != 0 || !empty.TimedOut {
-		t.Fatalf("invented agent acknowledgment: %+v", empty)
-	}
-	call(t, codex, "acknowledge", map[string]any{"message_id": result.MessageID})
-	assertStage(t, awaitMCPFrame(t, codex), result.MessageID, protocol.StageAgentAcknowledged)
-	assertStage(t, awaitMCPFrame(t, claude), result.MessageID, protocol.StageAgentAcknowledged)
-	call(t, codex, "send", map[string]any{"to": "claude", "text": "reviewed: add a disconnect test", "message_id": "review-reply", "in_reply_to": result.MessageID})
+	assertEqual(t, "unexpected acknowledgment", len(empty.Messages), 0)
+	assertEqual(t, "wait timed out", empty.TimedOut, true)
+	acknowledgeMCPReview(t, claude, codex, requestID)
+	call(t, codex, "send", map[string]any{"to": "claude", "text": "reviewed: add a disconnect test", "message_id": "review-reply", "in_reply_to": requestID})
 	assertStage(t, awaitMCPFrame(t, codex), "review-reply", protocol.StageAccepted)
 	reply := awaitMCPFrame(t, claude)
-	if reply.InReplyTo != result.MessageID || reply.MessageID != "review-reply" || reply.From != "codex" {
-		t.Fatalf("reply correlation lost: %+v", reply)
-	}
+	assertEqual(t, "reply correlation", reply.InReplyTo, requestID)
+	assertEqual(t, "reply ID", reply.MessageID, "review-reply")
+	assertEqual(t, "reply sender", reply.From, "codex")
 	assertStage(t, awaitMCPFrame(t, codex), "review-reply", protocol.StageAdapterReceived)
-	call(t, claude, "acknowledge", map[string]any{"message_id": "review-reply"})
-	assertStage(t, awaitMCPFrame(t, claude), "review-reply", protocol.StageAgentAcknowledged)
-	assertStage(t, awaitMCPFrame(t, codex), "review-reply", protocol.StageAgentAcknowledged)
+	acknowledgeMCPReview(t, codex, claude, "review-reply")
+}
+
+func sendMCPReview(t *testing.T, claude, codex *mcp.ClientSession) string {
+	t.Helper()
+	registered := inboxResult(t, call(t, codex, "receive", map[string]any{}))
+	assertEqual(t, "missing session ID", registered.SessionID == "", false)
+	assertEqual(t, "acknowledgments supported", registered.AcknowledgmentsSupported, true)
+	sent := call(t, claude, "send", map[string]any{"to": "codex", "text": "review ready"})
+	data, err := json.Marshal(sent.StructuredContent)
+	requireNoError(t, err)
+	var result SendResult
+	requireNoError(t, json.Unmarshal(data, &result))
+	assertEqual(t, "missing message ID", result.MessageID == "", false)
+	assertEqual(t, "send status", result.Status, "written")
+	assertEqual(t, "delivery confirmed", result.DeliveryConfirmed, false)
+	accepted := awaitMCPFrame(t, claude)
+	assertStage(t, accepted, result.MessageID, protocol.StageAccepted)
+	assertEqual(t, "recipient count", len(accepted.Recipients), 1)
+	assertEqual(t, "recipient", accepted.Recipients[0], protocol.Recipient{AgentID: "codex", SessionID: registered.SessionID})
+	request := awaitMCPFrame(t, codex)
+	assertEqual(t, "request type", request.Type, protocol.TypeMsg)
+	assertEqual(t, "request sender", request.From, "claude")
+	assertEqual(t, "request ID", request.MessageID, result.MessageID)
+	assertEqual(t, "request payload", string(request.Payload), `{"text":"review ready"}`)
+	assertStage(t, awaitMCPFrame(t, claude), result.MessageID, protocol.StageAdapterReceived)
+	return result.MessageID
+}
+
+func acknowledgeMCPReview(t *testing.T, sender, recipient *mcp.ClientSession, id string) {
+	t.Helper()
+	call(t, recipient, "acknowledge", map[string]any{"message_id": id})
+	assertStage(t, awaitMCPFrame(t, recipient), id, protocol.StageAgentAcknowledged)
+	assertStage(t, awaitMCPFrame(t, sender), id, protocol.StageAgentAcknowledged)
+}
+
+func TestMCPUnknownRecipient(t *testing.T) {
+	path, _ := startBroker(t)
+	claude := connectMCP(t, lazyAgent(t, path, "claude"))
 	call(t, claude, "send", map[string]any{"to": "missing", "text": "hello", "message_id": "missing-request"})
 	routingError := awaitMCPFrame(t, claude)
-	if routingError.Code != protocol.ErrUnknownRecipient || routingError.MessageID != "missing-request" {
-		t.Fatalf("routing error lost: %+v", routingError)
-	}
+	assertEqual(t, "routing error", routingError.Code, protocol.ErrUnknownRecipient)
+	assertEqual(t, "failed message ID", routingError.MessageID, "missing-request")
+}
+
+func TestMCPInvalidArguments(t *testing.T) {
+	path, _ := startBroker(t)
+	codex := connectMCP(t, lazyAgent(t, path, "codex"))
 	for _, tc := range []struct {
 		name string
 		args map[string]any

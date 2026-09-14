@@ -86,11 +86,18 @@ func (s *Store) LastSeq(ctx context.Context) (uint64, error) {
 	return seq, nil
 }
 
+type SessionRecord struct {
+	Identity    protocol.Recipient
+	Harness     string
+	Model       string
+	ConnectedAt time.Time
+}
+
 // RecordConnect inserts an agent session row.
-func (s *Store) RecordConnect(ctx context.Context, sessionID, agentID, harness, model string, ts time.Time) error {
+func (s *Store) RecordConnect(ctx context.Context, record SessionRecord) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO agents (agent_id, session_id, harness, model, connected_at) VALUES (?, ?, ?, ?, ?)`,
-		agentID, sessionID, harness, model, ts.UTC())
+		record.Identity.AgentID, record.Identity.SessionID, record.Harness, record.Model, record.ConnectedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("record connect: %w", err)
 	}
@@ -109,10 +116,10 @@ func (s *Store) RecordDisconnect(ctx context.Context, sessionID string, ts time.
 }
 
 // InsertMessage persists a routed message. seq must be unique and monotonically increasing.
-func (s *Store) InsertMessage(ctx context.Context, seq uint64, ts time.Time, from, to string, payload []byte) error {
+func (s *Store) InsertMessage(ctx context.Context, msg protocol.Message) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO messages (seq, ts, sender, recipient, payload) VALUES (?, ?, ?, ?, ?)`,
-		seq, ts.UTC(), from, to, string(payload))
+		msg.Seq, msg.TS.UTC(), msg.From, msg.To, string(msg.Payload))
 	if err != nil {
 		return fmt.Errorf("insert message: %w", err)
 	}
@@ -151,41 +158,59 @@ func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, sender
 	return tx.Commit()
 }
 
+type Acknowledgment struct {
+	MessageID string
+	Recipient protocol.Recipient
+	Stage     string
+}
+
 // Acknowledge authenticates receipt against the session that owned the inbox at
 // acceptance. Stages are monotonic and retries are idempotent.
-func (s *Store) Acknowledge(ctx context.Context, id, agent, session, stage string) (sender, senderSession string, err error) {
+func (s *Store) Acknowledge(ctx context.Context, ack Acknowledgment) (protocol.Recipient, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", "", err
+		return protocol.Recipient{}, err
 	}
 	defer tx.Rollback()
-	var received sql.NullTime
-	err = tx.QueryRowContext(ctx, `SELECT m.sender, mm.sender_session, r.adapter_received_at FROM message_receipts r JOIN message_metadata mm ON mm.message_id = r.message_id JOIN messages m ON m.seq = mm.seq WHERE r.message_id = ? AND r.agent_id = ? AND r.session_id = ? AND mm.ack_requested = 1`, id, agent, session).Scan(&sender, &senderSession, &received)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", ErrInvalidAck
-	}
+	sender, received, err := ack.lookup(ctx, tx)
 	if err != nil {
-		return "", "", err
+		return protocol.Recipient{}, err
 	}
-	var query string
-	switch stage {
-	case protocol.StageAdapterReceived:
-		query = `UPDATE message_receipts SET adapter_received_at = COALESCE(adapter_received_at, ?) WHERE message_id = ? AND agent_id = ? AND session_id = ?`
-	case protocol.StageAgentAcknowledged:
-		if !received.Valid {
-			return "", "", ErrInvalidAck
-		}
-		query = `UPDATE message_receipts SET agent_acknowledged_at = COALESCE(agent_acknowledged_at, ?) WHERE message_id = ? AND agent_id = ? AND session_id = ?`
-	default:
-		return "", "", ErrInvalidAck
+	query, err := ack.updateQuery(received)
+	if err != nil {
+		return protocol.Recipient{}, err
 	}
-	if _, err := tx.ExecContext(ctx, query, time.Now().UTC(), id, agent, session); err != nil {
-		return "", "", err
+	if _, err := tx.ExecContext(ctx, query, time.Now().UTC(), ack.MessageID, ack.Recipient.AgentID, ack.Recipient.SessionID); err != nil {
+		return protocol.Recipient{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return "", "", err
+		return protocol.Recipient{}, err
 	}
-	return sender, senderSession, nil
+	return sender, nil
+}
+
+func (ack Acknowledgment) lookup(ctx context.Context, tx *sql.Tx) (protocol.Recipient, bool, error) {
+	var sender protocol.Recipient
+	var received sql.NullTime
+	err := tx.QueryRowContext(ctx, `SELECT m.sender, mm.sender_session, r.adapter_received_at FROM message_receipts r JOIN message_metadata mm ON mm.message_id = r.message_id JOIN messages m ON m.seq = mm.seq WHERE r.message_id = ? AND r.agent_id = ? AND r.session_id = ? AND mm.ack_requested = 1`, ack.MessageID, ack.Recipient.AgentID, ack.Recipient.SessionID).Scan(&sender.AgentID, &sender.SessionID, &received)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = ErrInvalidAck
+	}
+	return sender, received.Valid, err
+}
+
+func (ack Acknowledgment) updateQuery(received bool) (string, error) {
+	switch ack.Stage {
+	case protocol.StageAdapterReceived:
+		return `UPDATE message_receipts SET adapter_received_at = COALESCE(adapter_received_at, ?) WHERE message_id = ? AND agent_id = ? AND session_id = ?`, nil
+	case protocol.StageAgentAcknowledged:
+		if !received {
+			return "", ErrInvalidAck
+		}
+		return `UPDATE message_receipts SET agent_acknowledged_at = COALESCE(agent_acknowledged_at, ?) WHERE message_id = ? AND agent_id = ? AND session_id = ?`, nil
+	default:
+		return "", ErrInvalidAck
+	}
 }
 
 type Unacknowledged struct {

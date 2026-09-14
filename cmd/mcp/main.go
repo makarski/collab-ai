@@ -33,7 +33,7 @@ func main() {
 }
 
 func run(ctx context.Context, socket, agent, harness, model string) error {
-	c, err := bridge.NewLazyClient(socket, agent, harness, model)
+	c, err := bridge.NewLazyClient(bridge.ClientConfig{SocketPath: socket, AgentID: agent, Harness: harness, Model: model})
 	if err != nil {
 		return err
 	}

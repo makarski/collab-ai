@@ -3,7 +3,9 @@ package bridge
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,13 +13,73 @@ import (
 	"collab-ai/internal/protocol"
 )
 
+func assertEqual[T comparable](t *testing.T, field string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", field, got, want)
+	}
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertErrorContains(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected error containing %q", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error %q does not contain %q", err, want)
+	}
+}
+
 func nextFrame(t *testing.T, c *Client) protocol.Message {
 	t.Helper()
 	out, err := c.Receive(context.Background(), 1, time.Second)
-	if err != nil || len(out.Messages) != 1 {
-		t.Fatalf("expected frame: %+v %v", out, err)
-	}
+	requireNoError(t, err)
+	assertEqual(t, "frame count", len(out.Messages), 1)
 	return out.Messages[0]
+}
+
+func sendTracked(t *testing.T, c *Client, request SendRequest) SendResult {
+	t.Helper()
+	result, err := c.SendMessage(context.Background(), request)
+	requireNoError(t, err)
+	return result
+}
+
+func assertInboxTimeout(t *testing.T, c *Client) {
+	t.Helper()
+	out, err := c.Receive(context.Background(), 20, 20*time.Millisecond)
+	requireNoError(t, err)
+	assertEqual(t, "timed out", out.TimedOut, true)
+	assertEqual(t, "unexpected frames", len(out.Messages), 0)
+}
+
+func assertOwnerRejected(t *testing.T, rejected *LazyClient, owner *Client) {
+	t.Helper()
+	_, err := rejected.Receive(context.Background(), 20, 0)
+	assertErrorContains(t, err, owner.sessionID)
+	assertErrorContains(t, err, protocol.ErrDuplicateID)
+}
+
+func registerAfterRelease(t *testing.T, c *LazyClient) Inbox {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		out, err := c.Receive(context.Background(), 20, 0)
+		if err == nil {
+			return out
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func TestDuplicateMessagingSessionCannotEvictOwner(t *testing.T) {
@@ -25,195 +87,179 @@ func TestDuplicateMessagingSessionCannotEvictOwner(t *testing.T) {
 	owner := connectAgent(t, path, "codex")
 	peer := connectAgent(t, path, "claude")
 	rejected := lazyAgent(t, path, "codex")
-	for i := 0; i < 2; i++ {
-		if _, err := rejected.Receive(context.Background(), 20, 0); err == nil || !strings.Contains(err.Error(), owner.sessionID) || !strings.Contains(err.Error(), protocol.ErrDuplicateID) {
-			t.Fatalf("missing actionable owner rejection: %v", err)
-		}
-	}
-	if err := peer.Send(context.Background(), "codex", "owner is still here"); err != nil {
-		t.Fatal(err)
-	}
-	if got := nextFrame(t, owner); got.From != "claude" {
-		t.Fatalf("owner displaced: %+v", got)
-	}
+	assertOwnerRejected(t, rejected, owner)
+	assertOwnerRejected(t, rejected, owner)
+	requireNoError(t, peer.Send(context.Background(), "codex", "owner is still here"))
+	assertEqual(t, "sender", nextFrame(t, owner).From, "claude")
 	oldSession := owner.sessionID
 	owner.Close()
-	// Retry only an initial registration; release is processed asynchronously.
-	deadline := time.Now().Add(time.Second)
-	for {
-		out, err := rejected.Receive(context.Background(), 20, 0)
-		if err == nil {
-			if !out.Connected || out.SessionID == "" || out.SessionID == oldSession {
-				t.Fatalf("reused session identity: %+v", out)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal(err)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if err := peer.Send(context.Background(), "codex", "new owner"); err != nil {
-		t.Fatal(err)
-	}
+	out := registerAfterRelease(t, rejected)
+	assertEqual(t, "connected", out.Connected, true)
+	assertEqual(t, "missing session", out.SessionID == "", false)
+	assertEqual(t, "reused session", out.SessionID == oldSession, false)
+	requireNoError(t, peer.Send(context.Background(), "codex", "new owner"))
 	out, err := rejected.Receive(context.Background(), 20, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	assertSinglePayload(t, out, `{"text":"new owner"}`)
 }
 
-func TestBroadcastAcknowledgmentsFreezeMembership(t *testing.T) {
+type broadcastReview struct {
+	path       string
+	sender     *Client
+	recipients []*Client
+	id         string
+}
+
+func startBroadcastReview(t *testing.T) broadcastReview {
+	t.Helper()
 	path, _ := startBroker(t)
-	sender := connectAgent(t, path, "claude")
-	a := connectAgent(t, path, "codex")
-	b := connectAgent(t, path, "reviewer")
-	result, err := sender.SendMessage(context.Background(), "*", "review", "broadcast-review", "")
-	if err != nil {
-		t.Fatal(err)
+	b := broadcastReview{path: path, sender: connectAgent(t, path, "claude"), recipients: []*Client{connectAgent(t, path, "codex"), connectAgent(t, path, "reviewer")}}
+	b.id = sendTracked(t, b.sender, SendRequest{To: "*", Text: "review", MessageID: "broadcast-review"}).MessageID
+	accepted := nextFrame(t, b.sender)
+	assertStage(t, accepted, b.id, protocol.StageAccepted)
+	want := []protocol.Recipient{{AgentID: "codex", SessionID: b.recipients[0].sessionID}, {AgentID: "reviewer", SessionID: b.recipients[1].sessionID}}
+	if !reflect.DeepEqual(accepted.Recipients, want) {
+		t.Fatalf("broadcast scope = %+v, want %+v", accepted.Recipients, want)
 	}
-	accepted := nextFrame(t, sender)
-	assertStage(t, accepted, result.MessageID, protocol.StageAccepted)
-	if len(accepted.Recipients) != 2 || accepted.Recipients[0].AgentID != "codex" || accepted.Recipients[1].AgentID != "reviewer" {
-		t.Fatalf("broadcast scope: %+v", accepted)
-	}
-	late := connectAgent(t, path, "late")
-	for _, c := range []*Client{a, b} {
-		if got := nextFrame(t, c); got.MessageID != result.MessageID || got.To != "*" {
-			t.Fatalf("bad broadcast: %+v", got)
-		}
+	return b
+}
+
+func (b broadcastReview) receive(t *testing.T) {
+	t.Helper()
+	for _, c := range b.recipients {
+		msg := nextFrame(t, c)
+		assertEqual(t, "broadcast message ID", msg.MessageID, b.id)
+		assertEqual(t, "broadcast recipient", msg.To, "*")
 	}
 	seen := map[string]bool{}
-	for i := 0; i < 2; i++ {
-		receipt := nextFrame(t, sender)
-		assertStage(t, receipt, result.MessageID, protocol.StageAdapterReceived)
+	for range b.recipients {
+		receipt := nextFrame(t, b.sender)
+		assertStage(t, receipt, b.id, protocol.StageAdapterReceived)
 		seen[receipt.AgentID] = true
 	}
-	if !seen["codex"] || !seen["reviewer"] {
-		t.Fatalf("receipts not per recipient: %v", seen)
-	}
-	if err := late.Acknowledge(context.Background(), result.MessageID); err != nil {
-		t.Fatal(err)
-	}
-	if got := nextFrame(t, late); got.Code != protocol.ErrInvalidAck {
-		t.Fatalf("late peer acknowledged broadcast: %+v", got)
-	}
-	// Same ID is never routed twice, including different content.
-	if _, err := sender.SendMessage(context.Background(), "*", "changed content", result.MessageID, ""); err != nil {
-		t.Fatal(err)
-	}
-	if got := nextFrame(t, sender); got.Code != protocol.ErrDuplicateMessage || got.MessageID != result.MessageID {
-		t.Fatalf("duplicate not correlated: %+v", got)
-	}
-	for _, c := range []*Client{a, b} {
-		if out, err := c.Receive(context.Background(), 20, 10*time.Millisecond); err != nil || !out.TimedOut {
-			t.Fatalf("duplicate delivered: %+v %v", out, err)
-		}
+	assertEqual(t, "codex receipt", seen["codex"], true)
+	assertEqual(t, "reviewer receipt", seen["reviewer"], true)
+}
+
+func TestBroadcastAcknowledgmentsFreezeMembership(t *testing.T) {
+	b := startBroadcastReview(t)
+	late := connectAgent(t, b.path, "late")
+	b.receive(t)
+	requireNoError(t, late.Acknowledge(context.Background(), b.id))
+	assertEqual(t, "late peer acknowledgment", nextFrame(t, late).Code, protocol.ErrInvalidAck)
+}
+
+func TestDuplicateBroadcastIsNotRoutedAgain(t *testing.T) {
+	b := startBroadcastReview(t)
+	b.receive(t)
+	sendTracked(t, b.sender, SendRequest{To: "*", Text: "changed content", MessageID: b.id})
+	rejected := nextFrame(t, b.sender)
+	assertEqual(t, "duplicate error", rejected.Code, protocol.ErrDuplicateMessage)
+	assertEqual(t, "rejected message ID", rejected.MessageID, b.id)
+	for _, c := range b.recipients {
+		assertInboxTimeout(t, c)
 	}
 }
 
+type wireAgent struct {
+	conn    net.Conn
+	reader  *bufio.Reader
+	welcome protocol.Message
+}
+
+func connectWireAgent(t *testing.T, path string, hello protocol.Message) *wireAgent {
+	t.Helper()
+	conn, err := net.Dial("unix", path)
+	requireNoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	requireNoError(t, conn.SetDeadline(time.Now().Add(2*time.Second)))
+	w := &wireAgent{conn: conn, reader: bufio.NewReader(conn)}
+	w.send(t, hello)
+	w.welcome = w.next(t)
+	assertEqual(t, "welcome type", w.welcome.Type, protocol.TypeWelcome)
+	return w
+}
+
+func (w *wireAgent) send(t *testing.T, msg protocol.Message) {
+	t.Helper()
+	requireNoError(t, protocol.WriteFrame(w.conn, msg))
+}
+
+func (w *wireAgent) next(t *testing.T) protocol.Message {
+	t.Helper()
+	var msg protocol.Message
+	requireNoError(t, protocol.ReadFrame(w.reader, &msg))
+	return msg
+}
+
 func TestRecipientDisconnectBetweenAcknowledgmentStages(t *testing.T) {
-	for _, receipt := range []bool{false, true} {
-		t.Run(map[bool]string{false: "before-adapter-receipt", true: "after-adapter-receipt"}[receipt], func(t *testing.T) {
-			path, _ := startBroker(t)
-			sender := connectAgent(t, path, "claude")
-			// A wire client lets the test disconnect before or after an actual receipt.
-			conn, err := net.Dial("unix", path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer conn.Close()
-			conn.SetDeadline(time.Now().Add(2 * time.Second))
-			reader := bufio.NewReader(conn)
-			if err := protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeHello, AgentID: "codex", ProtocolVersion: protocol.Version}); err != nil {
-				t.Fatal(err)
-			}
-			var welcome protocol.Message
-			if err := protocol.ReadFrame(reader, &welcome); err != nil {
-				t.Fatal(err)
-			}
-			sent, err := sender.SendMessage(context.Background(), "codex", "review", "disconnect-review", "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAccepted)
-			var msg protocol.Message
-			if err := protocol.ReadFrame(reader, &msg); err != nil {
-				t.Fatal(err)
-			}
-			if receipt {
-				if err := protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeAck, MessageID: sent.MessageID, Stage: protocol.StageAdapterReceived}); err != nil {
-					t.Fatal(err)
-				}
-				assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAdapterReceived)
-			}
-			conn.Close()
-			got := nextFrame(t, sender)
-			if got.Code != protocol.ErrRecipientDisconnected || got.MessageID != sent.MessageID || got.SessionID != welcome.SessionID {
-				t.Fatalf("disconnect hidden: %+v", got)
-			}
-			newOwner := connectAgent(t, path, "codex")
-			if err := newOwner.Acknowledge(context.Background(), sent.MessageID); err != nil {
-				t.Fatal(err)
-			}
-			if got := nextFrame(t, newOwner); got.Code != protocol.ErrInvalidAck {
-				t.Fatalf("new session acknowledged old message: %+v", got)
-			}
-		})
+	for name, receipt := range map[string]bool{"before-adapter-receipt": false, "after-adapter-receipt": true} {
+		t.Run(name, func(t *testing.T) { testReceiptDisconnect(t, receipt) })
 	}
+}
+
+func testReceiptDisconnect(t *testing.T, receipt bool) {
+	t.Helper()
+	path, _ := startBroker(t)
+	sender := connectAgent(t, path, "claude")
+	recipient := connectWireAgent(t, path, protocol.Message{Type: protocol.TypeHello, AgentID: "codex", ProtocolVersion: protocol.Version})
+	sent := sendTracked(t, sender, SendRequest{To: "codex", Text: "review", MessageID: "disconnect-review"})
+	assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAccepted)
+	assertEqual(t, "message ID", recipient.next(t).MessageID, sent.MessageID)
+	if receipt {
+		recipient.send(t, protocol.Message{Type: protocol.TypeAck, MessageID: sent.MessageID, Stage: protocol.StageAdapterReceived})
+		assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAdapterReceived)
+	}
+	recipient.conn.Close()
+	got := nextFrame(t, sender)
+	assertEqual(t, "disconnect error", got.Code, protocol.ErrRecipientDisconnected)
+	assertEqual(t, "disconnected message ID", got.MessageID, sent.MessageID)
+	assertEqual(t, "disconnected session", got.SessionID, recipient.welcome.SessionID)
+	newOwner := connectAgent(t, path, "codex")
+	requireNoError(t, newOwner.Acknowledge(context.Background(), sent.MessageID))
+	assertEqual(t, "new session acknowledgment", nextFrame(t, newOwner).Code, protocol.ErrInvalidAck)
 }
 
 func TestLegacyRecipientDoesNotImplyReceipt(t *testing.T) {
 	path, _ := startBroker(t)
 	sender := connectAgent(t, path, "claude")
-	conn, err := net.Dial("unix", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(2 * time.Second))
-	r := bufio.NewReader(conn)
-	if err := protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeHello, AgentID: "legacy"}); err != nil {
-		t.Fatal(err)
-	}
-	var msg protocol.Message
-	if err := protocol.ReadFrame(r, &msg); err != nil {
-		t.Fatal(err)
-	}
-	// Old clients can send without IDs or acknowledgment negotiation.
-	if err := protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeMsg, To: "claude"}); err != nil {
-		t.Fatal(err)
-	}
-	if got := nextFrame(t, sender); got.Type != protocol.TypeMsg || got.MessageID == "" || got.AckRequested {
-		t.Fatalf("legacy message failed: %+v", got)
-	}
-	sent, err := sender.SendMessage(context.Background(), "legacy", "review", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	legacy := connectWireAgent(t, path, protocol.Message{Type: protocol.TypeHello, AgentID: "legacy"})
+	legacy.send(t, protocol.Message{Type: protocol.TypeMsg, To: "claude"})
+	got := nextFrame(t, sender)
+	assertEqual(t, "legacy message type", got.Type, protocol.TypeMsg)
+	assertEqual(t, "missing legacy message ID", got.MessageID == "", false)
+	assertEqual(t, "legacy ack requested", got.AckRequested, false)
+	sent := sendTracked(t, sender, SendRequest{To: "legacy", Text: "review"})
 	assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAccepted)
-	if err := protocol.ReadFrame(r, &msg); err != nil {
-		t.Fatal(err)
-	}
-	if msg.Type != protocol.TypeMsg || msg.MessageID != sent.MessageID {
-		t.Fatalf("legacy recipient did not receive message: %+v", msg)
-	}
-	out, err := sender.Receive(context.Background(), 20, 20*time.Millisecond)
-	if err != nil || !out.TimedOut {
-		t.Fatalf("invented legacy receipt: %+v %v", out, err)
-	}
+	msg := legacy.next(t)
+	assertEqual(t, "message type", msg.Type, protocol.TypeMsg)
+	assertEqual(t, "message ID", msg.MessageID, sent.MessageID)
+	assertInboxTimeout(t, sender)
 }
 
 func TestOldBrokerCapabilitiesAreExplicit(t *testing.T) {
-	c, _ := pipeClient(t) // No negotiated protocol version, like an old welcome.
+	c, _ := pipeClient(t)
 	out, err := c.Receive(context.Background(), 20, 0)
-	if err != nil || out.AcknowledgmentsSupported {
-		t.Fatalf("invented capability: %+v %v", out, err)
-	}
-	if _, err := c.SendMessage(context.Background(), "peer", "review", "", ""); err == nil || !strings.Contains(err.Error(), "upgrade") {
-		t.Fatalf("silent send downgrade: %v", err)
-	}
-	if err := c.Acknowledge(context.Background(), "review"); err == nil || !strings.Contains(err.Error(), "upgrade") {
-		t.Fatalf("silent acknowledgment downgrade: %v", err)
+	requireNoError(t, err)
+	assertEqual(t, "acknowledgments supported", out.AcknowledgmentsSupported, false)
+	_, err = c.SendMessage(context.Background(), SendRequest{To: "peer", Text: "review"})
+	assertErrorContains(t, err, "upgrade")
+	assertErrorContains(t, c.Acknowledge(context.Background(), "review"), "upgrade")
+}
+
+func TestWelcomeReportsNegotiatedProtocolVersion(t *testing.T) {
+	for _, version := range []int{0, 1, 2, 3} {
+		t.Run(fmt.Sprint(version), func(t *testing.T) {
+			path, _ := startBroker(t)
+			wire := connectWireAgent(t, path, protocol.Message{Type: protocol.TypeHello, AgentID: "peer", ProtocolVersion: version})
+			assertEqual(t, "negotiated protocol version", wire.welcome.ProtocolVersion, min(version, protocol.Version))
+			wire.send(t, protocol.Message{Type: protocol.TypeMsg, To: "peer", MessageID: "negotiated", AckRequested: true})
+			if version < protocol.Version {
+				assertEqual(t, "unsupported tracked send", wire.next(t).Code, protocol.ErrMalformedFrame)
+				return
+			}
+			assertStage(t, wire.next(t), "negotiated", protocol.StageAccepted)
+			assertEqual(t, "tracked message", wire.next(t).MessageID, "negotiated")
+		})
 	}
 }

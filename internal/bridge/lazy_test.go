@@ -15,7 +15,7 @@ import (
 
 func lazyAgent(t *testing.T, path, id string) *LazyClient {
 	t.Helper()
-	c, err := NewLazyClient(path, id, "test", "")
+	c, err := NewLazyClient(ClientConfig{SocketPath: path, AgentID: id, Harness: "test", Model: ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestLazyClientWaitingCallerCanCancel(t *testing.T) {
 
 func TestLazyClientValidatesIdentityBeforeDiscovery(t *testing.T) {
 	for _, id := range []string{"", "*"} {
-		if _, err := NewLazyClient("/unused.sock", id, "test", ""); err == nil {
+		if _, err := NewLazyClient(ClientConfig{SocketPath: "/unused.sock", AgentID: id, Harness: "test", Model: ""}); err == nil {
 			t.Fatalf("accepted invalid identity %q", id)
 		}
 	}

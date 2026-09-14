@@ -8,13 +8,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type sendArgs struct {
-	To        string `json:"to" jsonschema:"Recipient agent ID, or * to broadcast to other connected agents"`
-	Text      string `json:"text" jsonschema:"Message text for the other agent"`
-	MessageID string `json:"message_id,omitempty" jsonschema:"Optional stable ID for this message, maximum 128 bytes; generated when omitted. Reusing an accepted ID is rejected without routing again"`
-	InReplyTo string `json:"in_reply_to,omitempty" jsonschema:"Message ID this message replies to"`
-}
-
 type receiveArgs struct {
 	Limit int `json:"limit,omitempty" jsonschema:"Maximum frames to consume, 1 to 100; default 20"`
 }
@@ -25,7 +18,7 @@ type waitArgs struct {
 }
 
 type messagingClient interface {
-	SendMessage(context.Context, string, string, string, string) (SendResult, error)
+	SendMessage(context.Context, SendRequest) (SendResult, error)
 	Acknowledge(context.Context, string) error
 	Receive(context.Context, int, time.Duration) (Inbox, error)
 }
@@ -39,8 +32,8 @@ func NewMCP(c messagingClient) *mcp.Server {
 	})
 	additive := false
 	mcp.AddTool(s, &mcp.Tool{Name: "send", Description: "Send a text message with a stable ID and optional in_reply_to. Returns written status; correlated acceptance, receipt, and routing errors arrive through receive/wait.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &additive}},
-		func(ctx context.Context, _ *mcp.CallToolRequest, args sendArgs) (*mcp.CallToolResult, any, error) {
-			out, err := c.SendMessage(ctx, args.To, args.Text, args.MessageID, args.InReplyTo)
+		func(ctx context.Context, _ *mcp.CallToolRequest, args SendRequest) (*mcp.CallToolResult, any, error) {
+			out, err := c.SendMessage(ctx, args)
 			if err != nil {
 				return nil, nil, err
 			}

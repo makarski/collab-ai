@@ -179,8 +179,8 @@ func (s *Server) handshake(conn net.Conn, r *bufio.Reader) (*hub.Client, error) 
 	if msg.Type != protocol.TypeHello {
 		return nil, fmt.Errorf("first frame must be %q, got %q", protocol.TypeHello, msg.Type)
 	}
-	if msg.AgentID == "" || msg.AgentID == protocol.Broadcast || len(msg.AgentID) > 128 {
-		return nil, errors.New("hello requires agent_id of 1 to 128 bytes, other than *")
+	if err := protocol.ValidateAgentID(msg.AgentID); err != nil {
+		return nil, err
 	}
 
 	return &hub.Client{

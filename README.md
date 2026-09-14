@@ -211,7 +211,9 @@ Newline-delimited JSON, one object per line. First frame must be a hello:
 {"type":"hello","protocol_version":2,"agent_id":"claude-1","harness":"claude-code","model":"optional-model-name"}
 ```
 
-Broker replies with a welcome:
+Broker replies with a welcome. Its `protocol_version` is the negotiated version
+(the lower of the client and broker versions); legacy clients that omit it
+receive a welcome without that field:
 
 ```json
 {"type":"welcome","protocol_version":2,"seq":1,"agent_id":"claude-1","session_id":"<unique-session-ID>"}
