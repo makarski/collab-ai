@@ -16,12 +16,13 @@ type Publisher interface {
 }
 
 type ListenerStatus struct {
-	State               string `json:"state"`
-	SessionID           string `json:"session_id,omitempty"`
-	Submitted           int    `json:"submitted"`
-	LastMessageID       string `json:"last_message_id,omitempty"`
-	Error               string `json:"error,omitempty"`
-	ManualCheckRequired bool   `json:"manual_check_required"`
+	State                    string `json:"state"`
+	SessionID                string `json:"session_id,omitempty"`
+	Submitted                int    `json:"submitted"`
+	LastMessageID            string `json:"last_message_id,omitempty"`
+	Error                    string `json:"error,omitempty"`
+	ManualCheckRequired      bool   `json:"manual_check_required"`
+	AcknowledgmentsSupported bool   `json:"acknowledgments_supported"`
 }
 
 // Listener is the sole broker consumer. Tools drain its bounded copy, never race
@@ -66,6 +67,7 @@ func (l *Listener) Activate(ctx context.Context) (ListenerStatus, error) {
 	l.status.State = "listening_delivery_unconfirmed"
 	l.status.Error = ""
 	l.status.SessionID = c.sessionID
+	l.status.AcknowledgmentsSupported = c.protocolVersion >= protocol.Version
 	go l.pump(c)
 	return l.status, nil
 }
@@ -167,15 +169,32 @@ func (l *Listener) Close() {
 
 // Receive retains the polling fallback even when a channel is silently ignored.
 func (l *Listener) Receive(ctx context.Context, limit int, wait time.Duration) (Inbox, error) {
-	if limit < 1 || limit > 100 {
-		return Inbox{}, errors.New("limit must be between 1 and 100")
+	if err := validateListenerRead(limit, wait); err != nil {
+		return Inbox{}, err
 	}
-	if wait < 0 || wait > 30*time.Second {
-		return Inbox{}, errors.New("wait must be between 0 and 30 seconds")
+	if err := ctx.Err(); err != nil {
+		return Inbox{}, err
 	}
 	if _, err := l.Activate(ctx); err != nil {
 		return Inbox{}, err
 	}
+	if wait == 0 {
+		return l.drain(limit), nil
+	}
+	return l.waitForInbox(ctx, limit, wait)
+}
+
+func validateListenerRead(limit int, wait time.Duration) error {
+	if limit < 1 || limit > 100 {
+		return errors.New("limit must be between 1 and 100")
+	}
+	if wait < 0 || wait > 30*time.Second {
+		return errors.New("wait must be between 0 and 30 seconds")
+	}
+	return nil
+}
+
+func (l *Listener) waitForInbox(ctx context.Context, limit int, wait time.Duration) (Inbox, error) {
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	for {
@@ -183,7 +202,7 @@ func (l *Listener) Receive(ctx context.Context, limit int, wait time.Duration) (
 			return Inbox{}, err
 		}
 		out := l.drain(limit)
-		if len(out.Messages) > 0 || !out.Connected || wait == 0 {
+		if len(out.Messages) > 0 || !out.Connected {
 			return out, nil
 		}
 		select {
@@ -191,18 +210,22 @@ func (l *Listener) Receive(ctx context.Context, limit int, wait time.Duration) (
 			return Inbox{}, ctx.Err()
 		case <-l.notify:
 		case <-timer.C:
-			out = l.drain(limit)
-			out.TimedOut = len(out.Messages) == 0 && out.Connected
-			return out, nil
+			return l.timedOutInbox(limit), nil
 		}
 	}
+}
+
+func (l *Listener) timedOutInbox(limit int) Inbox {
+	out := l.drain(limit)
+	out.TimedOut = len(out.Messages) == 0 && out.Connected
+	return out
 }
 
 func (l *Listener) drain(limit int) Inbox {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	out := Inbox{Messages: []protocol.Message{}, Connected: l.status.State == "listening_delivery_unconfirmed",
-		SessionID: l.status.SessionID, Error: l.status.Error, AcknowledgmentsSupported: true}
+		SessionID: l.status.SessionID, Error: l.status.Error, AcknowledgmentsSupported: l.status.AcknowledgmentsSupported}
 	n := min(limit, len(l.queue))
 	for _, q := range l.queue[:n] {
 		out.Messages = append(out.Messages, q.message)

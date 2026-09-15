@@ -125,6 +125,10 @@ acknowledgments, retained fallback, inactive discovery, foreign-thread tool call
 approval pass-through, unavailable hosts, overflow, and cancellation. Fake-host
 tests cannot establish whether a particular installed host actually wakes.
 
+The [recorded live handoff](host-live-demo.md) demonstrates all four cases on
+Claude Code 2.1.272 and Codex CLI 0.154.0, with message, conversation, broker
+session, and explicit acknowledgment identities.
+
 Host contracts: [Claude channels](https://code.claude.com/docs/en/channels),
 [channel reference](https://code.claude.com/docs/en/channels-reference), and
 [Codex App Server](https://learn.chatgpt.com/docs/app-server#start-a-turn).
