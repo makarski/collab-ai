@@ -52,6 +52,9 @@ func (p *Proxy) ThreadID() string {
 }
 
 func (p *Proxy) FromOperator(ctx context.Context, frame Frame) error {
+	if reservedRequest(frame) {
+		return p.Operator.Write(ctx, errorFrame(frame.ID, errors.New("request IDs starting with collab- are reserved by this proxy")))
+	}
 	switch frame.Method {
 	case "thread/start":
 		if err := p.prepareThread(&frame); err != nil {
@@ -61,6 +64,13 @@ func (p *Proxy) FromOperator(ctx context.Context, frame Frame) error {
 		return p.Operator.Write(ctx, errorFrame(frame.ID, errors.New("this proxy supports one new managed thread; resume/replay is not implemented")))
 	}
 	return p.Upstream.Write(ctx, frame)
+}
+
+func reservedRequest(frame Frame) bool {
+	if frame.Method == "" {
+		return false
+	}
+	return internalID(frame.ID)
 }
 
 func (p *Proxy) prepareThread(frame *Frame) error {

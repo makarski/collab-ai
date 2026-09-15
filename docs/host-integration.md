@@ -69,6 +69,11 @@ preserved. `collab_` names are reserved. A failed start can be retried; a second
 thread, resume, or fork needs a new proxy process. Existing desktop conversations
 are not attached or controlled by this integration.
 
+Operator request IDs must not start with `collab-`; that namespace is reserved
+for injected requests. Replies arriving after an injected request times out are
+consumed internally. Operator responses to host approval requests pass through
+regardless of their ID.
+
 Start normal operator work using `turn/start`. Ask the agent to call
 `collab_listen` before peers send. Incoming frames enter the managed thread with:
 
@@ -124,6 +129,11 @@ listener waits on events, without polling the database.
 acknowledgments, retained fallback, inactive discovery, foreign-thread tool calls,
 approval pass-through, unavailable hosts, overflow, and cancellation. Fake-host
 tests cannot establish whether a particular installed host actually wakes.
+
+The dynamic-tool response shape is checked against Codex 0.154.0's generated
+`DynamicToolCallResponse` schema: `success` and `contentItems`, with text entries
+using `type: "inputText"` and `text`. Tests exercise the full tool handler path,
+validation failures, RPC errors, and late replies after cancellation.
 
 The [recorded live handoff](host-live-demo.md) demonstrates all four cases on
 Claude Code 2.1.272 and Codex CLI 0.154.0, with message, conversation, broker

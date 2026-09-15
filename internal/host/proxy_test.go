@@ -173,3 +173,49 @@ func TestReadFramesRejectsMalformedAndOversizedInput(t *testing.T) {
 		t.Fatal("EOF not propagated")
 	}
 }
+
+func TestLateInternalResponseStaysPrivate(t *testing.T) {
+	p, upstream, operator := proxyFixture(t)
+	p.threadID = "owned-thread"
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- p.Publish(ctx, protocol.Message{}) }()
+	request := frameAt(t, upstream)
+	cancel()
+	if !errors.Is(<-done, context.Canceled) {
+		t.Fatal("expected canceled request")
+	}
+	late := Frame{ID: request.ID, Result: json.RawMessage(`{}`)}
+	check(t, p.FromHost(context.Background(), late))
+	select {
+	case frame := <-operator:
+		t.Fatalf("internal response leaked: %+v", frame)
+	default:
+	}
+	late.ID = json.RawMessage(`"operator-request"`)
+	check(t, p.FromHost(context.Background(), late))
+	if string(frameAt(t, operator).ID) != string(late.ID) {
+		t.Fatal("operator reply lost")
+	}
+}
+
+func TestOperatorCannotReserveInternalRequestID(t *testing.T) {
+	p, upstream, operator := proxyFixture(t)
+	request := Frame{ID: json.RawMessage(`"collab-operator"`), Method: "thread/start", Params: json.RawMessage(`{}`)}
+	check(t, p.FromOperator(context.Background(), request))
+	if len(frameAt(t, operator).Error) == 0 {
+		t.Fatal("reserved request ID accepted")
+	}
+	select {
+	case <-upstream:
+		t.Fatal("reserved request forwarded")
+	default:
+	}
+	// Operator responses to host requests are not subject to this restriction.
+	request.Method = ""
+	request.Result = json.RawMessage(`{"decision":"decline"}`)
+	check(t, p.FromOperator(context.Background(), request))
+	if string(frameAt(t, upstream).ID) != string(request.ID) {
+		t.Fatal("operator approval response lost")
+	}
+}

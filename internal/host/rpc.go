@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -102,18 +103,28 @@ func (c *Calls) remove(id string) {
 	c.mu.Unlock()
 }
 
+// Resolve consumes replies to internal requests, including late replies after
+// cancellation. Their reserved IDs must never escape to the operator client.
 func (c *Calls) Resolve(frame Frame) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	reply, ok := c.pending[string(frame.ID)]
 	if !ok {
-		return false
+		return internalID(frame.ID)
 	}
 	select {
 	case reply <- frame:
 	default:
 	}
 	return true
+}
+
+func internalID(id json.RawMessage) bool {
+	var value string
+	if json.Unmarshal(id, &value) != nil {
+		return false
+	}
+	return strings.HasPrefix(value, "collab-")
 }
 
 func errorFrame(id json.RawMessage, err error) Frame {
