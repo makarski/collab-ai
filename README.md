@@ -30,9 +30,12 @@ ID and a broker-assigned session ID. Agents use four tools: `send`, `receive`,
 agent consumes them. Other local clients can use the [JSON protocol](#protocol)
 directly.
 
-This is a messaging layer, not an agent orchestrator. It does not wake idle
-agents, schedule their work, or replay messages to offline recipients. A
-successful `send` returns a message ID and confirms a write. Correlated events
+The default MCP mode requires manual inbox checks. Optional
+[host integrations](docs/host-integration.md) submit incoming context through
+Claude channels or a managed Codex App Server thread, including while the host is
+idle. They require explicit activation and a running host process. There is no
+general scheduler or replay to offline recipients. A successful `send` returns a
+message ID and confirms a write. Correlated events
 report broker acceptance, adapter receipt, and explicit agent acknowledgment;
 persisted history is not a delivery queue. Agents must check their inbox and bring
 received feedback into their active work.
@@ -322,10 +325,9 @@ Session ownership ([#3](https://github.com/makarski/collab-ai/issues/3)) and sta
 acknowledgments ([#4](https://github.com/makarski/collab-ai/issues/4)) provide the
 foundation for the remaining collaboration work:
 
-1. [Host integration #5](https://github.com/makarski/collab-ai/issues/5): establish
-   a supported path from incoming context to the active conversation, then an
-   explicit agent acknowledgment. Verify each host's actual notification/wake
-   capabilities; a background adapter alone is not an active reviewer.
+1. [Host integration #5](https://github.com/makarski/collab-ai/issues/5): opt-in
+   [Claude channels and managed Codex threads](docs/host-integration.md), with
+   explicit activation, bounded fallback, and honest submission status.
 2. [Durable inboxes #6](https://github.com/makarski/collab-ai/issues/6): define
    at-least-once replay across sessions using stable message IDs, a deliberate
    agent acknowledgment boundary, and bounded retention/queue behavior.
