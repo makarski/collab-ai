@@ -88,7 +88,10 @@ word about that PR. When the person says "merge whatever was approved",
 collect the verdict lines first, then merge. A finding the person defers
 becomes a ticket, and the person is told it was deferred, not resolved.
 
-Acceptance is head- and tree-specific. A rebase with conflict resolutions,
+**Always rebase before merging.** Every PR is rebased onto the current
+main tip before it merges — never merged from a stale base. Rebase in
+your own worktree, rerun the proof, push with `--force-with-lease`,
+announce the new head. Then: acceptance is head- and tree-specific. A rebase with conflict resolutions,
 or a new merge base, is a new integration revision: announce it and wait
 for the reviewer's recheck before merging, even when the diff "looks the
 same".
