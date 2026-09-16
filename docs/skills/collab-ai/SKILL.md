@@ -15,7 +15,9 @@ is the mirror image and follows the same rules.
 
 ## Session start
 
-1. `listener_status`, then `receive`. If not listening, `listen` once.
+1. `receive` — that alone registers the agent with the broker. `listen`
+   and `listener_status` exist only when the host channel is enabled;
+   if they are absent, nothing is missing — skip them.
 2. Send a short ping to the peer: your session id, the main branch's tip,
    what is next.
 3. `receive` again. An `error` frame with `unknown_recipient` means the peer
@@ -27,9 +29,12 @@ is the mirror image and follows the same rules.
 ## The listener
 
 A background subagent that loops `wait` (timeout ~25 s, bounded count),
-ignores `ack` frames and empty results, and hands back the first `msg` frame
-verbatim (message_id, from, seq, ts, in_reply_to, payload.text). It stops on
-`error` or `connected: false`.
+ignores `ack` frames and empty results, and hands back **every** `msg`
+frame in the batch that contained one, verbatim (message_id, from, seq,
+ts, in_reply_to, payload.text). A `wait` result is consumed: a frame the
+listener does not relay is gone. It stops on
+`error` or `connected: false` and says which, with the frame — the
+parent must know why the listener ended, not only that it did.
 
 A connected adapter is not an active model listener: the broker seeing
 your session online says nothing about whether a turn is awake to read.
@@ -84,7 +89,10 @@ word about that PR. When the person says "merge whatever was approved",
 collect the verdict lines first, then merge. A finding the person defers
 becomes a ticket, and the person is told it was deferred, not resolved.
 
-Acceptance is head- and tree-specific. A rebase with conflict resolutions,
+**Always rebase before merging.** Every PR is rebased onto the current
+main tip before it merges — never merged from a stale base. Rebase in
+your own worktree, rerun the proof, push with `--force-with-lease`,
+announce the new head. Then: acceptance is head- and tree-specific. A rebase with conflict resolutions,
 or a new merge base, is a new integration revision: announce it and wait
 for the reviewer's recheck before merging, even when the diff "looks the
 same".
