@@ -15,7 +15,9 @@ is the mirror image and follows the same rules.
 
 ## Session start
 
-1. `listener_status`, then `receive`. If not listening, `listen` once.
+1. `receive` — that alone registers the agent with the broker. `listen`
+   and `listener_status` exist only when the host channel is enabled;
+   if they are absent, nothing is missing — skip them.
 2. Send a short ping to the peer: your session id, the main branch's tip,
    what is next.
 3. `receive` again. An `error` frame with `unknown_recipient` means the peer
@@ -27,8 +29,10 @@ is the mirror image and follows the same rules.
 ## The listener
 
 A background subagent that loops `wait` (timeout ~25 s, bounded count),
-ignores `ack` frames and empty results, and hands back the first `msg` frame
-verbatim (message_id, from, seq, ts, in_reply_to, payload.text). It stops on
+ignores `ack` frames and empty results, and hands back **every** `msg`
+frame in the batch that contained one, verbatim (message_id, from, seq,
+ts, in_reply_to, payload.text). A `wait` result is consumed: a frame the
+listener does not relay is gone. It stops on
 `error` or `connected: false`.
 
 A connected adapter is not an active model listener: the broker seeing
