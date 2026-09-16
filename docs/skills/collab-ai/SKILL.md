@@ -33,7 +33,8 @@ ignores `ack` frames and empty results, and hands back **every** `msg`
 frame in the batch that contained one, verbatim (message_id, from, seq,
 ts, in_reply_to, payload.text). A `wait` result is consumed: a frame the
 listener does not relay is gone. It stops on
-`error` or `connected: false`.
+`error` or `connected: false` and says which, with the frame — the
+parent must know why the listener ended, not only that it did.
 
 A connected adapter is not an active model listener: the broker seeing
 your session online says nothing about whether a turn is awake to read.
