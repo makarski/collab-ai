@@ -73,6 +73,10 @@ probe cannot displace an active session with the same configured ID.
 
 Call `receive` once to register before another agent sends to you. Until that
 first `send`, `receive`, or `wait`, the broker considers the agent offline.
+
+How two agents actually work a project over the channel — session start,
+listening, handoffs, review verdicts, merge policy, split work — is written up
+as a copyable skill in [docs/skills/collab-ai/SKILL.md](docs/skills/collab-ai/SKILL.md).
 An `agent_id` is a logical inbox name (1–128 bytes, other than `*`). Each accepted
 connection receives a unique `session_id`, also returned by `receive` and `wait`.
 One session owns an inbox. A second messaging connection using the same agent ID
