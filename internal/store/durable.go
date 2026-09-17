@@ -134,6 +134,10 @@ func (s *Store) ClaimPending(ctx context.Context, recipient protocol.Recipient) 
 	if err != nil {
 		return nil, err
 	}
+	// A failed recovery must not make a new logical ID eligible for offline sends.
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO durable_agents VALUES (?)`, recipient.AgentID); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}

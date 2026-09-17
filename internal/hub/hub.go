@@ -375,7 +375,7 @@ func (h *Hub) notifyPendingDisconnects(clients map[string]*Client, c *Client, pe
 func (h *Hub) recordConnect(c *Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := h.store.RecordConnect(ctx, store.SessionRecord{Identity: c.identity(), Harness: c.Harness, Model: c.Model, ConnectedAt: time.Now(), ProtocolVersion: c.ProtocolVersion}); err != nil {
+	if err := h.store.RecordConnect(ctx, store.SessionRecord{Identity: c.identity(), Harness: c.Harness, Model: c.Model, ConnectedAt: time.Now()}); err != nil {
 		h.log.Error("record connect failed", "agent_id", c.ID, "error", err)
 		return err
 	}

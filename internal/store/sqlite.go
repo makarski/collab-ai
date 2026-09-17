@@ -87,32 +87,21 @@ func (s *Store) LastSeq(ctx context.Context) (uint64, error) {
 }
 
 type SessionRecord struct {
-	Identity        protocol.Recipient
-	Harness         string
-	Model           string
-	ConnectedAt     time.Time
-	ProtocolVersion int
+	Identity    protocol.Recipient
+	Harness     string
+	Model       string
+	ConnectedAt time.Time
 }
 
 // RecordConnect inserts an agent session row.
 func (s *Store) RecordConnect(ctx context.Context, record SessionRecord) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx,
+	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO agents (agent_id, session_id, harness, model, connected_at) VALUES (?, ?, ?, ?, ?)`,
 		record.Identity.AgentID, record.Identity.SessionID, record.Harness, record.Model, record.ConnectedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("record connect: %w", err)
 	}
-	if record.ProtocolVersion >= protocol.DurableVersion {
-		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO durable_agents VALUES (?)`, record.Identity.AgentID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return nil
 }
 
 // RecordDisconnect stamps the session's disconnected_at.
@@ -161,15 +150,22 @@ func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, sender
 	if _, err := tx.ExecContext(ctx, `INSERT INTO message_metadata (message_id, seq, sender_session, in_reply_to, ack_requested) VALUES (?, ?, ?, ?, ?)`, msg.MessageID, msg.Seq, senderSession, msg.InReplyTo, msg.AckRequested); err != nil {
 		return err
 	}
-	for _, r := range recipients {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO message_receipts (message_id, agent_id, session_id) VALUES (?, ?, ?)`, msg.MessageID, r.AgentID, r.SessionID); err != nil {
-			return err
-		}
+	if err := insertRecipients(ctx, tx, msg.MessageID, recipients); err != nil {
+		return err
 	}
 	if err := persistDurable(ctx, tx, msg, recipients); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func insertRecipients(ctx context.Context, tx *sql.Tx, id string, recipients []protocol.Recipient) error {
+	for _, r := range recipients {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO message_receipts (message_id, agent_id, session_id) VALUES (?, ?, ?)`, id, r.AgentID, r.SessionID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type Acknowledgment struct {

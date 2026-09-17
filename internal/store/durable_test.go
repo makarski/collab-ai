@@ -213,3 +213,25 @@ func TestLegacyOwnerCannotAcknowledgeDurableMessage(t *testing.T) {
 	}
 	assertTableCount(t, st, "durable_inbox", 1)
 }
+
+func TestFailedRecoveryDoesNotRegisterOfflineRecipient(t *testing.T) {
+	st := openTemp(t)
+	_, err := st.db.Exec(`CREATE TRIGGER reject_registration BEFORE INSERT ON durable_agents BEGIN SELECT RAISE(ABORT, 'storage failure'); END`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persistDurableReview(t, st, durableReview("review"))
+	_, err = st.ClaimPending(context.Background(), protocol.Recipient{AgentID: "recipient", SessionID: "new"})
+	if err == nil {
+		t.Fatal("recovery succeeded with failed registration")
+	}
+	known, err := st.KnownDurableAgent(context.Background(), "recipient")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if known {
+		t.Fatal("failed recovery registered an offline recipient")
+	}
+	// The failed transaction also leaves the previous delivery owner intact.
+	checkDurableAck(t, st, durableAck("old", protocol.StageAdapterReceived))
+}
