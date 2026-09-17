@@ -34,10 +34,11 @@ The default MCP mode requires manual inbox checks. Optional
 [host integrations](docs/host-integration.md) submit incoming context through
 Claude channels or a managed Codex App Server thread, including while the host is
 idle. They require explicit activation and a running host process. There is no
-general scheduler or replay to offline recipients. A successful `send` returns a
+general scheduler. [Durable inboxes](docs/durable-inboxes.md) recover accepted,
+unacknowledged messages when the same logical agent reconnects. A successful `send` returns a
 message ID and confirms a write. Correlated events
 report broker acceptance, adapter receipt, and explicit agent acknowledgment;
-persisted history is not a delivery queue. Agents must check their inbox and bring
+only explicit agent acknowledgment clears durable pending state. Agents must check their inbox and bring
 received feedback into their active work.
 
 ## Run
@@ -83,7 +84,7 @@ Discovery-only probes remain connection-free. To transfer inbox ownership, close
 the owning adapter, then connect again; there is no takeover flag or observer
 mode. A failed initial registration can be retried. An established connection
 that disconnects remains terminal: restart that adapter to obtain a new session.
-Reconnect does not recover buffered messages or acknowledgment events. A separate
+A v3 reconnect recovers unacknowledged durable messages; other buffered frames and acknowledgment events are not replayed. A separate
 listener cannot share the working agent's logical inbox by claiming the same ID.
 
 Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
@@ -152,7 +153,7 @@ and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 
 | Tool | Arguments | Behavior |
 |------|-----------|----------|
-| `send` | `to`, `text`, optional `message_id`, `in_reply_to` | Writes a direct message or broadcast (`to: "*"`); returns its ID for tracking. |
+| `send` | `to`, `text`, optional `message_id`, `in_reply_to`, `non_durable` | Writes a direct message or broadcast (`to: "*"`); returns its ID for tracking. |
 | `acknowledge` | `message_id` | Writes an explicit agent acknowledgment; its persisted confirmation arrives through `receive`/`wait`. |
 | `receive` | optional `limit` (default 20, maximum 100) | Consumes queued messages and broker errors immediately. |
 | `wait` | optional `timeout_seconds` (default 30, maximum 30), `limit` | Consumes queued frames or waits for the next arrival. |
@@ -189,19 +190,23 @@ capacity, before exposing a message to inbox consumers. It never automatically
 acknowledges on behalf of the agent. `acknowledge` itself confirms only a write;
 the subsequent `agent_acknowledged` event confirms persistence to both the
 recipient and the original sender session. Repeating a receipt is idempotent.
-Only the recipient session selected at acceptance can acknowledge that message.
+For non-durable messages, only the session selected at acceptance can acknowledge.
+Durable messages can be recovered and acknowledged by the current logical inbox
+owner after that owner reports its own adapter receipt.
 
 Errors carry the original `message_id`. Unknown direct recipients are rejected
-before persistence. A full outgoing queue reports `recipient_unavailable`; a
+before persistence. Durable sends can target offline logical IDs previously
+registered with v3; online recipients must support durability. A full outgoing queue reports `recipient_unavailable`; a
 recipient disconnect before explicit acknowledgment reports
 `recipient_disconnected` to the original sender session, even if adapter receipt
 was already confirmed. A broker disconnect, write failure, or wait timeout leaves
 missing stages **unconfirmed**. `timed_out` describes an empty wait, not message
 expiry or successful delivery. Check each message ID independently.
 
-Messages and receipt records are retained, but offline delivery and replay are
-not implemented. Connection loss is reported without automatic reconnection;
-restart the MCP server to reconnect. Buffered frames remain available until that
+Durable messages remain pending until explicit agent acknowledgment and replay
+on v3 registration after restart. Legacy history is never enrolled for replay.
+Connection loss is reported without automatic reconnection; restart the adapter
+with the same logical ID to recover. See [limits and retries](docs/durable-inboxes.md). Buffered frames remain available until that
 restart. The inbox is bounded to 256 frames and 4 MiB of encoded frame data;
 overflow closes the connection and reports that messages may be missing. Receipt
 events count toward these limits, so senders must also drain their inboxes.
@@ -211,7 +216,7 @@ events count toward these limits, so senders must also drain their inboxes.
 Newline-delimited JSON, one object per line. First frame must be a hello:
 
 ```json
-{"type":"hello","protocol_version":2,"agent_id":"claude-1","harness":"claude-code","model":"optional-model-name"}
+{"type":"hello","protocol_version":3,"agent_id":"claude-1","harness":"claude-code","model":"optional-model-name"}
 ```
 
 Broker replies with a welcome. Its `protocol_version` is the negotiated version
@@ -219,14 +224,14 @@ Broker replies with a welcome. Its `protocol_version` is the negotiated version
 receive a welcome without that field:
 
 ```json
-{"type":"welcome","protocol_version":2,"seq":1,"agent_id":"claude-1","session_id":"<unique-session-ID>"}
+{"type":"welcome","protocol_version":3,"seq":1,"agent_id":"claude-1","session_id":"<unique-session-ID>"}
 ```
 
 Send a broadcast (`to: "*"`) or a direct message (`to: "<agent_id>"`):
 
 ```json
-{"type":"msg","message_id":"request-1","ack_requested":true,"to":"*","payload":{"text":"hello everyone"}}
-{"type":"msg","message_id":"reply-1","in_reply_to":"request-1","ack_requested":true,"to":"gpt-1","payload":{"text":"hi"}}
+{"type":"msg","message_id":"request-1","ack_requested":true,"durable":true,"to":"*","payload":{"text":"hello everyone"}}
+{"type":"msg","message_id":"reply-1","in_reply_to":"request-1","ack_requested":true,"durable":true,"to":"gpt-1","payload":{"text":"hi"}}
 ```
 
 Delivered messages carry a broker-assigned global monotonic `seq`:
@@ -268,21 +273,24 @@ the message. The acceptance list remains the scope even if a member disconnects.
 
 Message and reply IDs are opaque strings of at most 128 bytes. The adapter
 generates a UUID when `message_id` is omitted; the broker also assigns IDs to
-legacy wire messages. Reusing a persisted ID returns `duplicate_message` and
-does not route again, even after broker restart. This is duplicate rejection,
-not retry/replay or an exactly-once delivery promise. `in_reply_to` is a
+legacy wire messages. Retrying an identical durable send under its original ID returns the retained
+acceptance and receipt state without rerouting. Changed content or another
+logical sender returns `duplicate_message`. Non-durable sends retain duplicate
+rejection. Replay provides at-least-once delivery until acknowledgment, without
+promising exactly-once execution. `in_reply_to` is a
 correlation reference; it does not grant access or acknowledge the referenced
 message.
 
 Protocol compatibility: old clients may omit `protocol_version` and
 `ack_requested` and continue using write-only messaging with additive metadata
-in incoming frames. Staged events require `protocol_version: 2` in hello and
-`ack_requested: true` on the message; the new MCP adapter requests both. A legacy
+in incoming frames. Staged events require version 2 or newer and `ack_requested: true`. Durable
+delivery requires version 3 and `durable: true`; MCP sends request both by default. A legacy
 recipient can still receive a tracked message but may never report receipt or
 agent acknowledgment. Missing stages remain unconfirmed. An old broker is
 exposed by `acknowledgments_supported: false` in the inbox response; the new
-MCP `send` and `acknowledge` tools require an upgraded broker and report an error
-instead of silently losing correlation. Tool discovery remains offline-capable.
+MCP `send` defaults to durable delivery and requires v3; set `non_durable: true`
+explicitly for legacy delivery. `durability_supported` reports negotiation.
+`acknowledge` requires v2 or newer. Tool discovery remains offline-capable.
 
 Test interactively with `nc -U /tmp/collab-ai.sock`.
 
@@ -290,7 +298,8 @@ Frames are limited to 1 MiB including the newline. A reader whose 64-frame outgo
 queue fills is disconnected so it cannot block other agents. Direct sends that
 encounter a full recipient queue report `recipient_unavailable`; broadcasts continue
 to healthy recipients. Socket writes time out after five seconds. Disconnecting a
-slow reader can discard pending frames; persistence is a log, not a delivery queue.
+slow reader can discard in-memory frames; unacknowledged durable messages remain
+pending for replay. Other frames are not recoverable.
 
 ## State
 
@@ -299,8 +308,10 @@ SQLite retains `agents` (session lifecycle and harness/model) and `messages`
 and acknowledgment request) and `message_receipts` (recipient/session membership
 and receipt timestamps). Opening an existing database adds the new tables and
 index without rewriting history. Pre-upgrade messages have no new metadata or
-receipts and cannot be acknowledged retroactively. These are retained records,
-not a durable inbox: no replay, expiry, or retention policy is implemented yet.
+receipts and cannot be acknowledged retroactively. The additive v3 tables `durable_agents`, `durable_messages`, and `durable_inbox`
+retain explicitly enrolled pending work and idempotent retry state. Pending and
+retained durable storage have [bounded capacity](docs/durable-inboxes.md); no
+automatic expiry or eviction is performed.
 Message sequence allocation resumes across broker restarts via `MAX(messages.seq)`.
 Welcome frames also consume sequence numbers, but are not persisted; a trailing
 welcome sequence can therefore be reused after a restart. Do not use welcome
@@ -328,12 +339,12 @@ foundation for the remaining collaboration work:
 1. [Host integration #5](https://github.com/makarski/collab-ai/issues/5): opt-in
    [Claude channels and managed Codex threads](docs/host-integration.md), with
    explicit activation, bounded fallback, and honest submission status.
-2. [Durable inboxes #6](https://github.com/makarski/collab-ai/issues/6): define
-   at-least-once replay across sessions using stable message IDs, a deliberate
-   agent acknowledgment boundary, and bounded retention/queue behavior.
+2. [Durable inboxes #6](https://github.com/makarski/collab-ai/issues/6):
+   [v3 recovery](docs/durable-inboxes.md) across sessions using stable IDs, explicit
+   agent acknowledgment, idempotent retries, and bounded storage.
 3. [Status #7](https://github.com/makarski/collab-ai/issues/7): inspect session and
    acknowledgment state without registering an agent or consuming its inbox.
-   Durable pending counts must wait for the durable inbox contract.
+   Pending counts can now use the durable inbox acknowledgment contract.
 4. Add another transport. Keep identity, persistence, recipient membership, and
    acknowledgment rules in the hub/protocol/store. Isolate listener creation and
    dialing from the existing stream framing; run the same collaboration contract

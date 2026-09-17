@@ -18,7 +18,9 @@ const (
 )
 
 const (
-	Version                = 2
+	Version                = DurableVersion
+	AcknowledgmentVersion  = 2
+	DurableVersion         = 3
 	StageAccepted          = "accepted"
 	StageAdapterReceived   = "adapter_received"
 	StageAgentAcknowledged = "agent_acknowledged"
@@ -50,12 +52,21 @@ const (
 	ErrInternal              = "internal"
 	ErrDuplicateMessage      = "duplicate_message"
 	ErrInvalidAck            = "invalid_ack"
+	ErrInboxFull             = "inbox_full"
+	ErrDurabilityUnavailable = "durability_unavailable"
 )
 
 // Recipient freezes broadcast membership at acceptance, including inbox ownership.
 type Recipient struct {
 	AgentID   string `json:"agent_id"`
 	SessionID string `json:"session_id"`
+}
+
+// ReceiptState is retained per-recipient progress returned on an idempotent retry.
+type ReceiptState struct {
+	AgentID   string `json:"agent_id"`
+	SessionID string `json:"session_id,omitempty"`
+	Stage     string `json:"stage"`
 }
 
 // Message is the single frame type used in both directions.
@@ -66,8 +77,12 @@ type Message struct {
 	MessageID       string          `json:"message_id,omitempty"`
 	InReplyTo       string          `json:"in_reply_to,omitempty"`
 	AckRequested    bool            `json:"ack_requested,omitempty"`    // msg: request staged acknowledgments
+	Durable         bool            `json:"durable,omitempty"`          // v3: retained until explicit agent acknowledgment
+	Replayed        bool            `json:"replayed,omitempty"`         // delivery on a replacement connection
+	Repeated        bool            `json:"repeated,omitempty"`         // accepted: idempotent send retry; no new delivery
 	Stage           string          `json:"stage,omitempty"`            // ack
 	Recipients      []Recipient     `json:"recipients,omitempty"`       // accepted: fixed membership
+	Receipts        []ReceiptState  `json:"receipts,omitempty"`         // repeated acceptance: latest retained progress
 	Seq             uint64          `json:"seq,omitempty"`              // broker-assigned global order (msg, welcome)
 	AgentID         string          `json:"agent_id,omitempty"`         // hello, welcome
 	SessionID       string          `json:"session_id,omitempty"`       // broker-assigned connection identity

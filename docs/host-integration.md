@@ -2,8 +2,8 @@
 
 The default MCP adapter remains a manual inbox. Two opt-in integrations can
 submit peer context to a running host: a Claude Code channel and an App Server
-stdio proxy for a single Codex thread. The broker still uses UDS. Neither mode
-adds durable replay or a scheduler, and neither can listen after its process stops.
+stdio proxy for a single Codex thread. The broker still uses UDS. Both modes use [durable inbox recovery](durable-inboxes.md) for accepted v3
+messages. Neither adds a scheduler or listens after its process stops.
 
 ## Claude Code
 
@@ -116,7 +116,9 @@ Receipts count toward the copy limit. Overflow, a failed host submission, or an
 established broker disconnect stops the listener and reports a possible gap.
 Unconsumed copied frames remain readable until process exit. There is no silent
 reconnect. Restart obtains a new broker session and loses in-memory frames;
-history in SQLite is not replayed. Initial connection failures can be retried.
+accepted durable messages without agent acknowledgment replay to the same
+logical ID on v3. Other history and ephemeral frames are not replayed. Initial
+connection failures can be retried. Deduplicate stable IDs before repeating work.
 
 Host submissions have a five-second deadline. Waiting tools use the existing
 30-second maximum. Cancellation closes a potentially partial host write; EOF or

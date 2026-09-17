@@ -118,26 +118,7 @@ func (h *Hub) Run(ctx context.Context) {
 			return
 
 		case c := <-h.register:
-			if existing, ok := clients[c.ID]; ok {
-				// The rejected connection's writer drains this error before closing
-				// its transport. Never close the owner's connection or inbox.
-				c.Send <- protocol.Message{
-					Type:           protocol.TypeError,
-					Code:           protocol.ErrDuplicateID,
-					AgentID:        c.ID,
-					SessionID:      c.SessionID,
-					OwnerSessionID: existing.SessionID,
-					Detail:         "agent id " + c.ID + " is owned by session " + existing.SessionID + "; disconnect that owner before retrying, or use a distinct agent_id",
-				}
-				close(c.Send)
-				continue
-			}
-			clients[c.ID] = c
-			h.seq++
-			h.recordConnect(c)
-			h.enqueue(clients, c, protocol.Message{Type: protocol.TypeWelcome, AgentID: c.ID, SessionID: c.SessionID, Seq: h.seq, ProtocolVersion: c.ProtocolVersion})
-			h.log.Info("agent connected",
-				"agent_id", c.ID, "harness", c.Harness, "model", c.Model, "online", len(clients))
+			h.connect(clients, c)
 
 		case c := <-h.unregister:
 			h.disconnect(clients, c)
@@ -170,7 +151,10 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 		h.enqueue(clients, in.From, err.frame(in.Msg.MessageID))
 		return
 	}
-	recipients, err := resolveRecipients(clients, in)
+	if h.reportRetry(ctx, clients, in) {
+		return
+	}
+	recipients, err := h.resolveRecipients(ctx, clients, in)
 	if err != nil {
 		h.enqueue(clients, in.From, err.frame(in.Msg.MessageID))
 		return
@@ -181,7 +165,7 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 		return
 	}
 	if out.AckRequested {
-		h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: out.MessageID, Stage: protocol.StageAccepted, Seq: out.Seq, Recipients: recipients})
+		h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: out.MessageID, Stage: protocol.StageAccepted, Seq: out.Seq, Recipients: recipients, Durable: out.Durable})
 	}
 	h.deliver(clients, in.From, out, recipients)
 }
@@ -197,24 +181,13 @@ func prepareMessage(in *Inbound) *routingError {
 	if len(msg.MessageID) > 128 || len(msg.InReplyTo) > 128 {
 		return &routingError{protocol.ErrMalformedFrame, "message_id and in_reply_to must be at most 128 bytes"}
 	}
-	if msg.AckRequested && in.From.ProtocolVersion < protocol.Version {
+	if msg.AckRequested && in.From.ProtocolVersion < protocol.AcknowledgmentVersion {
 		return &routingError{protocol.ErrMalformedFrame, "ack_requested requires protocol_version 2 in hello"}
 	}
 	if msg.To == "" {
 		return &routingError{protocol.ErrMissingRecipient, "field to is required"}
 	}
-	return nil
-}
-
-func resolveRecipients(clients map[string]*Client, in Inbound) ([]protocol.Recipient, *routingError) {
-	if in.Msg.To == protocol.Broadcast {
-		return broadcastRecipients(clients, in.From)
-	}
-	c := clients[in.Msg.To]
-	if c == nil {
-		return nil, &routingError{protocol.ErrUnknownRecipient, "no connected agent with id " + in.Msg.To}
-	}
-	return []protocol.Recipient{c.identity()}, nil
+	return validateDurability(*in)
 }
 
 func broadcastRecipients(clients map[string]*Client, sender *Client) ([]protocol.Recipient, *routingError) {
@@ -243,10 +216,12 @@ func (h *Hub) persistRoute(ctx context.Context, in Inbound, recipients []protoco
 		Type: protocol.TypeMsg, Seq: h.seq, TS: &ts,
 		From: in.From.ID, SessionID: in.From.SessionID, To: msg.To,
 		Payload: msg.Payload, MessageID: msg.MessageID,
-		InReplyTo: msg.InReplyTo, AckRequested: msg.AckRequested,
+		InReplyTo: msg.InReplyTo, AckRequested: msg.AckRequested, Durable: msg.Durable,
 	}
 	// Added broker metadata must still fit the receiver's frame limit.
-	encoded, err := json.Marshal(out)
+	sized := out
+	sized.Replayed = out.Durable
+	encoded, err := json.Marshal(sized)
 	if err != nil || len(encoded)+1 > protocol.MaxFrameBytes {
 		return out, &routingError{protocol.ErrMalformedFrame, "routed message exceeds the 1 MiB frame limit"}
 	}
@@ -257,6 +232,9 @@ func (h *Hub) persistRoute(ctx context.Context, in Inbound, recipients []protoco
 }
 
 func (h *Hub) persistenceError(id string, err error) *routingError {
+	if errors.Is(err, store.ErrInboxFull) {
+		return &routingError{protocol.ErrInboxFull, err.Error()}
+	}
 	if errors.Is(err, store.ErrDuplicateMessage) {
 		return &routingError{protocol.ErrDuplicateMessage, err.Error()}
 	}
@@ -280,7 +258,9 @@ func (h *Hub) deliver(clients map[string]*Client, sender *Client, msg protocol.M
 	for _, r := range recipients {
 		c := sessionOwner(clients, r)
 		if c == nil {
-			h.reportUnavailable(clients, sender, msg, r)
+			if !msg.Durable {
+				h.reportUnavailable(clients, sender, msg, r)
+			}
 			continue
 		}
 		if !h.enqueue(clients, c, msg) {
@@ -291,12 +271,15 @@ func (h *Hub) deliver(clients map[string]*Client, sender *Client, msg protocol.M
 
 func (h *Hub) reportUnavailable(clients map[string]*Client, sender *Client, msg protocol.Message, recipient protocol.Recipient) {
 	failure := routingError{protocol.ErrRecipientUnavailable, "recipient " + recipient.AgentID + " session " + recipient.SessionID + " disconnected before enqueue"}
+	if msg.Durable {
+		failure.detail += "; pending message retained for replay"
+	}
 	h.enqueue(clients, sender, failure.frame(msg.MessageID))
 }
 
 func (h *Hub) acknowledge(ctx context.Context, clients map[string]*Client, in Inbound) {
 	msg := in.Msg
-	sender, err := h.store.Acknowledge(ctx, store.Acknowledgment{MessageID: msg.MessageID, Recipient: in.From.identity(), Stage: msg.Stage})
+	sender, err := h.store.Acknowledge(ctx, store.Acknowledgment{MessageID: msg.MessageID, Recipient: in.From.identity(), Stage: msg.Stage, ProtocolVersion: in.From.ProtocolVersion})
 	if err != nil {
 		code, detail := protocol.ErrInternal, "acknowledgment not persisted"
 		if errors.Is(err, store.ErrInvalidAck) {
@@ -384,17 +367,19 @@ func (h *Hub) notifyPendingDisconnects(clients map[string]*Client, c *Client, pe
 	for _, p := range pending {
 		sender := sessionOwner(clients, protocol.Recipient{AgentID: p.Sender, SessionID: p.SenderSession})
 		if sender != nil {
-			h.enqueue(clients, sender, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrRecipientDisconnected, MessageID: p.MessageID, AgentID: c.ID, SessionID: c.SessionID, Detail: "recipient session disconnected before agent acknowledgment; no replay is available"})
+			h.enqueue(clients, sender, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrRecipientDisconnected, MessageID: p.MessageID, AgentID: c.ID, SessionID: c.SessionID, Detail: disconnectDetail(p.Durable)})
 		}
 	}
 }
 
-func (h *Hub) recordConnect(c *Client) {
+func (h *Hub) recordConnect(c *Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := h.store.RecordConnect(ctx, store.SessionRecord{Identity: c.identity(), Harness: c.Harness, Model: c.Model, ConnectedAt: time.Now()}); err != nil {
+	if err := h.store.RecordConnect(ctx, store.SessionRecord{Identity: c.identity(), Harness: c.Harness, Model: c.Model, ConnectedAt: time.Now(), ProtocolVersion: c.ProtocolVersion}); err != nil {
 		h.log.Error("record connect failed", "agent_id", c.ID, "error", err)
+		return err
 	}
+	return nil
 }
 
 func (h *Hub) recordDisconnect(c *Client) {

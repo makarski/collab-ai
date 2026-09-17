@@ -26,7 +26,7 @@ type queuedMessage struct {
 }
 
 // Client reads the socket continuously, independently of MCP tool calls.
-// A broken connection is terminal: reconnecting without replay would hide gaps.
+// A broken connection is terminal. Explicit restart recovers durable pending work; other frames remain ephemeral.
 type Client struct {
 	conn            net.Conn
 	writeGate       chan struct{}
@@ -48,6 +48,7 @@ type Inbox struct {
 	TimedOut                 bool               `json:"timed_out,omitempty"`
 	SessionID                string             `json:"session_id,omitempty"`
 	AcknowledgmentsSupported bool               `json:"acknowledgments_supported"`
+	DurabilitySupported      bool               `json:"durability_supported"`
 }
 
 type ClientConfig struct {
@@ -97,7 +98,7 @@ func (c *Client) readLoop(r *bufio.Reader) {
 	for {
 		var msg protocol.Message
 		if err := protocol.ReadFrame(r, &msg); err != nil {
-			c.fail(fmt.Errorf("broker connection closed: %w; restart the MCP server to reconnect (missed messages are not replayed)", err))
+			c.fail(fmt.Errorf("broker connection closed: %w; restart the adapter to reconnect; accepted unacknowledged durable messages replay on v3; other frames may be lost", err))
 			return
 		}
 		if err := c.bufferMessage(msg); err != nil {
@@ -131,7 +132,7 @@ func (c *Client) bufferMessage(msg protocol.Message) error {
 }
 
 func (c *Client) sendAdapterReceipt(msg protocol.Message) error {
-	if c.protocolVersion < protocol.Version {
+	if c.protocolVersion < protocol.AcknowledgmentVersion {
 		return nil
 	}
 	if msg.Type != protocol.TypeMsg || !msg.AckRequested {
@@ -181,19 +182,23 @@ type SendResult struct {
 	MessageID         string `json:"message_id"`
 	To                string `json:"to"`
 	DeliveryConfirmed bool   `json:"delivery_confirmed"`
+	DurableRequested  bool   `json:"durable_requested"`
 }
 
 // SendMessage assigns an ID before writing. Acceptance and receipt events arrive
 // through Receive; neither a successful write nor a timeout implies delivery.
 func (c *Client) SendMessage(ctx context.Context, request SendRequest) (SendResult, error) {
-	if c.protocolVersion < protocol.Version {
+	if !request.NonDurable && c.protocolVersion < protocol.DurableVersion {
+		return SendResult{}, errors.New("durable delivery requires protocol version 3; upgrade the broker or explicitly set non_durable")
+	}
+	if c.protocolVersion < protocol.AcknowledgmentVersion {
 		return SendResult{}, errors.New("broker does not support protocol version 2 acknowledgments; upgrade the broker")
 	}
 	msg, err := request.message()
 	if err != nil {
 		return SendResult{}, err
 	}
-	out := SendResult{Status: "written", MessageID: msg.MessageID, To: msg.To}
+	out := SendResult{Status: "written", MessageID: msg.MessageID, To: msg.To, DurableRequested: msg.Durable}
 	if err := c.writeFrame(ctx, msg); err != nil {
 		out.Status = "unconfirmed"
 		return out, fmt.Errorf("message %s: %w; broker acceptance is unconfirmed", msg.MessageID, err)
@@ -202,7 +207,7 @@ func (c *Client) SendMessage(ctx context.Context, request SendRequest) (SendResu
 }
 
 func (c *Client) Acknowledge(ctx context.Context, id string) error {
-	if c.protocolVersion < protocol.Version {
+	if c.protocolVersion < protocol.AcknowledgmentVersion {
 		return errors.New("broker does not support acknowledgments; upgrade the broker")
 	}
 	if id == "" || len(id) > 128 {
@@ -290,7 +295,7 @@ func (c *Client) Receive(ctx context.Context, limit int, wait time.Duration) (In
 			return Inbox{}, err
 		}
 		c.mu.Lock()
-		out := Inbox{Messages: make([]protocol.Message, 0), Connected: c.err == nil, SessionID: c.sessionID, AcknowledgmentsSupported: c.protocolVersion >= protocol.Version}
+		out := Inbox{Messages: make([]protocol.Message, 0), Connected: c.err == nil, SessionID: c.sessionID, AcknowledgmentsSupported: c.protocolVersion >= protocol.AcknowledgmentVersion, DurabilitySupported: c.protocolVersion >= protocol.DurableVersion}
 		if c.err != nil {
 			out.Error = c.err.Error()
 		}

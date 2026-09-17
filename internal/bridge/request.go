@@ -10,10 +10,11 @@ import (
 )
 
 type SendRequest struct {
-	To        string `json:"to" jsonschema:"Recipient agent ID, or * to broadcast to other connected agents"`
-	Text      string `json:"text" jsonschema:"Message text for the other agent"`
-	MessageID string `json:"message_id,omitempty" jsonschema:"Optional stable ID for this message, maximum 128 bytes; generated when omitted. Reusing an accepted ID is rejected without routing again"`
-	InReplyTo string `json:"in_reply_to,omitempty" jsonschema:"Message ID this message replies to"`
+	To         string `json:"to" jsonschema:"Recipient agent ID, or * to broadcast to other connected agents"`
+	Text       string `json:"text" jsonschema:"Message text for the other agent"`
+	MessageID  string `json:"message_id,omitempty" jsonschema:"Stable ID, maximum 128 bytes; generated when omitted. Retry durable sends with the same ID and identical content to inspect persisted outcome without rerouting"`
+	InReplyTo  string `json:"in_reply_to,omitempty" jsonschema:"Message ID this message replies to"`
+	NonDurable bool   `json:"non_durable,omitempty" jsonschema:"Explicitly use legacy delivery without replay; default false requires protocol version 3 and durable-capable recipients"`
 }
 
 func (r SendRequest) message() (protocol.Message, error) {
@@ -29,5 +30,5 @@ func (r SendRequest) message() (protocol.Message, error) {
 	payload, err := json.Marshal(struct {
 		Text string `json:"text"`
 	}{r.Text})
-	return protocol.Message{Type: protocol.TypeMsg, To: r.To, Payload: payload, MessageID: r.MessageID, InReplyTo: r.InReplyTo, AckRequested: true}, err
+	return protocol.Message{Type: protocol.TypeMsg, To: r.To, Payload: payload, MessageID: r.MessageID, InReplyTo: r.InReplyTo, AckRequested: true, Durable: !r.NonDurable}, err
 }

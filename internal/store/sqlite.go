@@ -65,7 +65,7 @@ func Open(path string) (*Store, error) {
 	// Single writer keeps things simple and avoids SQLITE_BUSY under the hub's
 	// serialized write pattern.
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.Exec("PRAGMA synchronous = FULL;" + schema + durableSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
@@ -87,21 +87,32 @@ func (s *Store) LastSeq(ctx context.Context) (uint64, error) {
 }
 
 type SessionRecord struct {
-	Identity    protocol.Recipient
-	Harness     string
-	Model       string
-	ConnectedAt time.Time
+	Identity        protocol.Recipient
+	Harness         string
+	Model           string
+	ConnectedAt     time.Time
+	ProtocolVersion int
 }
 
 // RecordConnect inserts an agent session row.
 func (s *Store) RecordConnect(ctx context.Context, record SessionRecord) error {
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO agents (agent_id, session_id, harness, model, connected_at) VALUES (?, ?, ?, ?, ?)`,
 		record.Identity.AgentID, record.Identity.SessionID, record.Harness, record.Model, record.ConnectedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("record connect: %w", err)
 	}
-	return nil
+	if record.ProtocolVersion >= protocol.DurableVersion {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO durable_agents VALUES (?)`, record.Identity.AgentID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // RecordDisconnect stamps the session's disconnected_at.
@@ -130,7 +141,7 @@ var ErrDuplicateMessage = errors.New("message ID already exists; this send was n
 var ErrInvalidAck = errors.New("message is not assigned to this recipient session, or adapter receipt is missing")
 
 // PersistMessage commits history, correlation and recipient membership atomically.
-// This is the acceptance boundary, not an offline delivery queue.
+// For v3 durable messages this also enrolls recipients in the replay queue.
 func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, senderSession string, recipients []protocol.Recipient) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -155,18 +166,29 @@ func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, sender
 			return err
 		}
 	}
+	if err := persistDurable(ctx, tx, msg, recipients); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 type Acknowledgment struct {
-	MessageID string
-	Recipient protocol.Recipient
-	Stage     string
+	MessageID       string
+	Recipient       protocol.Recipient
+	Stage           string
+	ProtocolVersion int
 }
 
 // Acknowledge authenticates receipt against the session that owned the inbox at
 // acceptance. Stages are monotonic and retries are idempotent.
 func (s *Store) Acknowledge(ctx context.Context, ack Acknowledgment) (protocol.Recipient, error) {
+	durable, err := s.isDurable(ctx, ack.MessageID)
+	if err != nil {
+		return protocol.Recipient{}, err
+	}
+	if durable {
+		return s.acknowledgeDurable(ctx, ack)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return protocol.Recipient{}, err
@@ -218,12 +240,13 @@ type Unacknowledged struct {
 	MessageID     string
 	Sender        string
 	SenderSession string
+	Durable       bool
 }
 
 // UnacknowledgedForSession pages retained receipts without loading an unbounded
 // history or holding a database cursor while the hub notifies other sessions.
 func (s *Store) UnacknowledgedForSession(ctx context.Context, session string, after uint64) ([]Unacknowledged, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT mm.seq, mm.message_id, m.sender, mm.sender_session FROM message_receipts r JOIN message_metadata mm ON mm.message_id = r.message_id JOIN messages m ON m.seq = mm.seq WHERE r.session_id = ? AND r.agent_acknowledged_at IS NULL AND mm.ack_requested = 1 AND mm.seq > ? ORDER BY mm.seq LIMIT 64`, session, after)
+	rows, err := s.db.QueryContext(ctx, `SELECT mm.seq, mm.message_id, m.sender, mm.sender_session, i.message_id IS NOT NULL FROM message_receipts r JOIN message_metadata mm ON mm.message_id = r.message_id JOIN messages m ON m.seq = mm.seq LEFT JOIN durable_inbox i ON i.message_id = r.message_id AND i.agent_id = r.agent_id WHERE COALESCE(i.session_id, r.session_id) = ? AND r.agent_acknowledged_at IS NULL AND mm.ack_requested = 1 AND mm.seq > ? ORDER BY mm.seq LIMIT 64`, session, after)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +254,7 @@ func (s *Store) UnacknowledgedForSession(ctx context.Context, session string, af
 	var pending []Unacknowledged
 	for rows.Next() {
 		var p Unacknowledged
-		if err := rows.Scan(&p.Seq, &p.MessageID, &p.Sender, &p.SenderSession); err != nil {
+		if err := rows.Scan(&p.Seq, &p.MessageID, &p.Sender, &p.SenderSession, &p.Durable); err != nil {
 			return nil, err
 		}
 		pending = append(pending, p)
