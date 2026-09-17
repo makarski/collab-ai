@@ -203,7 +203,7 @@ func testReceiptDisconnect(t *testing.T, receipt bool) {
 	path, _ := startBroker(t)
 	sender := connectAgent(t, path, "claude")
 	recipient := connectWireAgent(t, path, protocol.Message{Type: protocol.TypeHello, AgentID: "codex", ProtocolVersion: protocol.Version})
-	sent := sendTracked(t, sender, SendRequest{To: "codex", Text: "review", MessageID: "disconnect-review"})
+	sent := sendTracked(t, sender, SendRequest{To: "codex", Text: "review", MessageID: "disconnect-review", NonDurable: true})
 	assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAccepted)
 	assertEqual(t, "message ID", recipient.next(t).MessageID, sent.MessageID)
 	if receipt {
@@ -229,7 +229,7 @@ func TestLegacyRecipientDoesNotImplyReceipt(t *testing.T) {
 	assertEqual(t, "legacy message type", got.Type, protocol.TypeMsg)
 	assertEqual(t, "missing legacy message ID", got.MessageID == "", false)
 	assertEqual(t, "legacy ack requested", got.AckRequested, false)
-	sent := sendTracked(t, sender, SendRequest{To: "legacy", Text: "review"})
+	sent := sendTracked(t, sender, SendRequest{To: "legacy", Text: "review", NonDurable: true})
 	assertStage(t, nextFrame(t, sender), sent.MessageID, protocol.StageAccepted)
 	msg := legacy.next(t)
 	assertEqual(t, "message type", msg.Type, protocol.TypeMsg)
@@ -248,13 +248,13 @@ func TestOldBrokerCapabilitiesAreExplicit(t *testing.T) {
 }
 
 func TestWelcomeReportsNegotiatedProtocolVersion(t *testing.T) {
-	for _, version := range []int{0, 1, 2, 3} {
+	for _, version := range []int{0, 1, 2, 3, 4} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			path, _ := startBroker(t)
 			wire := connectWireAgent(t, path, protocol.Message{Type: protocol.TypeHello, AgentID: "peer", ProtocolVersion: version})
 			assertEqual(t, "negotiated protocol version", wire.welcome.ProtocolVersion, min(version, protocol.Version))
 			wire.send(t, protocol.Message{Type: protocol.TypeMsg, To: "peer", MessageID: "negotiated", AckRequested: true})
-			if version < protocol.Version {
+			if version < protocol.AcknowledgmentVersion {
 				assertEqual(t, "unsupported tracked send", wire.next(t).Code, protocol.ErrMalformedFrame)
 				return
 			}

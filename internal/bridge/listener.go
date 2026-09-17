@@ -23,10 +23,11 @@ type ListenerStatus struct {
 	Error                    string `json:"error,omitempty"`
 	ManualCheckRequired      bool   `json:"manual_check_required"`
 	AcknowledgmentsSupported bool   `json:"acknowledgments_supported"`
+	DurabilitySupported      bool   `json:"durability_supported"`
 }
 
 // Listener is the sole broker consumer. Tools drain its bounded copy, never race
-// the publisher for broker frames. There is no reconnect or durable replay.
+// the publisher for broker frames. Restart explicitly to recover durable frames.
 type Listener struct {
 	*LazyClient
 	host    Publisher
@@ -67,7 +68,8 @@ func (l *Listener) Activate(ctx context.Context) (ListenerStatus, error) {
 	l.status.State = "listening_delivery_unconfirmed"
 	l.status.Error = ""
 	l.status.SessionID = c.sessionID
-	l.status.AcknowledgmentsSupported = c.protocolVersion >= protocol.Version
+	l.status.AcknowledgmentsSupported = c.protocolVersion >= protocol.AcknowledgmentVersion
+	l.status.DurabilitySupported = c.protocolVersion >= protocol.DurableVersion
 	go l.pump(c)
 	return l.status, nil
 }
@@ -145,7 +147,7 @@ func (l *Listener) signal() {
 func (l *Listener) fail(err error) {
 	l.mu.Lock()
 	l.status.State = "disconnected"
-	l.status.Error = err.Error() + "; restart required; missed messages are not replayed"
+	l.status.Error = err.Error() + "; restart required; accepted unacknowledged durable messages replay on v3; other frames may be lost"
 	l.mu.Unlock()
 	l.LazyClient.Close()
 	l.signal()
@@ -225,7 +227,7 @@ func (l *Listener) drain(limit int) Inbox {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	out := Inbox{Messages: []protocol.Message{}, Connected: l.status.State == "listening_delivery_unconfirmed",
-		SessionID: l.status.SessionID, Error: l.status.Error, AcknowledgmentsSupported: l.status.AcknowledgmentsSupported}
+		SessionID: l.status.SessionID, Error: l.status.Error, AcknowledgmentsSupported: l.status.AcknowledgmentsSupported, DurabilitySupported: l.status.DurabilitySupported}
 	n := min(limit, len(l.queue))
 	for _, q := range l.queue[:n] {
 		out.Messages = append(out.Messages, q.message)
