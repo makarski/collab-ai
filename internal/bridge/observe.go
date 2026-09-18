@@ -26,14 +26,23 @@ func (c *Client) observe(ctx context.Context, after uint64, limit int, wait time
 	if err := validateListenerRead(limit, wait); err != nil {
 		return DelegatedInbox{}, err
 	}
+	if wait == 0 {
+		out, _, err := c.observerSnapshot(ctx, after, limit)
+		return out, err
+	}
+	return c.waitObserved(ctx, after, limit, wait)
+}
+
+func (out DelegatedInbox) ready() bool {
+	return len(out.Inbox.Messages) > 0 || !out.Inbox.Connected
+}
+
+func (c *Client) waitObserved(ctx context.Context, after uint64, limit int, wait time.Duration) (DelegatedInbox, error) {
 	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	for {
-		if err := ctx.Err(); err != nil {
-			return DelegatedInbox{}, err
-		}
-		out, changed, err := c.observerSnapshot(after, limit)
-		if err != nil || len(out.Inbox.Messages) > 0 || !out.Inbox.Connected || wait == 0 {
+		out, changed, err := c.observerSnapshot(ctx, after, limit)
+		if err != nil || out.ready() {
 			return out, err
 		}
 		select {
@@ -41,16 +50,26 @@ func (c *Client) observe(ctx context.Context, after uint64, limit int, wait time
 			return DelegatedInbox{}, ctx.Err()
 		case <-changed:
 		case <-timer.C:
-			out, _, err = c.observerSnapshot(after, limit)
-			out.Inbox.TimedOut = err == nil && out.Inbox.Connected && len(out.Inbox.Messages) == 0
-			return out, err
+			return c.observedTimeout(ctx, after, limit)
 		}
 	}
 }
 
-func (c *Client) observerSnapshot(after uint64, limit int) (DelegatedInbox, <-chan struct{}, error) {
+func (c *Client) observedTimeout(ctx context.Context, after uint64, limit int) (DelegatedInbox, error) {
+	out, _, err := c.observerSnapshot(ctx, after, limit)
+	if err != nil {
+		return out, err
+	}
+	out.Inbox.TimedOut = !out.ready()
+	return out, nil
+}
+
+func (c *Client) observerSnapshot(ctx context.Context, after uint64, limit int) (DelegatedInbox, <-chan struct{}, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return DelegatedInbox{}, nil, err
+	}
 	if after > c.nextCursor {
 		return DelegatedInbox{}, nil, errors.New("cursor is ahead of this adapter; restart the delegated listener with after_cursor 0")
 	}

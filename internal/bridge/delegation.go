@@ -55,6 +55,12 @@ func (c *LazyClient) DelegateListener(ctx context.Context) (ListenerGrant, error
 	if c.closed {
 		return ListenerGrant{}, errors.New("MCP connection closed")
 	}
+	return c.replaceDelegation(client)
+}
+
+// replaceDelegation runs while the lazy connection gate is held, so shutdown
+// cannot race grant creation and only one returned capability remains active.
+func (c *LazyClient) replaceDelegation(client *Client) (ListenerGrant, error) {
 	if err := client.connectionError(); err != nil {
 		return ListenerGrant{}, err
 	}
