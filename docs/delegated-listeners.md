@@ -142,6 +142,11 @@ authorize delegation. Another parent's token is rejected. The endpoint supports
 only authenticated `POST /wait`; it cannot send, acknowledge, change identities,
 or create/revoke grants. It uses HTTP framing over a Unix socket, with no TCP
 listener. The socket is mode 0600 inside a private 0700 temporary directory.
+The delegated client accepts only the returned `/tmp/collab-listener-*/listen.sock`
+namespace and checks both entries' type, permissions, and current-user ownership
+without following directory/socket symlink aliases. It never probes arbitrary
+local sockets. Normal shutdown explicitly unlinks the listener's socket before
+removing its directory.
 Requests, connections, response size, and I/O deadlines are bounded.
 
 Give the secret only to the chosen child using local host context, never through

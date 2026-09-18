@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"path/filepath"
 	"time"
 )
 
@@ -80,8 +79,11 @@ func decodeDelegatedRead(w http.ResponseWriter, r *http.Request) (delegatedRead,
 // WaitDelegated contacts only the parent's read-only endpoint. It never dials
 // the broker, even when this process inherited the parent's logical agent ID.
 func WaitDelegated(ctx context.Context, socket, token string, args delegatedRead) (DelegatedInbox, error) {
-	if !filepath.IsAbs(socket) || len(token) != 64 {
+	if len(token) != 64 {
 		return DelegatedInbox{}, errors.New("use the absolute socket_path and token returned by delegate_listener")
+	}
+	if err := validateDelegationSocket(socket); err != nil {
+		return DelegatedInbox{}, fmt.Errorf("invalid or unavailable listener delegation: %w", err)
 	}
 	args, err := args.defaults()
 	if err != nil {

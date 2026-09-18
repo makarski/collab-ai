@@ -129,11 +129,12 @@ func listenPrivateSocket() (net.Listener, string, error) {
 		return nil, "", err
 	}
 	path := filepath.Join(dir, "listen.sock")
-	ln, err := net.Listen("unix", path)
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
 		os.Remove(dir)
 		return nil, "", err
 	}
+	ln.SetUnlinkOnClose(true)
 	if err := os.Chmod(path, 0600); err != nil {
 		ln.Close()
 		os.Remove(dir)
