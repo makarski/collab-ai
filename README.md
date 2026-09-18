@@ -25,7 +25,7 @@ flowchart LR
 ```
 
 Run one broker and one MCP adapter per agent session, each with a logical agent
-ID and a broker-assigned session ID. Agents use four tools: `send`, `receive`,
+ID and a broker-assigned session ID. Agents use four messaging tools: `send`, `receive`,
 `wait`, and `acknowledge`. The broker routes messages between connected sessions; adapters buffer incoming frames until an
 agent consumes them. Other local clients can use the [JSON protocol](#protocol)
 directly.
@@ -90,6 +90,10 @@ mode. A failed initial registration can be retried. An established connection
 that disconnects remains terminal: restart that adapter to obtain a new session.
 A v3 reconnect recovers unacknowledged durable messages; other buffered frames and acknowledgment events are not replayed. A separate
 listener cannot share the working agent's logical inbox by claiming the same ID.
+For a background subagent, use [delegated listening](docs/delegated-listeners.md):
+the parent grants temporary read access through its adapter, and the child calls
+`wait_delegated` without registering a second broker connection. The parent
+retains its inbox and is responsible for draining and explicitly acknowledging it.
 
 Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
 your built MCP executable. The socket path must match the broker's
@@ -161,6 +165,9 @@ and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 | `acknowledge` | `message_id` | Writes an explicit agent acknowledgment; its persisted confirmation arrives through `receive`/`wait`. |
 | `receive` | optional `limit` (default 20, maximum 100) | Consumes queued messages and broker errors immediately. |
 | `wait` | optional `timeout_seconds` (default 30, maximum 30), `limit` | Consumes queued frames or waits for the next arrival. |
+| `delegate_listener` | none | Manual adapter: grants one listener read access for 15 minutes; replaces any previous grant. |
+| `wait_delegated` | `socket_path`, `token`, optional `after_cursor`, `timeout_seconds` (default 25), `limit` | Reads retained parent frames without consuming or acknowledging them; never registers the child's adapter. |
+| `revoke_listener` | none | Revokes this adapter's grant and cancels its outstanding wait; keeps the parent connected. |
 
 Example collaboration: Codex first calls `receive({})` to register.
 Claude then calls `send({"to":"codex-1","text":"Please review my changes"})`;
@@ -333,29 +340,6 @@ inventory probes, concurrent lazy registration, and an MCP review request/reply
 through a broker. Receipt tests cover delayed explicit acknowledgment, recipient
 disconnects between stages, broadcast membership, unauthorized acknowledgments,
 duplicate IDs after restart, and migration/transaction rollback.
-
-## Next work
-
-Session ownership ([#3](https://github.com/makarski/collab-ai/issues/3)) and staged
-acknowledgments ([#4](https://github.com/makarski/collab-ai/issues/4)) provide the
-foundation for the remaining collaboration work:
-
-1. [Host integration #5](https://github.com/makarski/collab-ai/issues/5): opt-in
-   [Claude channels and managed Codex threads](docs/host-integration.md), with
-   explicit activation, bounded fallback, and honest submission status.
-2. [Durable inboxes #6](https://github.com/makarski/collab-ai/issues/6):
-   [v3 recovery](docs/durable-inboxes.md) across sessions using stable IDs, explicit
-   agent acknowledgment, idempotent retries, and bounded storage.
-3. [Status #7](https://github.com/makarski/collab-ai/issues/7): inspect session and
-   acknowledgment state without registering an agent or consuming its inbox.
-   Pending counts can now use the durable inbox acknowledgment contract.
-4. Add another transport. Keep identity, persistence, recipient membership, and
-   acknowledgment rules in the hub/protocol/store. Isolate listener creation and
-   dialing from the existing stream framing; run the same collaboration contract
-   tests against UDS and the new transport. Choose the transport from the intended
-   clients and deployment boundary (remote agents, browser clients, or local
-   cross-platform use), with the relevant connection authentication and lifecycle
-   defined before exposing the broker beyond its current local boundary.
 
 ## License
 
