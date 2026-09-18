@@ -7,8 +7,10 @@ description: How two coding agents work a project together over the collab broke
 
 Two agents, one person who directs. By default one agent implements and the
 other reviews; the person merges, or tells the implementer to merge on the
-reviewer's verdict. The channel is the collab MCP (`send`, `receive`, `wait`,
-`acknowledge`, `listen`, `listener_status`) over one local broker.
+reviewer's verdict. The channel is the collab MCP over one local broker. Use `send`, `receive`,
+`wait`, and `acknowledge` for messaging. The manual adapter also provides
+`delegate_listener`, `wait_delegated`, and `revoke_listener`; host integrations
+provide `listen` and `listener_status` instead.
 
 Everything below is written from the implementer's seat. The reviewer's seat
 is the mirror image and follows the same rules.
@@ -23,29 +25,67 @@ is the mirror image and follows the same rules.
 3. `receive` again. An `error` frame with `unknown_recipient` means the peer
    is not connected — tell the person in your first reply; do not keep
    pinging.
-4. Start the listener (below). Host channels do not reliably wake a session
-   on their own; treat notifications as a bonus, not the mechanism.
+4. Choose the listener path below. A connected adapter does not establish
+   that the host can wake this conversation. Keep manual inbox checks until
+   a real exchange demonstrates notification delivery in this host.
 
 ## The listener
 
-A background subagent that loops `wait` (timeout ~25 s, bounded count),
-ignores `ack` frames and empty results, and hands back **every** `msg`
-frame in the batch that contained one, verbatim (message_id, from, seq,
-ts, in_reply_to, payload.text). A `wait` result is consumed: a frame the
-listener does not relay is gone. It stops on
-`error` or `connected: false` and says which, with the frame — the
-parent must know why the listener ended, not only that it did.
+A separate child adapter must not call ordinary `receive` or `wait` using the
+parent's configured agent ID: that creates a competing owner and returns
+`duplicate_id`. A distinct agent ID creates an independent collaborator with
+its own inbox; it does not listen for messages addressed to the parent.
 
-A connected adapter is not an active model listener: the broker seeing
-your session online says nothing about whether a turn is awake to read.
-Only the listener loop (or your own `receive`) reads. It never calls `send`, `acknowledge` or
-`listen`, and never reads or edits files.
+When `delegate_listener` is available and this host allows a background subagent:
 
-**After every hand-back: acknowledge the message, act, start a fresh
-listener.** A listener that has handed back is finished. The person notices
-within minutes when none is running.
+1. The parent calls `delegate_listener({})`. It returns `socket_path`, `token`,
+   `expires_at`, and the parent's broker `session_id`. The grant lasts 15 minutes;
+   creating another revokes the previous grant without disconnecting the parent.
+2. Give that capability only to the chosen child, through the host's local
+   subagent instructions. It is a secret: do not send it to peers, commit it,
+   or include it in shared logs. The child needs access to that local socket.
+3. The child calls `wait_delegated` with the socket and token, `after_cursor: 0`,
+   `timeout_seconds: 25`, and `limit: 20`. Use a bounded loop, at most 20 waits
+   per assignment. Empty connected timeouts may continue; a timeout is not
+   successful delivery. Carry `next_cursor` into the next wait only after
+   relaying the entire returned batch.
+4. Relay **every frame** in `inbox.messages`, including receipts and errors,
+   verbatim, preserving message IDs, sender/session, sequence, timestamp,
+   `in_reply_to`, replay flags, and payload. Report tool errors and
+   `inbox.connected: false`, including `inbox.error`, then stop. If a batch
+   contains messages followed by an error/disconnect, relay the messages too.
+   After handing a nonempty batch back to the parent, finish the assignment.
+5. The parent brings messages into its active work, calls `receive` to drain
+   its retained copy, and acknowledges messages with `ack_requested: true`
+   after reading them. Drain remaining batches as needed. Deduplicate by
+   `message_id` across the child relay, parent copy, and durable replay before
+   acting. Handle receipts/errors without acknowledging those frames.
+6. Start a fresh child when continued listening is wanted. Start its cursor at
+   zero so it can recover frames a previous child failed to relay. Reuse an
+   unexpired grant or create a new one. Call `revoke_listener` when finished.
+   Only one outstanding delegated wait is allowed per grant; on a competing
+   wait error, tell the parent rather than racing or retrying indefinitely.
 
-Between your own steps, call `receive` — frames queue while you work.
+The child uses **only `wait_delegated`** for collaboration. It does not send,
+acknowledge, register its own inbox, create/revoke grants, or edit files. The
+capability itself grants only read access to this parent's adapter. Parent
+`receive`/`wait` consumes the original queue; the child observes a copy of frames
+still in that queue. A frame the parent already consumed need not also reach
+the child. Child reads never clear durable pending state or drain parent memory.
+
+Check `receive` between work steps even with a child running: the parent queue
+is bounded to 256 frames / 4 MiB. On child termination, unconsumed frames remain
+with the parent. Owner shutdown, grant expiry, and revocation end delegation;
+restart the same logical owner on v3 to recover accepted unacknowledged durable
+messages after an owner/broker failure. Other ephemeral frames can be lost.
+
+If tools are missing, the sandbox denies socket access, or the host cannot run
+or notify a parent from a background child, use parent `receive` between steps
+and bounded `wait` while awaiting a reply. Say that background notification is
+unavailable; do not claim an open listener or solve collisions by disconnecting
+the parent. Explicit Claude channels or the managed Codex App Server integration
+are separate options. Never infer that an idle parent wakes just because a
+listener received a frame; host notification/scheduling must support that.
 
 ## Message discipline
 

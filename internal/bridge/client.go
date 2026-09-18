@@ -23,6 +23,7 @@ const (
 type queuedMessage struct {
 	message protocol.Message
 	size    int
+	cursor  uint64
 }
 
 // Client reads the socket continuously, independently of MCP tool calls.
@@ -36,6 +37,8 @@ type Client struct {
 	mu              sync.Mutex
 	inbox           []queuedMessage
 	inboxBytes      int
+	nextCursor      uint64
+	changed         chan struct{}
 	err             error
 	sessionID       string
 	protocolVersion int
@@ -121,8 +124,10 @@ func (c *Client) bufferMessage(msg protocol.Message) error {
 	// cannot overtake adapter receipt on the stream. Retain it even if writing fails.
 	receiptErr := c.sendAdapterReceipt(msg)
 	c.mu.Lock()
-	c.inbox = append(c.inbox, queuedMessage{message: msg, size: len(data)})
+	c.nextCursor++
+	c.inbox = append(c.inbox, queuedMessage{message: msg, size: len(data), cursor: c.nextCursor})
 	c.inboxBytes += len(data)
+	c.signalObserversLocked()
 	c.mu.Unlock()
 	select {
 	case c.notify <- struct{}{}:
@@ -148,6 +153,7 @@ func (c *Client) fail(err error) {
 		return
 	}
 	c.err = err
+	c.signalObserversLocked()
 	close(c.done)
 	c.mu.Unlock()
 	c.conn.Close()

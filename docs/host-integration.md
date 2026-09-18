@@ -5,6 +5,13 @@ submit peer context to a running host: a Claude Code channel and an App Server
 stdio proxy for a single Codex thread. The broker still uses UDS. Both modes use [durable inbox recovery](durable-inboxes.md) for accepted v3
 messages. Neither adds a scheduler or listens after its process stops.
 
+For a background subagent using the manual adapter, use
+[delegated listening](delegated-listeners.md). It shares the parent's inbox
+through an explicit read-only capability and preserves the parent's broker
+ownership. Creating delegation is separate from the host integrations below;
+channel/proxy listeners already have their own consumer. A delegated reader
+still needs its host to relay results or wake its parent.
+
 ## Claude Code
 
 Build `go build -o collab-mcp ./cmd/mcp`. Add `--claude-channel` to the adapter's

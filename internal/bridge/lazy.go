@@ -12,10 +12,11 @@ import (
 // MCP discovery. Once connected, it keeps the same Client (including terminal
 // errors and buffered messages); it never silently reconnects after a gap.
 type LazyClient struct {
-	gate   chan struct{}
-	dial   func(context.Context) (*Client, error)
-	client *Client
-	closed bool
+	gate       chan struct{}
+	dial       func(context.Context) (*Client, error)
+	client     *Client
+	closed     bool
+	delegation *listenerDelegation
 }
 
 func NewLazyClient(cfg ClientConfig) (*LazyClient, error) {
@@ -76,6 +77,9 @@ func (c *LazyClient) Close() {
 	c.gate <- struct{}{}
 	defer func() { <-c.gate }()
 	c.closed = true
+	if c.delegation != nil {
+		c.delegation.Close()
+	}
 	if c.client != nil {
 		c.client.Close()
 	}
