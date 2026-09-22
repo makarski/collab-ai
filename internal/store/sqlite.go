@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS message_receipts (
     PRIMARY KEY (message_id, agent_id)
 );
 CREATE INDEX IF NOT EXISTS receipts_session ON message_receipts(session_id);
+CREATE INDEX IF NOT EXISTS agents_recent ON agents(connected_at DESC, agent_id, session_id);
 `
 
 // Store wraps the SQLite database handle.

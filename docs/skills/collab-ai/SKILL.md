@@ -29,6 +29,19 @@ is the mirror image and follows the same rules.
    that the host can wake this conversation. Keep manual inbox checks until
    a real exchange demonstrates notification delivery in this host.
 
+## Inspecting delivery state
+
+When the operator CLI is installed, use `collab status` (or `collab status --json`)
+to inspect transport owners, recent session history, and durable pending counts.
+Use `--socket` or `COLLAB_SOCKET_PATH` for the project's broker. This command does
+not register an agent, consume messages, or replace your `receive` checks.
+`transport_connected` does not mean the peer model is awake; `stale` means a
+historical session lacks both a current owner and a recorded disconnect.
+Pending counts remain until explicit agent acknowledgment. Respect truncation
+flags and treat unavailable/null metrics as unknown, never as zero. An older
+broker can report status as unsupported; do not register a second adapter to
+work around that limitation.
+
 ## The listener
 
 A separate child adapter must not call ordinary `receive` or `wait` using the

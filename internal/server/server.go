@@ -141,7 +141,7 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 	// swallow subsequent frames.
 	r := bufio.NewReader(conn)
 
-	client, err := s.handshake(conn, r)
+	client, err := s.handshake(ctx, conn, r)
 	if err != nil {
 		s.log.Warn("handshake failed", "remote", conn.RemoteAddr(), "error", err)
 		conn.SetWriteDeadline(time.Now().Add(writeTimeout))
@@ -149,6 +149,9 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 		return
 	}
 
+	if client == nil { // A one-shot status request has already been answered.
+		return
+	}
 	client.Disconnect = func() {
 		cancel()
 		conn.Close()
@@ -167,14 +170,18 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 	<-writeDone
 }
 
-// handshake reads the first frame, which must be a hello.
-func (s *Server) handshake(conn net.Conn, r *bufio.Reader) (*hub.Client, error) {
+// handshake handles a one-shot status request or prepares a messaging hello.
+func (s *Server) handshake(ctx context.Context, conn net.Conn, r *bufio.Reader) (*hub.Client, error) {
 	conn.SetReadDeadline(time.Now().Add(helloTimeout))
 	defer conn.SetReadDeadline(time.Time{})
 
 	var msg protocol.Message
 	if err := protocol.ReadFrame(r, &msg); err != nil {
 		return nil, fmt.Errorf("read hello: %w", err)
+	}
+	if msg.Type == protocol.TypeStatus {
+		s.writeStatus(ctx, conn)
+		return nil, nil
 	}
 	if msg.Type != protocol.TypeHello {
 		return nil, fmt.Errorf("first frame must be %q, got %q", protocol.TypeHello, msg.Type)
