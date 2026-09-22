@@ -10,8 +10,11 @@ go build -o collab ./cmd/collab
 ```
 
 The socket defaults to `COLLAB_SOCKET_PATH`, then `/tmp/collab-ai.sock`. The
-overall timeout defaults to three seconds and must be greater than zero and at
-most 30 seconds. No agent ID, model, MCP adapter, or database path is needed.
+client timeout defaults to three seconds and must be greater than zero and at
+most 30 seconds. The broker allows up to 30 seconds for hub processing,
+including waiting for the hub to handle the request. The client's deadline
+still bounds its entire connection and response wait. No agent ID, model, MCP
+adapter, or database path is needed.
 The command sends one status request through the existing Unix socket and exits.
 It never registers an agent, allocates a message sequence, consumes an inbox,
 claims replay ownership, or acknowledges a message.
@@ -36,7 +39,8 @@ event processing. Socket arrivals still waiting to be processed are not included
 The response is a snapshot, not a heartbeat or a live subscription. Status
 database reads have a one-second budget so a failed query cannot indefinitely
 block routing. Storage failures retain live registry information and expose
-unavailable counts, with an explanatory error.
+unavailable counts, with an explanatory error. Requests that cannot reach a
+snapshot report the hub failure cause, such as timeout or shutdown.
 
 `connected_sessions` is the total number of current transport owners, including
 ones omitted by the display limit. Session rows use these states:
