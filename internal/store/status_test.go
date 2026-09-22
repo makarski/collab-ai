@@ -20,6 +20,22 @@ func readStatus(t *testing.T, st *Store) StatusRecords {
 	return out
 }
 
+func assertStatusEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", label, got, want)
+	}
+}
+
+func totalChanges(t *testing.T, st *Store) int {
+	t.Helper()
+	var changes int
+	if err := st.db.QueryRow(`SELECT total_changes()`).Scan(&changes); err != nil {
+		t.Fatal(err)
+	}
+	return changes
+}
+
 func TestStatusCountsOnlyDurablePendingDeliveries(t *testing.T) {
 	st := openTemp(t)
 	ctx := context.Background()
@@ -34,35 +50,23 @@ func TestStatusCountsOnlyDurablePendingDeliveries(t *testing.T) {
 	if err := st.PersistMessage(ctx, legacy, legacy.SessionID, recipients); err != nil {
 		t.Fatal(err)
 	}
-	var before, after int
-	if err := st.db.QueryRow(`SELECT total_changes()`).Scan(&before); err != nil {
-		t.Fatal(err)
-	}
+	before := totalChanges(t, st)
 	out := readStatus(t, st)
-	if out.Pending.Total != 2 || len(out.Pending.Recipients) != 2 {
-		t.Fatalf("pending: %+v", out)
-	}
+	assertStatusEqual(t, "pending deliveries", out.Pending.Total, 2)
+	assertStatusEqual(t, "pending recipients", len(out.Pending.Recipients), 2)
 	encoded, _ := json.Marshal(out)
 	if strings.Contains(string(encoded), "PRIVATE_MESSAGE_BODY") {
 		t.Fatal("status leaked a message body")
 	}
-	if err := st.db.QueryRow(`SELECT total_changes()`).Scan(&after); err != nil {
-		t.Fatal(err)
-	}
-	if before != after {
-		t.Fatal("status mutated the database")
-	}
+	assertStatusEqual(t, "database changes after status", totalChanges(t, st), before)
 	ack := Acknowledgment{MessageID: msg.MessageID, Recipient: recipients[0], Stage: protocol.StageAdapterReceived, ProtocolVersion: protocol.Version}
 	checkDurableAck(t, st, ack)
-	if readStatus(t, st).Pending.Total != 2 {
-		t.Fatal("adapter receipt cleared pending count")
-	}
+	assertStatusEqual(t, "pending after adapter receipt", readStatus(t, st).Pending.Total, 2)
 	ack.Stage = protocol.StageAgentAcknowledged
 	checkDurableAck(t, st, ack)
 	out = readStatus(t, st)
-	if out.Pending.Total != 1 || out.Pending.Recipients[0].AgentID != "b" {
-		t.Fatalf("explicit ack not reflected: %+v", out)
-	}
+	assertStatusEqual(t, "pending after acknowledgment", out.Pending.Total, 1)
+	assertStatusEqual(t, "remaining recipient", out.Pending.Recipients[0].AgentID, "b")
 }
 
 func TestStatusHistoryAndRecipientLimits(t *testing.T) {
@@ -86,21 +90,16 @@ func TestStatusHistoryAndRecipientLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := readStatus(t, st)
-	if len(out.Sessions) != protocol.StatusLimit+1 || out.Sessions[0].AgentID != recipients[101].AgentID {
-		t.Fatalf("history bound/order: %+v", out.Sessions)
-	}
-	if out.Sessions[0].State != "disconnected" || out.Sessions[1].State != "stale" {
-		t.Fatal("invented live history")
-	}
-	if out.Sessions[1].LastSeenAt != nil || out.Sessions[1].DisconnectReason != nil {
-		t.Fatal("invented lifecycle details")
-	}
-	if out.Pending.Total != 102 || len(out.Pending.Recipients) != 100 || !out.Pending.RecipientsTruncated {
-		t.Fatalf("pending bound: %+v", out.Pending)
-	}
-	if out.Pending.Recipients[0].AgentID != "agent-000" {
-		t.Fatal("recipient order unstable")
-	}
+	assertStatusEqual(t, "history limit", len(out.Sessions), protocol.StatusLimit+1)
+	assertStatusEqual(t, "newest session", out.Sessions[0].AgentID, recipients[101].AgentID)
+	assertStatusEqual(t, "closed session state", out.Sessions[0].State, "disconnected")
+	assertStatusEqual(t, "unclosed session state", out.Sessions[1].State, "stale")
+	assertStatusEqual(t, "unrecorded last seen", out.Sessions[1].LastSeenAt, nil)
+	assertStatusEqual(t, "unrecorded disconnect reason", out.Sessions[1].DisconnectReason, nil)
+	assertStatusEqual(t, "total beyond recipient limit", out.Pending.Total, 102)
+	assertStatusEqual(t, "recipient limit", len(out.Pending.Recipients), 100)
+	assertStatusEqual(t, "recipients truncated", out.Pending.RecipientsTruncated, true)
+	assertStatusEqual(t, "first recipient", out.Pending.Recipients[0].AgentID, "agent-000")
 }
 
 func TestStatusReadFailureIsNotAnEmptySnapshot(t *testing.T) {

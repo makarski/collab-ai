@@ -66,20 +66,31 @@ func runJSON(t *testing.T, args ...string) (int, map[string]any) {
 	return code, out
 }
 
+func assertStatusEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", label, got, want)
+	}
+}
+
+func assertJSONField(t *testing.T, out map[string]any, key string, want any) {
+	t.Helper()
+	got, ok := out[key]
+	if !ok {
+		t.Fatalf("missing JSON field %q: %+v", key, out)
+	}
+	assertStatusEqual(t, key, got, want)
+}
+
 func TestStatusJSONUnavailableUsesNullCounts(t *testing.T) {
 	code, out := runJSON(t, "--socket", filepath.Join(t.TempDir(), "missing.sock"))
-	if code != 1 || out["reachable"] != false || out["health"] != "unavailable" {
-		t.Fatalf("unavailable: %d %+v", code, out)
-	}
+	assertStatusEqual(t, "exit code", code, 1)
+	assertJSONField(t, out, "reachable", false)
+	assertJSONField(t, out, "health", "unavailable")
 	for _, key := range []string{"connected_sessions", "durable_pending", "legacy_unacknowledged", "snapshot_at"} {
-		value, ok := out[key]
-		if !ok || value != nil {
-			t.Fatalf("unknown %s must be explicit null: %+v", key, out)
-		}
+		assertJSONField(t, out, key, nil)
 	}
-	if out["schema_version"] != float64(1) {
-		t.Fatal("missing schema version")
-	}
+	assertJSONField(t, out, "schema_version", float64(1))
 }
 
 func TestStatusJSONUsesReadOnlyRequestAndSocketEnvironment(t *testing.T) {
@@ -95,13 +106,12 @@ func TestStatusJSONUsesReadOnlyRequestAndSocketEnvironment(t *testing.T) {
 	})
 	t.Setenv("COLLAB_SOCKET_PATH", socket)
 	code, out := runJSON(t)
-	if code != 0 || out["reachable"] != true || out["connected_sessions"] != float64(0) {
-		t.Fatalf("ready status: %d %+v", code, out)
-	}
+	assertStatusEqual(t, "exit code", code, 0)
+	assertJSONField(t, out, "reachable", true)
+	assertJSONField(t, out, "connected_sessions", float64(0))
 	msg := <-request
-	if msg.Type != protocol.TypeStatus || msg.AgentID != "" {
-		t.Fatalf("inspection registered: %+v", msg)
-	}
+	assertStatusEqual(t, "request type", msg.Type, protocol.TypeStatus)
+	assertStatusEqual(t, "request agent ID", msg.AgentID, "")
 	if len(out["sessions"].([]any)) != 0 {
 		t.Fatal("empty sessions must be an array")
 	}
@@ -130,9 +140,10 @@ func TestStatusLegacyAndInvalidBrokersDoNotFallBackToRegistration(t *testing.T) 
 				}
 			})
 			code, out := runJSON(t, "--socket", socket)
-			if code != 1 || out["reachable"] != true || out["health"] != tc.health || out["durable_pending"] != nil {
-				t.Fatalf("unexpected failure: %d %+v", code, out)
-			}
+			assertStatusEqual(t, "exit code", code, 1)
+			assertJSONField(t, out, "reachable", true)
+			assertJSONField(t, out, "health", tc.health)
+			assertJSONField(t, out, "durable_pending", nil)
 		})
 	}
 }
@@ -146,8 +157,10 @@ func TestStatusTimeoutAndCancellation(t *testing.T) {
 	})
 	start := time.Now()
 	code, out := runJSON(t, "--socket", socket, "--timeout", "50ms")
-	if code != 1 || out["reachable"] != true || time.Since(start) > time.Second {
-		t.Fatalf("timeout not honored: %d %+v", code, out)
+	assertStatusEqual(t, "exit code", code, 1)
+	assertJSONField(t, out, "reachable", true)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("timeout not honored: %s", elapsed)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

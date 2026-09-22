@@ -30,58 +30,59 @@ func hubStatus(t *testing.T, h *Hub) protocol.StatusSnapshot {
 	return out
 }
 
+func assertStatusEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", label, got, want)
+	}
+}
+
+func assertLiveStatus(t *testing.T, out protocol.StatusSnapshot) {
+	t.Helper()
+	assertStatusEqual(t, "connected count", *out.ConnectedSessions, 2)
+	assertStatusEqual(t, "session count", len(out.Sessions), 2)
+	assertStatusEqual(t, "pending deliveries", out.DurablePending.Total, 1)
+	assertStatusEqual(t, "legacy count", out.LegacyUnacknowledged, nil)
+	for _, session := range out.Sessions {
+		assertStatusEqual(t, "live session state", session.State, "transport_connected")
+		if session.LastSeenAt == nil {
+			t.Fatalf("last seen missing: %+v", session)
+		}
+	}
+}
+
 func TestStatusDoesNotRegisterConsumeOrAcknowledge(t *testing.T) {
 	h := runningStatusHub(t)
 	ctx := context.Background()
 	empty := hubStatus(t, h)
-	if empty.Health != "ready" || *empty.ConnectedSessions != 0 || empty.DurablePending.Total != 0 || len(empty.Sessions) != 0 {
-		t.Fatalf("empty snapshot: %+v", empty)
-	}
+	assertStatusEqual(t, "empty health", empty.Health, "ready")
+	assertStatusEqual(t, "empty connected count", *empty.ConnectedSessions, 0)
+	assertStatusEqual(t, "empty pending count", empty.DurablePending.Total, 0)
+	assertStatusEqual(t, "empty session count", len(empty.Sessions), 0)
 	a, b := newClient("a"), newClient("b")
 	a.ProtocolVersion, b.ProtocolVersion = protocol.Version, protocol.Version
 	h.Register(ctx, a)
 	h.Register(ctx, b)
 	first, second := recv(t, a), recv(t, b)
-	if first.Seq != 1 || second.Seq != 2 {
-		t.Fatal("status allocated a sequence")
-	}
+	assertStatusEqual(t, "first welcome sequence", first.Seq, 1)
+	assertStatusEqual(t, "second welcome sequence", second.Seq, 2)
 	msg := protocol.Message{Type: protocol.TypeMsg, MessageID: "pending", To: "b", Payload: []byte(`{"text":"private"}`), AckRequested: true, Durable: true}
 	h.Submit(ctx, Inbound{From: a, Msg: msg})
 	accepted := recv(t, a)
-	if accepted.Seq != 3 {
-		t.Fatal("status changed message sequence")
-	}
+	assertStatusEqual(t, "message sequence", accepted.Seq, 3)
 	for range 3 {
-		out := hubStatus(t, h)
-		if *out.ConnectedSessions != 2 || len(out.Sessions) != 2 || out.DurablePending.Total != 1 {
-			t.Fatalf("snapshot: %+v", out)
-		}
-		if out.LegacyUnacknowledged != nil {
-			t.Fatal("unknown legacy count became zero")
-		}
-		for _, session := range out.Sessions {
-			if session.State != "transport_connected" || session.LastSeenAt == nil {
-				t.Fatalf("live state missing: %+v", session)
-			}
-		}
+		assertLiveStatus(t, hubStatus(t, h))
 	}
-	if len(b.Send) != 1 || len(a.Send) != 0 {
-		t.Fatal("status consumed or generated messaging frames")
-	}
-	if recv(t, b).MessageID != msg.MessageID {
-		t.Fatal("message lost")
-	}
+	assertStatusEqual(t, "recipient queue length", len(b.Send), 1)
+	assertStatusEqual(t, "sender queue length", len(a.Send), 0)
+	assertStatusEqual(t, "delivered message ID", recv(t, b).MessageID, msg.MessageID)
 	h.Submit(ctx, Inbound{From: b, Msg: protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: protocol.StageAdapterReceived}})
 	recv(t, a)
-	if hubStatus(t, h).DurablePending.Total != 1 {
-		t.Fatal("adapter receipt treated as acknowledgment")
-	}
+	assertStatusEqual(t, "pending after adapter receipt", hubStatus(t, h).DurablePending.Total, 1)
 	h.Submit(ctx, Inbound{From: b, Msg: protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: protocol.StageAgentAcknowledged}})
 	recv(t, a)
 	recv(t, b)
-	if hubStatus(t, h).DurablePending.Total != 0 {
-		t.Fatal("committed acknowledgment not reflected")
-	}
+	assertStatusEqual(t, "pending after acknowledgment", hubStatus(t, h).DurablePending.Total, 0)
 }
 
 func TestStatusDistinguishesStaleDisconnectedAndReplacementSessions(t *testing.T) {
@@ -100,21 +101,19 @@ func TestStatusDistinguishesStaleDisconnectedAndReplacementSessions(t *testing.T
 	h.Register(ctx, c)
 	recv(t, c)
 	out := hubStatus(t, h)
-	if *out.ConnectedSessions != 1 || len(out.Sessions) != 3 {
-		t.Fatalf("sessions: %+v", out)
-	}
+	assertStatusEqual(t, "connected count", *out.ConnectedSessions, 1)
+	assertStatusEqual(t, "session count", len(out.Sessions), 3)
 	states := map[string]string{}
 	for _, s := range out.Sessions {
 		states[s.SessionID] = s.State
 	}
-	if states["unclean"] != "stale" || states["closed"] != "disconnected" || states[c.SessionID] != "transport_connected" {
-		t.Fatalf("states: %+v", states)
-	}
+	assertStatusEqual(t, "unclean session state", states["unclean"], "stale")
+	assertStatusEqual(t, "closed session state", states["closed"], "disconnected")
+	assertStatusEqual(t, "current session state", states[c.SessionID], "transport_connected")
 	h.Unregister(c)
 	out = hubStatus(t, h)
-	if *out.ConnectedSessions != 0 || out.Sessions[0].State != "disconnected" {
-		t.Fatalf("disconnect not observed: %+v", out)
-	}
+	assertStatusEqual(t, "connected after disconnect", *out.ConnectedSessions, 0)
+	assertStatusEqual(t, "disconnected session state", out.Sessions[0].State, "disconnected")
 }
 
 func TestStatusPrioritizesLiveSessionsAndSignalsTruncation(t *testing.T) {
@@ -129,18 +128,22 @@ func TestStatusPrioritizesLiveSessionsAndSignalsTruncation(t *testing.T) {
 		}
 	}
 	out := hubStatus(t, h)
-	if len(out.Sessions) != protocol.StatusLimit || !out.SessionsTruncated || out.Sessions[0].SessionID != c.SessionID {
-		t.Fatalf("live session hidden by history: %+v", out)
-	}
+	assertStatusEqual(t, "session limit", len(out.Sessions), protocol.StatusLimit)
+	assertStatusEqual(t, "sessions truncated", out.SessionsTruncated, true)
+	assertStatusEqual(t, "first session", out.Sessions[0].SessionID, c.SessionID)
 }
 
 func TestStatusStorageFailurePreservesConnectivityAndUnknownCounts(t *testing.T) {
 	h := runningStatusHub(t)
 	h.store.Close()
 	out := hubStatus(t, h)
-	if out.Health != "degraded" || !out.Reachable || out.ConnectedSessions == nil || out.DurablePending != nil || out.HistoryAvailable {
-		t.Fatalf("storage failure concealed: %+v", out)
+	assertStatusEqual(t, "health with closed storage", out.Health, "degraded")
+	assertStatusEqual(t, "reachable with closed storage", out.Reachable, true)
+	if out.ConnectedSessions == nil {
+		t.Fatal("closed storage hid known connected count")
 	}
+	assertStatusEqual(t, "pending with closed storage", out.DurablePending, nil)
+	assertStatusEqual(t, "history with closed storage", out.HistoryAvailable, false)
 }
 
 func TestStatusCancellationAndShutdown(t *testing.T) {
