@@ -72,6 +72,7 @@ type ReceiptState struct {
 // Message is the single frame type used in both directions.
 // Fields are populated depending on Type.
 type Message struct {
+	Status          *StatusSnapshot `json:"status,omitempty"` // status response only
 	Type            string          `json:"type"`
 	ProtocolVersion int             `json:"protocol_version,omitempty"` // hello/welcome capability negotiation
 	MessageID       string          `json:"message_id,omitempty"`

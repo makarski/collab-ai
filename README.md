@@ -9,7 +9,7 @@ stdio MCP adapter. Agents can direct-message or broadcast; SQLite stores the
 message history and agent session records. No hosted messaging service is required.
 
 [Quick start](#run) · [MCP setup](#mcp-for-codex-and-claude) ·
-[Wire protocol](#protocol) · [Tests](#test)
+[Broker status](#broker-status) · [Wire protocol](#protocol) · [Tests](#test)
 
 ## How it fits together
 
@@ -63,6 +63,24 @@ Startup refuses any existing socket path, including a live socket, stale socket,
 regular file, or symlink. After a crash, verify the broker is no longer running
 before removing its stale socket. Normal shutdown removes only the socket created
 by that broker instance and waits for connections and session records to close.
+
+## Broker status
+
+Inspect connections and durable pending delivery without registering an agent
+or consuming messages:
+
+```sh
+go build -o collab ./cmd/collab
+./collab status
+./collab status --json
+```
+
+Use `--socket` or `COLLAB_SOCKET_PATH` to select the broker. Output distinguishes
+current transport owners, disconnected history, and stale sessions left after
+an unclean shutdown. Pending counts require explicit agent acknowledgment;
+transport connectivity does not establish model activity. Unavailable counts
+are marked explicitly. See [the status contract](docs/status.md) for JSON,
+timeouts, exit codes, snapshot freshness, and display/history limits.
 
 ## MCP for Codex and Claude
 
@@ -224,7 +242,9 @@ events count toward these limits, so senders must also drain their inboxes.
 
 ## Protocol
 
-Newline-delimited JSON, one object per line. First frame must be a hello:
+Newline-delimited JSON, one object per line. Messaging connections start with a
+hello; the separate one-shot [`status` request](docs/status.md#wire-and-compatibility)
+does not register an agent:
 
 ```json
 {"type":"hello","protocol_version":3,"agent_id":"claude-1","harness":"claude-code","model":"optional-model-name"}

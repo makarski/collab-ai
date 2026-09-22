@@ -25,6 +25,8 @@ type Client struct {
 	ProtocolVersion int
 	Send            chan protocol.Message // buffered; sent to and closed only by the hub
 	Disconnect      func()                // closes the transport; must return promptly
+	connectedAt     time.Time
+	lastSeenAt      time.Time
 }
 
 // Inbound is a message received from a client, tagged with its sender.
@@ -43,6 +45,8 @@ type Hub struct {
 	seq        uint64
 	log        *slog.Logger
 	done       chan struct{}
+	status     chan statusRequest
+	startedAt  time.Time
 }
 
 // New creates a Hub. startSeq is the last persisted sequence number
@@ -56,6 +60,8 @@ func New(st *store.Store, startSeq uint64, log *slog.Logger) *Hub {
 		seq:        startSeq,
 		log:        log,
 		done:       make(chan struct{}),
+		status:     make(chan statusRequest),
+		startedAt:  time.Now().UTC(),
 	}
 }
 
@@ -125,6 +131,9 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case in := <-h.inbound:
 			h.route(ctx, clients, in)
+
+		case req := <-h.status:
+			req.reply <- h.snapshot(req.ctx, clients)
 		}
 	}
 }
@@ -143,6 +152,7 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 	if clients[in.From.ID] != in.From {
 		return
 	}
+	in.From.lastSeenAt = time.Now().UTC()
 	if in.Msg.Type == protocol.TypeAck {
 		h.acknowledge(ctx, clients, in)
 		return
@@ -375,7 +385,9 @@ func (h *Hub) notifyPendingDisconnects(clients map[string]*Client, c *Client, pe
 func (h *Hub) recordConnect(c *Client) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := h.store.RecordConnect(ctx, store.SessionRecord{Identity: c.identity(), Harness: c.Harness, Model: c.Model, ConnectedAt: time.Now()}); err != nil {
+	c.connectedAt = time.Now().UTC()
+	c.lastSeenAt = c.connectedAt
+	if err := h.store.RecordConnect(ctx, store.SessionRecord{Identity: c.identity(), Harness: c.Harness, Model: c.Model, ConnectedAt: c.connectedAt}); err != nil {
 		h.log.Error("record connect failed", "agent_id", c.ID, "error", err)
 		return err
 	}
