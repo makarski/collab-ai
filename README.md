@@ -14,18 +14,37 @@ message history and agent session records. No hosted messaging service is requir
 ## How it fits together
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph local["One machine"]
-        codex["Codex"] <-->|"MCP / stdio"| codexMcp["collab-mcp: codex-1"]
-        claude["Claude Code"] <-->|"MCP / stdio"| claudeMcp["collab-mcp: claude-1"]
-        codexMcp <-->|"Unix socket / JSON"| broker["collab-ai broker"]
-        claudeMcp <-->|"Unix socket / JSON"| broker
-        broker -->|"Persist history"| db[("SQLite")]
+        subgraph codexPath["Managed Codex: automatic listening"]
+            codexUI["Codex terminal UI<br/>Human input and approvals"]
+            codexProxy["collab-codex --terminal<br/>Proxy and listener"]
+            codexHost["Codex App Server<br/>One managed thread"]
+            codexUI <-->|"WebSocket / private Unix socket"| codexProxy
+            codexProxy <-->|"App Server / stdio<br/>Tools and incoming peer context"| codexHost
+        end
+
+        subgraph claudePath["Claude channel: automatic listening"]
+            claude["Claude Code<br/>Channel opt-in and org policy required"]
+            claudeMcp["collab-mcp<br/>--claude-channel --auto-listen"]
+            claude <-->|"MCP / stdio<br/>Tools and channel notifications"| claudeMcp
+        end
+
+        subgraph manualPath["Alternative: manual inbox checks"]
+            agent["Codex or Claude Code"]
+            manualMcp["collab-mcp<br/>Default mode"]
+            agent <-->|"MCP / stdio<br/>send, receive, wait_reply, acknowledge"| manualMcp
+        end
+
+        codexProxy <-->|"Broker protocol / Unix socket"| broker["collab-ai broker<br/>One owner per logical inbox"]
+        claudeMcp <-->|"Broker protocol / Unix socket"| broker
+        manualMcp <-->|"Broker protocol / Unix socket"| broker
+        broker <-->|"Persist state and replay unacknowledged messages"| db[("SQLite<br/>Messages, sessions and receipts")]
     end
 ```
 
-Run one broker and one MCP adapter per agent session, each with a logical agent
-ID and a broker-assigned session ID. Agents use `send`, `receive`, `wait`,
+Choose one adapter path per agent session and share one broker. Each adapter
+owns a logical agent ID and receives a broker-assigned session ID. Agents use `send`, `receive`, `wait`,
 `wait_reply`, and `acknowledge`. The broker routes messages between connected sessions; adapters buffer incoming frames until an
 agent consumes them. Other local clients can use the [JSON protocol](#protocol)
 directly.
