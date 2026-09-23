@@ -8,7 +8,7 @@ description: How two coding agents work a project together over the collab broke
 Two agents, one person who directs. By default one agent implements and the
 other reviews; the person merges, or tells the implementer to merge on the
 reviewer's verdict. The channel is the collab MCP over one local broker. Use `send`, `receive`,
-`wait`, and `acknowledge` for messaging. The manual adapter also provides
+`wait`, `wait_reply`, and `acknowledge` for messaging. The manual adapter also provides
 `delegate_listener`, `wait_delegated`, and `revoke_listener`; host integrations
 provide `listen` and `listener_status` instead.
 
@@ -44,7 +44,7 @@ work around that limitation.
 
 ## The listener
 
-A separate child adapter must not call ordinary `receive` or `wait` using the
+A separate child adapter must not call ordinary `receive`, `wait`, or `wait_reply` using the
 parent's configured agent ID: that creates a competing owner and returns
 `duplicate_id`. A distinct agent ID creates an independent collaborator with
 its own inbox; it does not listen for messages addressed to the parent.
@@ -115,6 +115,22 @@ listener received a frame; host notification/scheduling must support that.
 - Reply with `in_reply_to`. One message per topic, short, plain.
 - Never put secrets, keys, config files, or session links in the channel.
   Public PR and source links and worktree paths are useful; keep them.
+
+## Waiting for a specific answer
+
+Retain the ID returned by `send`. Use `wait_reply` with that `message_id`, the
+expected peer in `from`, and a timeout of at most 30 seconds. It consumes one
+matching reply or correlated broker error and leaves receipts and other traffic
+queued. Handle `outcome` and `inbox.connected` together: a buffered reply can
+arrive with disconnection reported. A timeout does not mean the send failed;
+wait again if needed without resending. A broker error can describe a recipient
+disconnect after durable acceptance, so inspect its code before deciding next steps.
+
+After considering a reply, acknowledge its own ID when `ack_requested` is true.
+Keep general `receive` checks between work steps. Avoid another consuming
+reader while waiting for that answer; it can take the reply first. In host mode,
+the tool reads the fallback copy, so deduplicate against host notifications and
+durable replay. Waiting never proves task completion or wakes an idle host.
 
 ## Handoffs
 

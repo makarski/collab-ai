@@ -87,8 +87,19 @@ func TestDynamicToolHandlerError(t *testing.T) {
 }
 
 func TestDynamicToolValidationFailure(t *testing.T) {
+	for _, tool := range []string{"collab_wait", "collab_wait_reply"} {
+		t.Run(tool, func(t *testing.T) { assertInvalidToolTimeout(t, tool) })
+	}
+}
+
+func assertInvalidToolTimeout(t *testing.T, tool string) {
+	t.Helper()
 	p, upstream := toolProxy(t)
-	request := Frame{ID: json.RawMessage(`10`), Params: json.RawMessage(`{"tool":"collab_wait","arguments":{"timeout_seconds":31}}`)}
+	params, err := json.Marshal(map[string]any{"tool": tool, "arguments": map[string]any{
+		"timeout_seconds": 31, "message_id": "request", "from": "peer",
+	}})
+	check(t, err)
+	request := Frame{ID: json.RawMessage(`10`), Params: params}
 	check(t, p.respondTool(context.Background(), request))
 	var result struct {
 		Success      bool  `json:"success"`
