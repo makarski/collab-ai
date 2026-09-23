@@ -40,10 +40,15 @@ func main() {
 }
 
 func run(ctx context.Context, cfg bridge.ClientConfig, binary string) error {
-	return runWithOperator(ctx, cfg, binary, os.Stdin, os.Stdout)
+	return runWithOperator(ctx, cfg, binary, operatorIO{input: os.Stdin, output: os.Stdout})
 }
 
-func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string, operatorIn io.ReadCloser, operatorOut io.WriteCloser) error {
+type operatorIO struct {
+	input  io.ReadCloser
+	output io.WriteCloser
+}
+
+func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string, operator operatorIO) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	client, err := bridge.NewLazyClient(cfg)
@@ -69,7 +74,7 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 		return err
 	}
 	defer func() { cancel(); input.Close(); output.Close(); cmd.Wait() }()
-	p := host.NewProxy(host.NewWire(input), host.NewWire(operatorOut))
+	p := host.NewProxy(host.NewWire(input), host.NewWire(operator.output))
 	p.Listener = bridge.NewListener(ctx, client, p)
 	defer p.Listener.Close()
 	p.Tools, err = host.OpenTools(ctx, p.Listener)
@@ -77,7 +82,7 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 		return err
 	}
 	defer p.Tools.Close()
-	return serve(ctx, p, operatorIn, output)
+	return serve(ctx, p, operator.input, output)
 }
 
 func serve(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser) error {

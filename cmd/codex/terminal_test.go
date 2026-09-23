@@ -56,56 +56,85 @@ func TestTerminalEmptyCloseFrameEndsCleanly(t *testing.T) {
 	}
 }
 
-func TestTerminalSocketPreservesFramesAndRejectsOtherClients(t *testing.T) {
+func echoTerminal(t *testing.T) (context.Context, *terminalEndpoint) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	endpoint, err := newTerminalEndpoint(ctx, func(ctx context.Context, stream io.ReadWriteCloser) error {
 		return host.ReadFrames(stream, func(frame host.Frame) error { return host.NewWire(stream).Write(ctx, frame) })
 	})
+	terminalCheck(t, err)
+	t.Cleanup(endpoint.Close)
+	return ctx, endpoint
+}
+
+func terminalCheck(t *testing.T, err error) {
+	t.Helper()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer endpoint.Close()
+}
+
+func assertRejectedUpgrade(t *testing.T, response *http.Response, err error, status int) {
+	t.Helper()
+	if err == nil || response == nil {
+		t.Fatalf("upgrade not rejected: %v", err)
+	}
+	if response.StatusCode != status {
+		t.Fatalf("upgrade status: got %d, want %d", response.StatusCode, status)
+	}
+}
+
+func TestTerminalSocketIsPrivateAndRejectsOtherClients(t *testing.T) {
+	ctx, endpoint := echoTerminal(t)
 	info, err := os.Stat(endpoint.dir)
-	if err != nil || info.Mode().Perm() != 0700 {
-		t.Fatalf("terminal socket directory must be private: %v", err)
+	terminalCheck(t, err)
+	if info.Mode().Perm() != 0700 {
+		t.Fatal("terminal socket directory is not private")
 	}
 	_, response, err := dialTerminal(ctx, endpoint, "https://untrusted.example")
-	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
-		t.Fatalf("browser origin was not rejected: %v", err)
-	}
+	assertRejectedUpgrade(t, response, err, http.StatusForbidden)
 	conn, _, err := dialTerminal(ctx, endpoint, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	terminalCheck(t, err)
 	defer conn.CloseNow()
 	_, response, err = dialTerminal(ctx, endpoint, "")
-	if err == nil || response == nil || response.StatusCode != http.StatusConflict {
-		t.Fatalf("second client was not rejected: %v", err)
-	}
+	assertRejectedUpgrade(t, response, err, http.StatusConflict)
+}
+
+func TestTerminalSocketPreservesFramesAndCleansUp(t *testing.T) {
+	ctx, endpoint := echoTerminal(t)
+	conn, _, err := dialTerminal(ctx, endpoint, "")
+	terminalCheck(t, err)
+	defer conn.CloseNow()
 	// Pretty-printed input must not split into multiple JSONL frames.
-	request := []byte("{\n  \"id\": 7,\n  \"method\": \"thread/start\",\n  \"params\": {\"sandbox\": \"read-only\", \"approvalPolicy\": \"on-request\"}\n}")
-	if err := conn.Write(ctx, websocket.MessageText, request); err != nil {
-		t.Fatal(err)
-	}
+	request := []byte(`{
+		"id": 7,
+		"method": "thread/start",
+		"params": {"sandbox": "read-only", "approvalPolicy": "on-request"}
+	}`)
+	terminalCheck(t, conn.Write(ctx, websocket.MessageText, request))
 	kind, data, err := conn.Read(ctx)
-	if err != nil || kind != websocket.MessageText {
-		t.Fatalf("read echo: %v", err)
+	terminalCheck(t, err)
+	if kind != websocket.MessageText {
+		t.Fatal("wrong response framing")
 	}
-	var got, want host.Frame
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(request, &want); err != nil {
-		t.Fatal(err)
-	}
-	if string(got.ID) != string(want.ID) || got.Method != want.Method || !strings.Contains(string(got.Params), `"approvalPolicy":"on-request"`) {
-		t.Fatalf("frame changed: %s", data)
-	}
+	assertTerminalFrame(t, data)
 	// Shutdown cancels the active read and removes only the generated directory.
 	endpoint.Close()
 	if _, err := os.Stat(endpoint.dir); !os.IsNotExist(err) {
 		t.Fatalf("endpoint directory leaked: %v", err)
+	}
+}
+
+func assertTerminalFrame(t *testing.T, data []byte) {
+	t.Helper()
+	var got host.Frame
+	terminalCheck(t, json.Unmarshal(data, &got))
+	if string(got.ID) != "7" || got.Method != "thread/start" {
+		t.Fatalf("frame identity changed: %s", data)
+	}
+	if string(got.Params) != `{"sandbox":"read-only","approvalPolicy":"on-request"}` {
+		t.Fatalf("frame params changed: %s", data)
 	}
 }
 

@@ -28,24 +28,31 @@ func (s *WebSocketStream) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 	if s.pending == nil || s.pending.Len() == 0 {
-		kind, data, err := s.conn.Read(s.ctx)
-		if normalSocketClose(err) {
-			return 0, io.EOF
-		}
-		if err != nil {
+		if err := s.readMessage(); err != nil {
 			return 0, err
 		}
-		if kind != websocket.MessageText || !json.Valid(data) {
-			return 0, errors.New("operator WebSocket frame must contain one JSON text value")
-		}
-		// Compact multi-line JSON before passing it to the line-based decoder.
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, data); err != nil {
-			return 0, err
-		}
-		s.pending = bytes.NewReader(append(compact.Bytes(), '\n'))
 	}
 	return s.pending.Read(p)
+}
+
+func (s *WebSocketStream) readMessage() error {
+	kind, data, err := s.conn.Read(s.ctx)
+	if normalSocketClose(err) {
+		return io.EOF
+	}
+	if err != nil {
+		return err
+	}
+	if kind != websocket.MessageText {
+		return errors.New("operator WebSocket frame must contain JSON text")
+	}
+	// Validate and compact one JSON value before the line-based decoder.
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, data); err != nil {
+		return err
+	}
+	s.pending = bytes.NewReader(append(compact.Bytes(), '\n'))
+	return nil
 }
 
 func (s *WebSocketStream) Write(p []byte) (int, error) {

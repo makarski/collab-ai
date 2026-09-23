@@ -73,33 +73,9 @@ func NewAutoChannelMCP(l *Listener) *mcp.Server {
 }
 
 func newHostMCP(l *Listener, claudeChannel, autoListen bool) *mcp.Server {
-	options := &mcp.ServerOptions{Instructions: "Call listen to activate the single inbox owner. " + hostInstructions}
-	if autoListen {
-		options.Instructions = "Listening activates automatically after this MCP session initializes; do not start a polling listener. " + hostInstructions
-		options.InitializedHandler = func(ctx context.Context, _ *mcp.InitializedRequest) {
-			ctx, cancel := context.WithTimeout(ctx, ioTimeout)
-			defer cancel()
-			if _, err := l.Activate(ctx); err != nil {
-				log.Printf("collab automatic listener startup failed: %v; inspect listener_status and retry listen after resolving the cause", err)
-			}
-		}
-	}
+	s := newMCP(l, hostMCPOptions(l, claudeChannel, autoListen))
 	if claudeChannel {
-		options.Capabilities = &mcp.ServerCapabilities{Experimental: map[string]any{"claude/channel": map[string]any{}}}
-	}
-	s := newMCP(l, options)
-	if claudeChannel {
-		// Claude's channel contract uses session notifications. Reject stateless
-		// discovery before the SDK mutates session state, so modern clients fall
-		// back to initialize/initialized and the readiness handler always runs.
-		s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-			return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-				if method == "server/discover" {
-					return nil, &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "Claude channels require the initialize/initialized handshake"}
-				}
-				return next(ctx, method, req)
-			}
-		})
+		s.AddReceivingMiddleware(requireSessionHandshake)
 	}
 	mcp.AddTool(s, &mcp.Tool{Name: "listen", Description: "Activate host submission and register this logical inbox. Requires an explicitly enabled host integration; returned status does not prove the host consumes notifications."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
@@ -111,4 +87,35 @@ func newHostMCP(l *Listener, claudeChannel, autoListen bool) *mcp.Server {
 			return nil, l.Status(), nil
 		})
 	return s
+}
+
+func hostMCPOptions(l *Listener, claudeChannel, autoListen bool) *mcp.ServerOptions {
+	options := &mcp.ServerOptions{Instructions: "Call listen to activate the single inbox owner. " + hostInstructions}
+	if autoListen {
+		options.Instructions = "Listening activates automatically after this MCP session initializes; do not start a polling listener. " + hostInstructions
+		options.InitializedHandler = l.activateInitialized
+	}
+	if claudeChannel {
+		options.Capabilities = &mcp.ServerCapabilities{Experimental: map[string]any{"claude/channel": map[string]any{}}}
+	}
+	return options
+}
+
+func (l *Listener) activateInitialized(ctx context.Context, _ *mcp.InitializedRequest) {
+	ctx, cancel := context.WithTimeout(ctx, ioTimeout)
+	defer cancel()
+	if _, err := l.Activate(ctx); err != nil {
+		log.Printf("collab automatic listener startup failed: %v; inspect listener_status and retry listen after resolving the cause", err)
+	}
+}
+
+// Claude's channel uses session notifications. Reject stateless discovery before
+// the SDK mutates session state, allowing fallback to initialize/initialized.
+func requireSessionHandshake(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		if method == "server/discover" {
+			return nil, &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "Claude channels require the initialize/initialized handshake"}
+		}
+		return next(ctx, method, req)
+	}
 }

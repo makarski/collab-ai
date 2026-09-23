@@ -24,7 +24,7 @@ func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, ar
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	endpoint, err := newTerminalEndpoint(ctx, func(ctx context.Context, stream io.ReadWriteCloser) error {
-		return runWithOperator(ctx, cfg, binary, stream, stream)
+		return runWithOperator(ctx, cfg, binary, operatorIO{input: stream, output: stream})
 	})
 	if err != nil {
 		return err

@@ -18,8 +18,10 @@ func (l *Listener) inboxLocked() Inbox {
 // Only the broker's persistence confirmation for this receiving session releases
 // a fallback message. Host writes and acknowledgments from peers cannot do so.
 func (l *Listener) releaseAcknowledgedLocked(msg protocol.Message) {
-	if msg.Type != protocol.TypeAck || msg.Stage != protocol.StageAgentAcknowledged ||
-		msg.SessionID == "" || msg.SessionID != l.status.SessionID {
+	if msg.Type != protocol.TypeAck || msg.Stage != protocol.StageAgentAcknowledged {
+		return
+	}
+	if msg.SessionID == "" || msg.SessionID != l.status.SessionID {
 		return
 	}
 	for i := len(l.queue) - 1; i >= 0; i-- {

@@ -156,7 +156,10 @@ func (p *Proxy) activateListener(ctx context.Context) error {
 func (p *Proxy) captureThread(frame Frame) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.startID == "" || string(frame.ID) != p.startID || p.threadID != "" {
+	if p.startID == "" || p.threadID != "" {
+		return false
+	}
+	if string(frame.ID) != p.startID {
 		return false
 	}
 	if len(frame.Error) > 0 {
