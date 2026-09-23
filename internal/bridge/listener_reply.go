@@ -31,9 +31,7 @@ func (l *Listener) replySnapshot(ctx context.Context, id, from string) (Inbox, <
 	if l.changed == nil {
 		l.changed = make(chan struct{})
 	}
-	out := Inbox{Connected: l.status.State == "listening_delivery_unconfirmed",
-		SessionID: l.status.SessionID, Error: l.status.Error,
-		AcknowledgmentsSupported: l.status.AcknowledgmentsSupported, DurabilitySupported: l.status.DurabilitySupported}
+	out := l.inboxLocked()
 	out.Messages = takeReply(&l.queue, &l.bytes, id, from)
 	return out, l.changed, nil
 }

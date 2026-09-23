@@ -163,7 +163,7 @@ func TestProxyCancellationAndForeignTools(t *testing.T) {
 }
 
 func TestReadFramesRejectsMalformedAndOversizedInput(t *testing.T) {
-	for _, input := range [][]byte{[]byte("{broken}\n"), bytes.Repeat([]byte("x"), (8<<20)+1)} {
+	for _, input := range [][]byte{[]byte("{broken}\n"), bytes.Repeat([]byte("x"), maxHostFrameBytes+1)} {
 		err := ReadFrames(bytes.NewReader(input), func(Frame) error { t.Fatal("invalid frame accepted"); return nil })
 		if err == nil {
 			t.Fatal("invalid stream accepted")

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -24,6 +25,9 @@ type ListenerStatus struct {
 	ManualCheckRequired      bool   `json:"manual_check_required"`
 	AcknowledgmentsSupported bool   `json:"acknowledgments_supported"`
 	DurabilitySupported      bool   `json:"durability_supported"`
+	BufferedFrames           int    `json:"buffered_frames"`
+	BufferedBytes            int    `json:"buffered_bytes"`
+	ReceiptsDropped          uint64 `json:"receipts_dropped"`
 }
 
 // Listener is the sole broker consumer. Tools drain its bounded copy, never race
@@ -50,12 +54,13 @@ func NewListener(ctx context.Context, client *LazyClient, host Publisher) *Liste
 		status: ListenerStatus{State: "inactive", ManualCheckRequired: true}}
 }
 
-// Activate is explicit: constructing the server and discovering tools do not dial.
+// Activate is called by an explicit tool or an opted-in host readiness handler.
+// Constructing the server alone never dials.
 func (l *Listener) Activate(ctx context.Context) (ListenerStatus, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.started {
-		return l.status, nil
+		return l.statusLocked(), nil
 	}
 	if err := l.ctx.Err(); err != nil {
 		return l.status, err
@@ -72,13 +77,13 @@ func (l *Listener) Activate(ctx context.Context) (ListenerStatus, error) {
 	l.status.AcknowledgmentsSupported = c.protocolVersion >= protocol.AcknowledgmentVersion
 	l.status.DurabilitySupported = c.protocolVersion >= protocol.DurableVersion
 	go l.pump(c)
-	return l.status, nil
+	return l.statusLocked(), nil
 }
 
 func (l *Listener) Status() ListenerStatus {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.status
+	return l.statusLocked()
 }
 
 func (l *Listener) pump(c *Client) {
@@ -126,11 +131,13 @@ func (l *Listener) retain(msg protocol.Message) error {
 	data, _ := json.Marshal(msg)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if len(l.queue) >= maxInboxMessages {
-		return errors.New("listener inbox overflow; drain receive and restart; messages may be missing")
-	}
-	if l.bytes+len(data) > maxInboxBytes {
-		return errors.New("listener inbox byte limit exceeded; drain receive and restart; messages may be missing")
+	l.releaseAcknowledgedLocked(msg)
+	if !l.makeRoomLocked(len(data)) {
+		if msg.Type == protocol.TypeAck {
+			l.status.ReceiptsDropped++
+			return nil
+		}
+		return errors.New("listener inbox overflow (frame or byte limit); drain receive and restart; messages may be missing")
 	}
 	l.queue = append(l.queue, queuedMessage{message: msg, size: len(data)})
 	l.bytes += len(data)
@@ -155,6 +162,9 @@ func (l *Listener) fail(err error) {
 	l.status.Error = err.Error() + "; restart required; accepted unacknowledged durable messages replay on v3; other frames may be lost"
 	l.signalLocked()
 	l.mu.Unlock()
+	if l.ctx.Err() == nil {
+		log.Printf("collab listener disconnected: %s", l.Status().Error)
+	}
 	l.LazyClient.Close()
 }
 
@@ -232,8 +242,7 @@ func (l *Listener) timedOutInbox(limit int) Inbox {
 func (l *Listener) drain(limit int) Inbox {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	out := Inbox{Messages: []protocol.Message{}, Connected: l.status.State == "listening_delivery_unconfirmed",
-		SessionID: l.status.SessionID, Error: l.status.Error, AcknowledgmentsSupported: l.status.AcknowledgmentsSupported, DurabilitySupported: l.status.DurabilitySupported}
+	out := l.inboxLocked()
 	n := min(limit, len(l.queue))
 	for _, q := range l.queue[:n] {
 		out.Messages = append(out.Messages, q.message)

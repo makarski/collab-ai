@@ -52,6 +52,7 @@ type Inbox struct {
 	SessionID                string             `json:"session_id,omitempty"`
 	AcknowledgmentsSupported bool               `json:"acknowledgments_supported"`
 	DurabilitySupported      bool               `json:"durability_supported"`
+	ReceiptsDropped          uint64             `json:"receipts_dropped,omitempty"`
 }
 
 type ClientConfig struct {

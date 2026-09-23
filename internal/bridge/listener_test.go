@@ -64,9 +64,10 @@ func TestListenerSubmissionNeedsExplicitAcknowledgment(t *testing.T) {
 	assertEqual(t, "automatic agent acknowledgment", len(inbox.Messages), 0)
 	requireNoError(t, l.Acknowledge(context.Background(), request.MessageID))
 	assertStage(t, nextFrame(t, peer), request.MessageID, protocol.StageAgentAcknowledged)
+	awaitListener(t, l, func() bool { return len(l.queue) == 1 && l.queue[0].message.Type == protocol.TypeAck })
 	fallback, err := l.Receive(context.Background(), 1, 0)
 	requireNoError(t, err)
-	assertEqual(t, "fallback retains submitted message", fallback.Messages[0].MessageID, request.MessageID)
+	assertStage(t, fallback.Messages[0], request.MessageID, protocol.StageAgentAcknowledged)
 }
 
 func TestListenerConcurrentArrivalsAndFallback(t *testing.T) {
@@ -127,7 +128,7 @@ func TestListenerOverflowIsTerminal(t *testing.T) {
 	p := &testPublisher{messages: make(chan protocol.Message, 1)}
 	l, _ := listenerFixture(t, p)
 	for range maxInboxMessages {
-		requireNoError(t, l.retain(protocol.Message{Type: protocol.TypeAck}))
+		requireNoError(t, l.retain(protocol.Message{Type: protocol.TypeMsg}))
 	}
 	err := l.retain(protocol.Message{Type: protocol.TypeMsg})
 	assertErrorContains(t, err, "overflow")
