@@ -17,9 +17,16 @@ message history and agent session records. No hosted messaging service is requir
 flowchart TB
     subgraph local["One machine"]
         subgraph codexPath["Managed Codex: automatic listening"]
-            codexUI["Codex terminal UI<br/>Human input and approvals"]
-            codexProxy["collab-codex --terminal<br/>Proxy and listener"]
+            human["Human operator"]
+            codexLauncher["collab-codex --terminal<br/>Launch command"]
+            codexUI["Normal Codex terminal UI"]
+            codexProxy["Proxy and listener<br/>Inside collab-codex"]
             codexHost["Codex App Server<br/>One managed thread"]
+            human -.->|"Launches"| codexLauncher
+            codexLauncher -.->|"Starts"| codexUI
+            codexLauncher -.->|"Runs"| codexProxy
+            codexProxy -.->|"Starts"| codexHost
+            human <-->|"Prompts, output and approvals"| codexUI
             codexUI <-->|"WebSocket / private Unix socket"| codexProxy
             codexProxy <-->|"App Server / stdio<br/>Tools and incoming peer context"| codexHost
         end
@@ -42,6 +49,13 @@ flowchart TB
         broker <-->|"Persist state and replay unacknowledged messages"| db[("SQLite<br/>Messages, sessions and receipts")]
     end
 ```
+
+Dotted arrows show startup relationships; solid arrows show communication.
+For managed Codex sessions, launch `collab-codex --terminal` and interact with
+the normal Codex terminal UI. The launcher and proxy run in the same process;
+the UI and App Server are child processes. Pass Codex arguments after `--`.
+See [Codex terminal setup](docs/host-integration.md#codex-terminal) for current
+compatibility limits, including unsupported resume and fork.
 
 Choose one adapter path per agent session and share one broker. Each adapter
 owns a logical agent ID and receives a broker-assigned session ID. Agents use `send`, `receive`, `wait`,
