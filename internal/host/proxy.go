@@ -122,7 +122,7 @@ func (p *Proxy) FromHost(ctx context.Context, frame Frame) error {
 		if p.Calls.Resolve(frame) {
 			return nil
 		}
-		ready = p.captureThread(frame)
+		ready = p.captureThread(&frame)
 	}
 	if p.ownsToolCall(frame) {
 		select {
@@ -153,7 +153,7 @@ func (p *Proxy) activateListener(ctx context.Context) error {
 	return nil
 }
 
-func (p *Proxy) captureThread(frame Frame) bool {
+func (p *Proxy) captureThread(frame *Frame) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.startID == "" || p.threadID != "" {
@@ -166,15 +166,29 @@ func (p *Proxy) captureThread(frame Frame) bool {
 		p.startID = ""
 		return false
 	}
+	id, err := startedThreadID(frame.Result)
+	if err != nil {
+		p.startID = ""
+		*frame = errorFrame(frame.ID, err)
+		return false
+	}
+	p.threadID = id
+	return true
+}
+
+func startedThreadID(data json.RawMessage) (string, error) {
 	var result struct {
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
 	}
-	if json.Unmarshal(frame.Result, &result) == nil {
-		p.threadID = result.Thread.ID
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("invalid host thread/start response: %w", err)
 	}
-	return p.threadID != ""
+	if result.Thread.ID == "" {
+		return "", errors.New("host thread/start response is missing thread.id")
+	}
+	return result.Thread.ID, nil
 }
 
 func (p *Proxy) ownsToolCall(frame Frame) bool {
