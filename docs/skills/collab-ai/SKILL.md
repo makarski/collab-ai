@@ -17,24 +17,38 @@ is the mirror image and follows the same rules.
 
 ## Session start
 
-1. `receive` — that alone registers the agent with the broker. `listen`
-   and `listener_status` exist only when the host channel is enabled;
-   if they are absent, nothing is missing — skip them.
-2. Send a short ping to the peer: your session id, the main branch's tip,
-   what is next.
-3. `receive` again. An `error` frame with `unknown_recipient` means the peer
-   is not connected — tell the person in your first reply; do not keep
-   pinging.
-4. Choose the listener path below. A connected adapter does not establish
-   that the host can wake this conversation. Keep manual inbox checks until
-   a real exchange demonstrates notification delivery in this host.
+For a managed Codex terminal (`collab-codex --terminal`) or an explicitly enabled
+Claude channel with `--auto-listen`, the runtime activates listening at startup.
+Use `listener_status` to inspect health; do not create a polling child or repeatedly
+call `listen`. Without automatic startup, a channel needs one `listen` call.
+Default MCP instead needs `receive` to register and ongoing inbox checks.
+
+Send one short peer ping identifying your session, main tip, and current task.
+Verify a real exchange in this host before relying on push delivery: connected
+status and successful notification writes do not prove model attention. If the
+peer is unavailable or notification delivery fails, report it and use the manual
+fallback while resolving setup. Avoid repeated pings.
+
+The managed listener stays active through turns and compaction. After considering
+an incoming message, explicitly acknowledge it when `ack_requested` is true and
+reply with `in_reply_to` where appropriate. Broker-confirmed acknowledgments
+release fallback copies, and receipt history is bounded automatically; healthy
+host delivery needs no routine `receive` drains. Use `receive` for diagnostics,
+legacy messages without acknowledgments, or suspected missed delivery. A positive
+`receipts_dropped` counter means receipt history is incomplete, not that peer
+messages were discarded. Disconnects and unhandled message/error overflow still
+require recovery; a stopped process cannot listen.
+
+The terminal launcher creates one new Codex thread; it does not attach to an
+existing CLI session. See [host setup](../../host-integration.md) for the exact
+launch configuration. Do not infer push delivery from ordinary MCP availability.
 
 ## Inspecting delivery state
 
 When the operator CLI is installed, use `collab status` (or `collab status --json`)
 to inspect transport owners, recent session history, and durable pending counts.
 Use `--socket` or `COLLAB_SOCKET_PATH` for the project's broker. This command does
-not register an agent, consume messages, or replace your `receive` checks.
+not register an agent, consume messages, or establish model attention.
 `transport_connected` does not mean the peer model is awake; `stale` means a
 historical session lacks both a current owner and a recorded disconnect.
 Pending counts remain until explicit agent acknowledgment. Respect truncation
@@ -127,10 +141,12 @@ wait again if needed without resending. A broker error can describe a recipient
 disconnect after durable acceptance, so inspect its code before deciding next steps.
 
 After considering a reply, acknowledge its own ID when `ack_requested` is true.
-Keep general `receive` checks between work steps. Avoid another consuming
+In manual mode, keep general `receive` checks between work steps. Avoid another consuming
 reader while waiting for that answer; it can take the reply first. In host mode,
 the tool reads the fallback copy, so deduplicate against host notifications and
-durable replay. Waiting never proves task completion or wakes an idle host.
+durable replay. A broker-confirmed acknowledgment releases that host fallback
+copy, so do not wait again for a reply you already handled through a notification.
+Waiting never proves task completion or wakes an idle host.
 
 ## Handoffs
 

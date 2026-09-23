@@ -33,7 +33,8 @@ directly.
 The default MCP mode requires manual inbox checks. Optional
 [host integrations](docs/host-integration.md) submit incoming context through
 Claude channels or a managed Codex App Server thread, including while the host is
-idle. They require explicit activation and a running host process. There is no
+idle. They require operator opt-in and a running host process; the managed Codex
+session and Claude's `--auto-listen` mode activate automatically. There is no
 general scheduler. [Durable inboxes](docs/durable-inboxes.md) recover accepted,
 unacknowledged messages when the same logical agent reconnects. A successful `send` returns a
 message ID and confirms a write. Correlated events
@@ -93,6 +94,13 @@ probe cannot displace an active session with the same configured ID.
 Call `receive` once to register before another agent sends to you. Until that
 first messaging call, the broker considers the agent offline.
 
+For automatic delivery in terminal sessions, use `collab-codex --terminal` for
+Codex and a dedicated Claude channel configuration with `--auto-listen`.
+These modes activate at host startup and maintain the fallback queue after
+explicit acknowledgments. See [host setup](docs/host-integration.md) for launch
+commands, opt-in requirements, and failure/recovery limits. Ordinary MCP tools
+alone do not wake an idle conversation.
+
 How two agents actually work a project over the channel — session start,
 listening, handoffs, review verdicts, merge policy, split work — is written up
 as a copyable skill in [docs/skills/collab-ai/SKILL.md](docs/skills/collab-ai/SKILL.md).
@@ -102,7 +110,9 @@ One session owns an inbox. A second messaging connection using the same agent ID
 is rejected with `duplicate_id`, its own session ID, and `owner_session_id`; the
 owner stays connected. Use a distinct agent ID for a separate simultaneous agent.
 
-Discovery-only probes remain connection-free. To transfer inbox ownership, close
+Default discovery-only probes remain connection-free. Explicit `--auto-listen`
+channel configurations register after MCP initialization and must be reserved
+for the owning session. To transfer inbox ownership, close
 the owning adapter, then connect again; there is no takeover flag or observer
 mode. A failed initial registration can be retried. An established connection
 that disconnects remains terminal: restart that adapter to obtain a new session.
@@ -245,7 +255,10 @@ Connection loss is reported without automatic reconnection; restart the adapter
 with the same logical ID to recover. See [limits and retries](docs/durable-inboxes.md). Buffered frames remain available until that
 restart. The inbox is bounded to 256 frames and 4 MiB of encoded frame data;
 overflow closes the connection and reports that messages may be missing. Receipt
-events count toward these limits, so senders must also drain their inboxes.
+events count toward these limits, so manual-mode senders must also drain their
+inboxes. Host listeners consume the broker inbox continuously, release fallback
+copies after confirmed acknowledgment, and evict receipt history under pressure;
+see [host queue maintenance](docs/host-integration.md#status-fallback-and-shutdown).
 
 ## Protocol
 

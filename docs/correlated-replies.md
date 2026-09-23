@@ -34,7 +34,8 @@ by separate waits for individual peers; this tool never aggregates a broadcast.
 integers from 1 through 30. Initial registration uses the existing adapter
 connection timeout; the reply-wait budget starts once the connection/listener
 has been obtained. Invalid arguments are rejected before registration. Tool
-discovery stays connection-free.
+discovery stays connection-free unless the operator explicitly enabled automatic
+channel startup; see [host setup](host-integration.md).
 
 ## Result
 
@@ -92,8 +93,14 @@ success; check `listener_status` for host delivery problems.
 The caller must explicitly acknowledge a reply after considering it, using the
 reply's own `message_id`, if `ack_requested` is true. Neither reply correlation
 nor waiting acknowledges the request or reply or establishes task completion.
-Drain `receive` between work steps to handle the receipts and other messages
-that targeted waits intentionally leave queued.
+In manual mode, drain `receive` between work steps to handle the receipts and
+other messages that targeted waits intentionally leave queued. Host listeners
+release acknowledged fallback messages on the broker's confirmation and evict
+receipt history under pressure, reporting cumulative `inbox.receipts_dropped`.
+A reply already acknowledged through host delivery may no longer be available
+to `wait_reply`; use the result already brought into the conversation. Unhandled
+messages and errors remain protected. Healthy host delivery does not require
+periodic `receive` calls for queue maintenance.
 
 ## Recovery and compatibility
 

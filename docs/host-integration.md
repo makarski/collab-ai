@@ -2,8 +2,12 @@
 
 The default MCP adapter remains a manual inbox. Two opt-in integrations can
 submit peer context to a running host: a Claude Code channel and an App Server
-stdio proxy for a single Codex thread. The broker still uses UDS. Both modes use [durable inbox recovery](durable-inboxes.md) for accepted v3
-messages. Neither adds a scheduler or listens after its process stops.
+proxy for a single Codex thread, including the normal Codex terminal UI. The
+broker still uses UDS. Both modes use [durable inbox recovery](durable-inboxes.md)
+for accepted v3 messages. Neither listens after its process stops. The listener
+lifetime is independent
+of model turns and context compaction; host scheduling still determines when
+the model sees submitted context.
 
 For a background subagent using the manual adapter, use
 [delegated listening](delegated-listeners.md). It shares the parent's inbox
@@ -14,15 +18,15 @@ still needs its host to relay results or wake its parent.
 
 ## Claude Code
 
-Build `go build -o collab-mcp ./cmd/mcp`. Add `--claude-channel` to the adapter's
-arguments in an explicitly selected MCP configuration:
+Build `go build -o collab-mcp ./cmd/mcp`. Add `--claude-channel --auto-listen`
+to a dedicated MCP configuration for the owning session:
 
 ```json
 {
   "mcpServers": {
     "collab": {
       "command": "/absolute/path/to/collab-mcp",
-      "args": ["--agent-id", "claude-1", "--socket", "/tmp/collab-ai.sock", "--claude-channel"]
+      "args": ["--agent-id", "claude-1", "--socket", "/tmp/collab-ai.sock", "--claude-channel", "--auto-listen"]
     }
   }
 }
@@ -35,9 +39,20 @@ claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
   --dangerously-load-development-channels server:collab
 ```
 
-Read and accept Claude's local-development consent dialog, then ask Claude to
-call `collab`'s `listen` tool. Initialization, discovery, and `listener_status`
-alone do not register a broker session. Keep that same Claude process running.
+Read and accept Claude's local-development consent dialog. With `--auto-listen`,
+the adapter activates when that MCP session sends `notifications/initialized`;
+Claude does not need to call `listen`. Keep that same Claude process running.
+The channel uses the session-based MCP handshake; stateless `server/discover`
+probes are rejected so clients negotiate `initialize`/`initialized`.
+
+Use `--auto-listen` only in a dedicated session configuration: any process that
+initializes that configuration attempts registration, including an inventory
+probe. Default MCP and channel mode without `--auto-listen` stay passive until
+a messaging/`listen` call. `--auto-listen` requires `--claude-channel`. A failed
+automatic registration is logged to stderr and exposed by `listener_status`;
+resolve the cause, then retry `listen` or restart. Duplicate IDs never displace
+the existing owner.
+
 The adapter advertises `experimental["claude/channel"]` and emits
 `notifications/claude/channel`; it does **not** advertise permission relay.
 
@@ -56,7 +71,36 @@ never claims that Claude read a message. Explicit `acknowledge` tool calls,
 confirmed by the broker, establish the acknowledgment boundary. A reply can use
 `in_reply_to` for correlation, but does not implicitly acknowledge.
 
-## Codex App Server
+## Codex terminal
+
+Build `go build -o collab-codex ./cmd/codex`, then launch your terminal session:
+
+```sh
+./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+  -C /absolute/path/to/project
+```
+
+This starts the installed Codex terminal UI with `codex --remote` through a
+private Unix socket, then connects it to the managed App Server proxy. Arguments
+after `--` go to the terminal UI, including model, working directory, sandbox,
+and approval options; the launcher reserves `--remote`. Existing Codex settings
+still apply. No global configuration is changed and no TCP listener is opened.
+The temporary socket lives in a mode-0700 directory and is removed on exit.
+
+Start the broker first. Listening begins after a successful `thread/start`,
+without a registration prompt or `collab_listen` call. The terminal remains the
+operator approval interface. A failed automatic registration terminates the
+managed session with an error instead of leaving apparently working comms.
+Exiting the terminal stops the proxy and its App Server child.
+
+This is a **new, single-thread** session. `/new`, resume, and fork require a new
+launcher process; it does not attach to a terminal already running. The CLI must
+support `--remote unix://PATH` (available in the locally tested 0.156.1).
+The broker transport remains UDS; WebSocket framing here is only the CLI's local
+App Server connection. Keep the manual MCP setup for ordinary `codex` sessions
+that do not use this launcher; that setup still requires inbox checks.
+
+## Codex App Server clients
 
 Build `go build -o collab-codex ./cmd/codex`. An App Server client can launch:
 
@@ -81,8 +125,10 @@ for injected requests. Replies arriving after an injected request times out are
 consumed internally. Operator responses to host approval requests pass through
 regardless of their ID.
 
-Start normal operator work using `turn/start`. Ask the agent to call
-`collab_listen` before peers send. Incoming frames enter the managed thread with:
+After the successful thread creation response is forwarded to the client, the
+proxy activates listening automatically. Its internal MCP tool discovery stays
+passive. Start normal operator work using `turn/start`. Incoming frames enter
+the managed thread with:
 
 ```json
 {
@@ -111,25 +157,45 @@ acknowledgment events remain in the fallback inbox to avoid endless wake cycles.
 preserving host submission and unrelated frames. It is exposed as
 `collab_wait_reply` by the App Server proxy. See [correlated replies](correlated-replies.md)
 for outcomes and deduplication across host notifications and tool results.
-Use `receive` between work steps to inspect receipts and drain the copy. This is
-also the recovery path when Claude ignores a notification.
+The runtime removes a copied peer message only after the broker confirms this
+receiving session's explicit `agent_acknowledged`. Successful host submission,
+acknowledgment writes, and receipts from other sessions cannot remove it. An
+already acknowledged reply may therefore be absent from a later `wait_reply`.
+
+Receipt frames are bounded diagnostic history. Under frame or byte pressure,
+the oldest receipts are evicted first; an incoming receipt is dropped if only
+protected messages/errors remain. `receipts_dropped` is a cumulative counter in
+`listener_status` and inbox results, including `wait_reply`. It is not a complete
+receipt ledger; a missing receipt is not proof of failed delivery. Unacknowledged
+messages and broker errors are never evicted to make room for receipts.
+
+For healthy host delivery of acknowledgment-capable messages, periodic `receive`
+drains are unnecessary. Use `receive` for diagnostics, broker receipt inspection,
+legacy messages without acknowledgments, and recovery when Claude ignores a
+notification. Message and error backlogs remain bounded and can still overflow
+if nobody handles them.
 
 `listener_status` returns `inactive`, `listening_delivery_unconfirmed`,
 `disconnected`, or `stopped`, the broker session ID, submission count, last
-submitted message ID, and any error. `manual_check_required` stays true: neither
+submitted message ID, buffered frame/byte counts, receipt eviction count, and any error. `manual_check_required` stays true: neither
 host's write response proves conversation exposure. Verify each tracked message
 through its correlated `accepted`, `adapter_received`, and explicit
 `agent_acknowledged` events. Acknowledgment means the agent considered the context,
 not that it completed a task.
 
 The broker client's inbox and listener copy each allow 256 frames / 4 MiB.
-Receipts count toward the copy limit. Overflow, a failed host submission, or an
-established broker disconnect stops the listener and reports a possible gap.
+Receipts count toward the copy limit but are evicted under pressure. A protected
+message/error overflow, a failed host submission, or an
+established broker disconnect stops the listener, reports a possible gap in
+status, and logs it to stderr.
 Unconsumed copied frames remain readable until process exit. There is no silent
 reconnect. Restart obtains a new broker session and loses in-memory frames;
 accepted durable messages without agent acknowledgment replay to the same
 logical ID on v3. Other history and ephemeral frames are not replayed. Initial
 connection failures can be retried. Deduplicate stable IDs before repeating work.
+
+The App Server proxy accepts host frames up to 32 MiB to accommodate large
+plugin inventories. This does not change the broker's 1 MiB peer-frame limit.
 
 Host submissions have a five-second deadline. Waiting tools use the existing
 30-second maximum. Cancellation closes a potentially partial host write; EOF or
@@ -151,6 +217,9 @@ validation failures, RPC errors, and late replies after cancellation.
 The [recorded live handoff](host-live-demo.md) demonstrates all four cases on
 Claude Code 2.1.272 and Codex CLI 0.154.0, with message, conversation, broker
 session, and explicit acknowledgment identities.
+
+The [automatic terminal lifecycle run](managed-comms-live-demo.md) records
+Codex CLI 0.156.1 and the observed Claude organization-policy blocker.
 
 Host contracts: [Claude channels](https://code.claude.com/docs/en/channels),
 [channel reference](https://code.claude.com/docs/en/channels-reference), and

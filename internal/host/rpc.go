@@ -22,6 +22,10 @@ type Frame struct {
 	Error  json.RawMessage `json:"error,omitempty"`
 }
 
+// Host inventories can exceed 8 MiB (for example plugin/list includes icons).
+// This limit is independent of the broker's 1 MiB peer-message limit.
+const maxHostFrameBytes = 32 << 20
+
 // Wire serializes writes and closes the stream on cancellation of a partial
 // write. A closed or malformed stream is terminal; requests are never retried.
 type Wire struct {
@@ -48,7 +52,7 @@ func (w *Wire) Write(ctx context.Context, frame Frame) error {
 
 func ReadFrames(reader io.Reader, handle func(Frame) error) error {
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 4096), 8<<20)
+	scanner.Buffer(make([]byte, 4096), maxHostFrameBytes)
 	for scanner.Scan() {
 		var frame Frame
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
