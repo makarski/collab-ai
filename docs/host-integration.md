@@ -107,6 +107,10 @@ One listener owns the broker connection and consumes its frames. Messaging tools
 share that owner. `receive`/`wait` drain a separate bounded copy, so they cannot
 steal a frame from host submission. Only message and error frames are submitted;
 acknowledgment events remain in the fallback inbox to avoid endless wake cycles.
+`wait_reply` selectively consumes one correlated reply/error from that same copy,
+preserving host submission and unrelated frames. It is exposed as
+`collab_wait_reply` by the App Server proxy. See [correlated replies](correlated-replies.md)
+for outcomes and deduplication across host notifications and tool results.
 Use `receive` between work steps to inspect receipts and drain the copy. This is
 also the recovery path when Claude ignores a notification.
 

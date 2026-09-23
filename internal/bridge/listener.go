@@ -35,6 +35,7 @@ type Listener struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	notify  chan struct{}
+	changed chan struct{}
 	mu      sync.Mutex
 	started bool
 	status  ListenerStatus
@@ -133,11 +134,15 @@ func (l *Listener) retain(msg protocol.Message) error {
 	}
 	l.queue = append(l.queue, queuedMessage{message: msg, size: len(data)})
 	l.bytes += len(data)
-	l.signal()
+	l.signalLocked()
 	return nil
 }
 
-func (l *Listener) signal() {
+func (l *Listener) signalLocked() {
+	if l.changed != nil {
+		close(l.changed)
+		l.changed = nil
+	}
 	select {
 	case l.notify <- struct{}{}:
 	default:
@@ -148,9 +153,9 @@ func (l *Listener) fail(err error) {
 	l.mu.Lock()
 	l.status.State = "disconnected"
 	l.status.Error = err.Error() + "; restart required; accepted unacknowledged durable messages replay on v3; other frames may be lost"
+	l.signalLocked()
 	l.mu.Unlock()
 	l.LazyClient.Close()
-	l.signal()
 }
 
 func (l *Listener) Close() {
@@ -159,14 +164,15 @@ func (l *Listener) Close() {
 	l.mu.Lock()
 	started := l.started
 	l.status.State = "stopped"
+	l.signalLocked()
 	l.mu.Unlock()
 	if started {
 		<-l.done
 	}
 	l.mu.Lock()
 	l.status.State = "stopped"
+	l.signalLocked()
 	l.mu.Unlock()
-	l.signal()
 }
 
 // Receive retains the polling fallback even when a channel is silently ignored.

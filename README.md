@@ -25,8 +25,8 @@ flowchart LR
 ```
 
 Run one broker and one MCP adapter per agent session, each with a logical agent
-ID and a broker-assigned session ID. Agents use four messaging tools: `send`, `receive`,
-`wait`, and `acknowledge`. The broker routes messages between connected sessions; adapters buffer incoming frames until an
+ID and a broker-assigned session ID. Agents use `send`, `receive`, `wait`,
+`wait_reply`, and `acknowledge`. The broker routes messages between connected sessions; adapters buffer incoming frames until an
 agent consumes them. Other local clients can use the [JSON protocol](#protocol)
 directly.
 
@@ -91,7 +91,7 @@ tool discovery do not connect or register an agent, so a short-lived inventory
 probe cannot displace an active session with the same configured ID.
 
 Call `receive` once to register before another agent sends to you. Until that
-first `send`, `receive`, or `wait`, the broker considers the agent offline.
+first messaging call, the broker considers the agent offline.
 
 How two agents actually work a project over the channel — session start,
 listening, handoffs, review verdicts, merge policy, split work — is written up
@@ -183,6 +183,7 @@ and [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp).
 | `acknowledge` | `message_id` | Writes an explicit agent acknowledgment; its persisted confirmation arrives through `receive`/`wait`. |
 | `receive` | optional `limit` (default 20, maximum 100) | Consumes queued messages and broker errors immediately. |
 | `wait` | optional `timeout_seconds` (default 30, maximum 30), `limit` | Consumes queued frames or waits for the next arrival. |
+| `wait_reply` | `message_id`, `from`, optional `timeout_seconds` (default 30, maximum 30) | Consumes one correlated reply or broker error; leaves unrelated frames and receipts queued. |
 | `delegate_listener` | none | Manual adapter: grants one listener read access for 15 minutes; replaces any previous grant. |
 | `wait_delegated` | `socket_path`, `token`, optional `after_cursor`, `timeout_seconds` (default 25), `limit` | Reads retained parent frames without consuming or acknowledging them; never registers the child's adapter. |
 | `revoke_listener` | none | Revokes this adapter's grant and cancels its outstanding wait; keeps the parent connected. |
@@ -193,13 +194,19 @@ Codex calls `wait({"timeout_seconds":30})` and receives the message. After
 considering it in the active conversation, Codex calls
 `acknowledge({"message_id":"<request ID>"})` and can reply using
 `send({"to":"claude-1","text":"Review findings…","in_reply_to":"<request ID>"})`.
-Claude uses `receive` or `wait` to observe the acknowledgment stages and reply. `receive`
+Claude can call `wait_reply({"message_id":"<request ID>","from":"codex-1"})`
+for that specific answer, then explicitly acknowledge the returned reply's own
+message ID after considering it. A timeout does not mean the request failed;
+waiting again does not resend it. Continue `receive` checks for receipts and other
+conversations. See [correlated replies](docs/correlated-replies.md) for outcomes,
+concurrent readers, replay, and host-mode behavior. `receive`
 and `wait` return `messages`, `connected`, and an `error` if disconnected. An empty
 wait that reaches its deadline also returns `timed_out: true`. These tools consume
 frames, so repeated calls do not return the same message. Concurrent consumers
 share one inbox; each frame goes to only one call.
 
-Check `receive` between work steps and use `wait` while awaiting a peer. Waiting
+Check `receive` between work steps, use `wait_reply` for a specific request, and
+use `wait` for general arrivals. Waiting
 blocks on socket arrivals rather than querying SQLite repeatedly. This adapter
 does not push input into a model's conversation or wake an idle agent after its
 turn ends; unattended collaboration still needs session orchestration.
