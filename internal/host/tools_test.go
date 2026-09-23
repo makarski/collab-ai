@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,23 +88,26 @@ func TestDynamicToolHandlerError(t *testing.T) {
 }
 
 func TestDynamicToolValidationFailure(t *testing.T) {
-	for _, tool := range []string{"collab_wait", "collab_wait_reply"} {
-		t.Run(tool, func(t *testing.T) { assertInvalidToolTimeout(t, tool) })
+	for tool, args := range map[string]map[string]any{
+		"collab_wait":       {"timeout_seconds": 31},
+		"collab_wait_reply": {"timeout_seconds": 31, "message_id": "request", "from": "peer"},
+	} {
+		t.Run(tool, func(t *testing.T) { assertInvalidToolTimeout(t, tool, args) })
 	}
 }
 
-func assertInvalidToolTimeout(t *testing.T, tool string) {
+func assertInvalidToolTimeout(t *testing.T, tool string, args map[string]any) {
 	t.Helper()
 	p, upstream := toolProxy(t)
-	params, err := json.Marshal(map[string]any{"tool": tool, "arguments": map[string]any{
-		"timeout_seconds": 31, "message_id": "request", "from": "peer",
-	}})
+	params, err := json.Marshal(map[string]any{"tool": tool, "arguments": args})
 	check(t, err)
 	request := Frame{ID: json.RawMessage(`10`), Params: params}
 	check(t, p.respondTool(context.Background(), request))
 	var result struct {
-		Success      bool  `json:"success"`
-		ContentItems []any `json:"contentItems"`
+		Success      bool `json:"success"`
+		ContentItems []struct {
+			Text string `json:"text"`
+		} `json:"contentItems"`
 	}
 	check(t, json.Unmarshal(frameAt(t, upstream).Result, &result))
 	if result.Success {
@@ -111,6 +115,9 @@ func assertInvalidToolTimeout(t *testing.T, tool string) {
 	}
 	if len(result.ContentItems) != 1 {
 		t.Fatal("validation error content missing")
+	}
+	if !strings.Contains(result.ContentItems[0].Text, "timeout_seconds must be between 1 and 30") {
+		t.Fatalf("expected timeout validation error, got: %s", result.ContentItems[0].Text)
 	}
 	if p.Listener.Status().State != "inactive" {
 		t.Fatal("validation failure connected to broker")
