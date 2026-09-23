@@ -45,16 +45,20 @@ func run(ctx context.Context, cfg bridge.ClientConfig, channel, autoListen bool)
 		return err
 	}
 	defer c.Close()
-	server := bridge.NewMCP(c)
+	var server *mcp.Server
 	var transport mcp.Transport = &mcp.StdioTransport{}
 	if channel {
 		t := &bridge.ChannelTransport{Transport: transport}
 		listener := bridge.NewListener(ctx, c, t)
 		defer listener.Close()
-		server, transport = bridge.NewHostMCP(listener, true), t
+		transport = t
 		if autoListen {
 			server = bridge.NewAutoChannelMCP(listener)
+		} else {
+			server = bridge.NewHostMCP(listener, true)
 		}
+	} else {
+		server = bridge.NewMCP(c)
 	}
 	err = server.Run(ctx, transport)
 	if ctx.Err() != nil {
