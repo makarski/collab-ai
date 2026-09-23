@@ -101,12 +101,20 @@ reported directly in the shell. Cancellation sends SIGTERM to Codex first so
 an npm launcher can forward shutdown to its native child, with a two-second
 fallback timeout for the launched process.
 
-This is a **new, single-thread** session. `/new`, resume, and fork require a new
+This is a **new, single-thread** session. To start another new thread, exit and
+launch a new process. Resume and fork are not implemented, even in a fresh
 launcher process; it does not attach to a terminal already running. The CLI must
 support `--remote unix://PATH` (available in the locally tested 0.156.1).
 The broker transport remains UDS; WebSocket framing here is only the CLI's local
 App Server connection. Keep the manual MCP setup for ordinary `codex` sessions
 that do not use this launcher; that setup still requires inbox checks.
+
+A normal Codex control session can run alongside a managed session. If both
+connect to the broker, give them distinct agent IDs: each ID has exactly one
+active inbox owner. Messages delivered to the managed thread do not wake or
+update the separate control conversation. Restarting the proxy with the same
+agent ID recovers unacknowledged durable broker messages, not conversation
+history.
 
 ## Codex App Server clients
 
@@ -125,7 +133,7 @@ The client initializes with `capabilities.experimentalApi: true`, sends
 `collab_*` dynamic tools and messaging instructions to that thread. The caller's
 existing dynamic tools, sandbox, approval policy, and other thread parameters are
 preserved. `collab_` names are reserved. A failed start can be retried; a second
-thread, resume, or fork needs a new proxy process. Existing desktop conversations
+new thread needs a new proxy process. Resume and fork are rejected. Existing desktop conversations
 are not attached or controlled by this integration.
 
 Operator request IDs must not start with `collab-`; that namespace is reserved
