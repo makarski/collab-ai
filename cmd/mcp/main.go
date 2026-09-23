@@ -52,11 +52,7 @@ func run(ctx context.Context, cfg bridge.ClientConfig, channel, autoListen bool)
 		listener := bridge.NewListener(ctx, c, t)
 		defer listener.Close()
 		transport = t
-		if autoListen {
-			server = bridge.NewAutoChannelMCP(listener)
-		} else {
-			server = bridge.NewHostMCP(listener, true)
-		}
+		server = newChannelServer(listener, autoListen)
 	} else {
 		server = bridge.NewMCP(c)
 	}
@@ -65,4 +61,11 @@ func run(ctx context.Context, cfg bridge.ClientConfig, channel, autoListen bool)
 		return nil
 	}
 	return err
+}
+
+func newChannelServer(listener *bridge.Listener, autoListen bool) *mcp.Server {
+	if autoListen {
+		return bridge.NewAutoChannelMCP(listener)
+	}
+	return bridge.NewHostMCP(listener, true)
 }
