@@ -87,6 +87,14 @@ and approval options; the launcher reserves `--remote`. Existing Codex settings
 still apply. No global configuration is changed and no TCP listener is opened.
 The temporary socket lives in a mode-0700 directory and is removed on exit.
 
+`collab-codex` is the launch command for managed sessions; the normal Codex UI
+remains the interface for your prompts, output, and approvals. Maintaining Codex
+argument compatibility is a launcher requirement: forward arguments after `--`
+unchanged and let the installed Codex CLI parse them, while keeping launcher
+options before the separator. The only reserved Codex option is `--remote`,
+which selects the proxy connection. Argument forwarding does not guarantee
+support for every Codex workflow; the session limitations below still apply.
+
 Start the broker first. Listening begins after a successful `thread/start`,
 without a registration prompt or `collab_listen` call. The terminal remains the
 operator approval interface. A failed automatic registration terminates the
