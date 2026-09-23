@@ -8,10 +8,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"collab-ai/internal/bridge"
 	"collab-ai/internal/host"
@@ -56,9 +54,8 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 		return err
 	}
 	defer client.Close()
-	cmd := exec.CommandContext(ctx, binary, "app-server", "--listen", "stdio://")
+	cmd := codexCommand(ctx, binary, "app-server", "--listen", "stdio://")
 	cmd.Stderr = os.Stderr
-	cmd.WaitDelay = 2 * time.Second
 	input, err := cmd.StdinPipe()
 	if err != nil {
 		return err

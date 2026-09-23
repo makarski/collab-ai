@@ -93,6 +93,14 @@ operator approval interface. A failed automatic registration terminates the
 managed session with an error instead of leaving apparently working comms.
 Exiting the terminal stops the proxy and its App Server child.
 
+For a broker socket in your current directory, pass `--socket "$PWD/collab-ai.sock"`
+(uppercase `PWD`, without an extra leading slash). The launcher checks that the
+socket path exists and is a Unix socket before opening the UI; this does not
+guarantee that a broker is still serving it. A missing or incorrect path is
+reported directly in the shell. Cancellation sends SIGTERM to Codex first so
+an npm launcher can forward shutdown to its native child, with a two-second
+fallback timeout for the launched process.
+
 This is a **new, single-thread** session. `/new`, resume, and fork require a new
 launcher process; it does not attach to a terminal already running. The CLI must
 support `--remote unix://PATH` (available in the locally tested 0.156.1).
