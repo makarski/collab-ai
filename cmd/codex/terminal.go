@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
-	"time"
 
 	"collab-ai/internal/bridge"
 	"collab-ai/internal/protocol"
@@ -21,6 +19,9 @@ func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, ar
 	if err := validateTerminalArgs(args); err != nil {
 		return err
 	}
+	if err := validateBrokerSocket(cfg.SocketPath); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	endpoint, err := newTerminalEndpoint(ctx, func(ctx context.Context, stream io.ReadWriteCloser) error {
@@ -30,9 +31,8 @@ func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, ar
 		return err
 	}
 	defer endpoint.Close()
-	cmd := exec.CommandContext(ctx, binary, append([]string{"--remote", endpoint.URL()}, args...)...)
+	cmd := codexCommand(ctx, binary, append([]string{"--remote", endpoint.URL()}, args...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.WaitDelay = 2 * time.Second
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start Codex terminal: %w", err)
 	}
@@ -46,6 +46,17 @@ func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, ar
 		<-done
 		return err
 	}
+}
+
+func validateBrokerSocket(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("broker socket %q: %w; start the broker and check --socket before launching Codex", path, err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("broker path %q is not a Unix socket", path)
+	}
+	return nil
 }
 
 // The remote endpoint belongs to this launcher. Forward model, directory,
