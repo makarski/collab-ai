@@ -87,7 +87,7 @@ func serveWithTools(ctx context.Context, p *host.Proxy, operatorIn, output io.Re
 	}
 	p.Tools = tools
 	defer tools.Close()
-	endpoint, err := newRuntimeMCP(ctx, p.Listener)
+	endpoint, err := newRuntimeMCP(ctx, p.Listener, func() bool { return p.ThreadID() != "" })
 	if err != nil {
 		return err
 	}

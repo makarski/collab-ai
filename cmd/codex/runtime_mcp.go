@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"collab-ai/internal/bridge"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -21,9 +22,10 @@ type runtimeMCP struct {
 	ln     net.Listener
 	cancel context.CancelFunc
 	done   chan struct{}
+	ready  func() bool
 }
 
-func newRuntimeMCP(ctx context.Context, listener *bridge.Listener) (*runtimeMCP, error) {
+func newRuntimeMCP(ctx context.Context, listener *bridge.Listener, ready func() bool) (*runtimeMCP, error) {
 	dir, err := os.MkdirTemp("/tmp", "collab-tools-")
 	if err != nil {
 		return nil, err
@@ -34,9 +36,24 @@ func newRuntimeMCP(ctx context.Context, listener *bridge.Listener) (*runtimeMCP,
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	e := &runtimeMCP{dir: dir, ln: ln, cancel: cancel, done: make(chan struct{})}
-	go e.serve(ctx, bridge.NewHostMCP(listener, false))
+	e := &runtimeMCP{dir: dir, ln: ln, cancel: cancel, done: make(chan struct{}), ready: ready}
+	server := bridge.NewHostMCP(listener, false)
+	server.AddReceivingMiddleware(e.requireReady)
+	go e.serve(ctx, server)
 	return e, nil
+}
+
+func (e *runtimeMCP) requireReady(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		if method != "tools/call" || e.ready() {
+			return next(ctx, method, req)
+		}
+		params, _ := req.GetParams().(*mcp.CallToolParamsRaw)
+		if params != nil && params.Name == "listener_status" {
+			return next(ctx, method, req)
+		}
+		return nil, &jsonrpc.Error{Code: -32000, Message: "managed thread is not ready; wait for start, resume, or fork to finish"}
+	}
 }
 
 func (e *runtimeMCP) config() (map[string]any, error) {

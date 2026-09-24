@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,10 +18,24 @@ func runtimeFixture(t *testing.T) (*runtimeMCP, *bridge.Listener) {
 	terminalCheck(t, err)
 	listener := bridge.NewListener(context.Background(), client, nil)
 	t.Cleanup(listener.Close)
-	endpoint, err := newRuntimeMCP(context.Background(), listener)
+	endpoint, err := newRuntimeMCP(context.Background(), listener, func() bool { return false })
 	terminalCheck(t, err)
 	t.Cleanup(endpoint.Close)
 	return endpoint, listener
+}
+
+func TestRuntimeMCPRejectsInboxCallsBeforeThreadSelection(t *testing.T) {
+	endpoint, listener := runtimeFixture(t)
+	session := runtimeClient(t, endpoint)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "listen", Arguments: map[string]any{}})
+	if err == nil || !strings.Contains(err.Error(), "managed thread is not ready") {
+		t.Fatalf("early inbox call was not blocked: %v", err)
+	}
+	if listener.Status().State != "inactive" || listener.Status().Error != "" {
+		t.Fatal("early tool call attempted broker registration")
+	}
 }
 
 func runtimeClient(t *testing.T, endpoint *runtimeMCP) *mcp.ClientSession {

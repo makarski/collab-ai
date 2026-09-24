@@ -26,11 +26,7 @@ func checkRuntimeLifecycle(t *testing.T, method string) {
 	forwarded := frameAt(t, up)
 	var got map[string]any
 	check(t, json.Unmarshal(forwarded.Params, &got))
-	for key, want := range params {
-		if key != "config" && !reflect.DeepEqual(got[key], want) {
-			t.Fatalf("%s changed: got %v, want %v", key, got[key], want)
-		}
-	}
+	assertCallerParamsPreserved(t, got, params)
 	config := got["config"].(map[string]any)
 	if !reflect.DeepEqual(config["mcp_servers.collab_runtime"], p.RuntimeMCP) || config["model_reasoning_effort"] != "high" {
 		t.Fatalf("runtime configuration lost overrides: %v", config)
@@ -45,6 +41,15 @@ func checkRuntimeLifecycle(t *testing.T, method string) {
 	frameAt(t, down)
 	if p.ThreadID() != "selected-thread" {
 		t.Fatal("did not bind the returned thread ID")
+	}
+}
+
+func assertCallerParamsPreserved(t *testing.T, got, original map[string]any) {
+	t.Helper()
+	for key, want := range original {
+		if key != "config" && !reflect.DeepEqual(got[key], want) {
+			t.Fatalf("%s changed: got %v, want %v", key, got[key], want)
+		}
 	}
 }
 

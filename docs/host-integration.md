@@ -112,6 +112,13 @@ previous owner before resuming a conversation here. The proxy binds the thread
 ID returned by Codex; a fork receives its own ID. Use the same broker agent ID
 to recover that inbox's durable messages, or a distinct ID for a separate agent.
 
+The tested Codex CLI 0.156.1 rejects permission overrides such as `--sandbox`
+and `--ask-for-approval` when resuming a remote task. Resume with the saved
+permissions; the launcher forwards those flags unchanged and does not silently
+discard them. Complete any Codex folder-trust prompt before expecting listening
+to activate. Use ordinary `codex` for commands unrelated to an interactive
+managed conversation, such as login, configuration management, or `exec`.
+
 Tools come from a required, session-local `collab_runtime` MCP server, connected
 through a stdio relay and a private Unix socket to the proxy's existing listener.
 It does not open another broker connection. This runtime configuration is
@@ -124,7 +131,7 @@ use the same listener. Resume/fork preserve saved developer instructions unless
 the caller explicitly supplies a replacement.
 
 Start the broker first. Listening begins after a successful start, resume, or fork,
-without a registration prompt or `collab_listen` call. The terminal remains the
+without a broker registration prompt or `listen` call. The terminal remains the
 operator approval interface. A failed automatic registration terminates the
 managed session with an error instead of leaving apparently working comms.
 Exiting the terminal stops the proxy and its App Server child.
@@ -208,7 +215,8 @@ steal a frame from host submission. Only message and error frames are submitted;
 acknowledgment events remain in the fallback inbox to avoid endless wake cycles.
 `wait_reply` selectively consumes one correlated reply/error from that same copy,
 preserving host submission and unrelated frames. It is exposed as
-`collab_wait_reply` by the App Server proxy. See [correlated replies](correlated-replies.md)
+`wait_reply` through `collab_runtime` (or restored legacy `collab_wait_reply`).
+See [correlated replies](correlated-replies.md)
 for outcomes and deduplication across host notifications and tool results.
 The runtime removes a copied peer message only after the broker confirms this
 receiving session's explicit `agent_acknowledged`. Successful host submission,
