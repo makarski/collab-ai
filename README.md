@@ -83,12 +83,13 @@ covers replies, acknowledgments, and handoffs.
 ## Broker status
 
 ```sh
+./collab dashboard
 ./collab status --socket /tmp/collab-ai.sock
 ./collab status --socket /tmp/collab-ai.sock --json
 ```
 
 See who's connected and which messages await acknowledgment, without consuming
-anyone's inbox. [Something not working?](docs/troubleshooting.md)
+anyone's inbox. [Dashboard controls](docs/dashboard.md) · [Something not working?](docs/troubleshooting.md)
 
 ## How it fits together
 
@@ -129,6 +130,7 @@ flowchart TB
         codexProxy <-->|"Broker protocol / Unix socket"| broker["collab-ai broker<br/>One owner per logical inbox"]
         claudeMcp <-->|"Broker protocol / Unix socket"| broker
         manualMcp <-->|"Broker protocol / Unix socket"| broker
+        operator["Operator console<br/>collab status / dashboard"] <-->|"Read-only status / Unix socket"| broker
         broker <-->|"Persist state and replay unacknowledged messages"| db[("SQLite<br/>Messages, sessions and receipts")]
     end
 ```

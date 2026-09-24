@@ -1,5 +1,8 @@
 # Broker status
 
+For a live terminal view using this same read-only API, run `collab dashboard`.
+See [dashboard setup and controls](dashboard.md).
+
 Build the operator CLI alongside the broker:
 
 ```sh

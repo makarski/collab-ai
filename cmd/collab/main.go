@@ -24,6 +24,9 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "dashboard" {
+		return runDashboard(ctx, args[1:], stdout, stderr)
+	}
 	cfg, code := parseOptions(args, stderr)
 	if code != -1 {
 		return code
@@ -57,13 +60,10 @@ type options struct {
 func parseOptions(args []string, stderr io.Writer) (options, int) {
 	var cfg options
 	if len(args) == 0 || args[0] != "status" {
-		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]")
+		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]")
 		return cfg, 2
 	}
-	socketDefault := os.Getenv("COLLAB_SOCKET_PATH")
-	if socketDefault == "" {
-		socketDefault = "/tmp/collab-ai.sock"
-	}
+	socketDefault := defaultSocket()
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&cfg.socket, "socket", socketDefault, "broker Unix socket path")
