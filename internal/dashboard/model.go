@@ -68,7 +68,7 @@ func newModel(ctx context.Context, cancel context.CancelFunc, cfg Config, fetch 
 func (m *model) Init() tea.Cmd { return m.refresh() }
 
 func (m *model) refresh() tea.Cmd {
-	if m.inFlight || m.quitting || m.ctx.Err() != nil {
+	if m.inFlight || m.stopped() {
 		return nil
 	}
 	m.inFlight = true
@@ -102,7 +102,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) receive(msg resultMsg) tea.Cmd {
-	if !m.inFlight || msg.id != m.request || m.ctx.Err() != nil {
+	if !m.inFlight || msg.id != m.request {
+		return nil
+	}
+	if m.stopped() {
 		return nil
 	}
 	m.inFlight = false
@@ -110,12 +113,16 @@ func (m *model) receive(msg resultMsg) tea.Cmd {
 	if msg.err != nil {
 		m.latest.Error = msg.err.Error()
 	}
-	valid := msg.snapshot.SnapshotAt != nil && (msg.snapshot.Health == "ready" || msg.snapshot.Health == "degraded")
+	valid := usableSnapshot(msg.snapshot)
 	m.retained = !valid
 	if valid {
 		m.snapshot, m.haveSnapshot = msg.snapshot, true
 		m.syncSelection()
 	}
+	return m.scheduleRefresh()
+}
+
+func (m *model) scheduleRefresh() tea.Cmd {
 	id, ctx, delay := m.request, m.ctx, m.cfg.Interval
 	return func() tea.Msg {
 		timer := time.NewTimer(delay)
@@ -134,4 +141,12 @@ func (m *model) stale(now time.Time) bool {
 		return false
 	}
 	return m.retained || now.Sub(*m.snapshot.SnapshotAt) > m.cfg.Interval+m.cfg.Timeout
+}
+
+func (m *model) stopped() bool { return m.quitting || m.ctx.Err() != nil }
+func usableSnapshot(snapshot protocol.StatusSnapshot) bool {
+	if snapshot.SnapshotAt == nil {
+		return false
+	}
+	return snapshot.Health == "ready" || snapshot.Health == "degraded"
 }

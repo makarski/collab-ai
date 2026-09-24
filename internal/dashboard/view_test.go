@@ -78,9 +78,9 @@ func TestDetailsScrollStopsAtBottomAndQuitHintSurvivesNarrowView(t *testing.T) {
 		t.Fatal("scroll overshot the bottom")
 	}
 	for _, width := range []int{35, 44, 45, 64, 65, 80, 100} {
-		if ansi.StringWidth(controls(width)) > width {
+		if ansi.StringWidth((viewport{width: width}).controls()) > width {
 			t.Fatalf("controls exceed %d columns", width)
 		}
-		requireText(t, controls(width), "q quit")
+		requireText(t, (viewport{width: width}).controls(), "q quit")
 	}
 }

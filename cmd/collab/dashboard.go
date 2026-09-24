@@ -18,8 +18,8 @@ func runDashboard(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	if code != -1 {
 		return code
 	}
-	output, ok := stdout.(*os.File)
-	if !ok || !term.IsTerminal(output.Fd()) || !term.IsTerminal(os.Stdin.Fd()) {
+	output := dashboardTerminal(stdout)
+	if output == nil {
 		fmt.Fprintln(stderr, "collab dashboard requires an interactive terminal; use collab status or collab status --json")
 		return 2
 	}
@@ -68,4 +68,15 @@ func defaultSocket() string {
 		return path
 	}
 	return "/tmp/collab-ai.sock"
+}
+
+func dashboardTerminal(stdout io.Writer) *os.File {
+	output, ok := stdout.(*os.File)
+	if !ok || output == nil {
+		return nil
+	}
+	if !term.IsTerminal(output.Fd()) || !term.IsTerminal(os.Stdin.Fd()) {
+		return nil
+	}
+	return output
 }

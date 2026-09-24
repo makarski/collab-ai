@@ -71,22 +71,19 @@ func TestRefreshSerializesRequestsAndRejectsOldResults(t *testing.T) {
 		t.Fatal("overlapping fetch scheduled")
 	}
 	m.Update(resultMsg{id: 0, snapshot: ready()})
-	if !m.inFlight || m.haveSnapshot {
-		t.Fatal("obsolete result accepted")
-	}
+	assertEqual(t, "obsolete response keeps request active", m.inFlight, true)
+	assertEqual(t, "obsolete response not displayed", m.haveSnapshot, false)
 	close(release)
 	m.Update(<-done)
-	if m.inFlight || !m.haveSnapshot {
-		t.Fatal("result not applied")
-	}
+	assertEqual(t, "request completed", m.inFlight, false)
+	assertEqual(t, "result applied", m.haveSnapshot, true)
 	prior := m.request
 	if m.refresh() == nil {
 		t.Fatal("manual refresh not scheduled")
 	}
 	m.Update(resultMsg{id: prior, snapshot: protocol.UnavailableStatus()})
-	if !m.inFlight || m.latest.Health != "ready" {
-		t.Fatal("late response replaced newer request")
-	}
+	assertEqual(t, "new request remains active", m.inFlight, true)
+	assertEqual(t, "late response ignored", m.latest.Health, "ready")
 	if _, cmd := m.Update(refreshMsg(prior)); cmd != nil {
 		t.Fatal("superseded timer scheduled a fetch")
 	}
@@ -169,9 +166,8 @@ func TestSelectionTracksSessionIdentityAndFilters(t *testing.T) {
 	next := ready()
 	next.Sessions = append([]protocol.SessionStatus{{AgentID: "aardvark", SessionID: "first", State: "stale"}}, next.Sessions...)
 	apply(m, next, nil)
-	if m.selected != wanted || m.cursor != 2 {
-		t.Fatal("refresh moved selection to another session")
-	}
+	assertEqual(t, "selected session after refresh", m.selected, wanted)
+	assertEqual(t, "selected row after insertion", m.cursor, 2)
 	press(m, "/")
 	press(m, "c")
 	press(m, "o")
@@ -181,13 +177,13 @@ func TestSelectionTracksSessionIdentityAndFilters(t *testing.T) {
 	press(m, "backspace")
 	press(m, "enter")
 	press(m, "s")
+	requireText(t, m.View().Content, "Sessions · state connected")
 	if len(m.rows()) != 2 {
 		t.Fatal("connected-state filter not applied")
 	}
 	press(m, "s")
-	if len(m.rows()) != 1 || m.rows()[0].id.session != "codex-old" {
-		t.Fatal("history filter did not select disconnected session")
-	}
+	assertEqual(t, "disconnected rows", len(m.rows()), 1)
+	assertEqual(t, "disconnected session", m.rows()[0].id.session, "codex-old")
 	press(m, "/")
 	press(m, "q")
 	if m.quitting {
@@ -205,9 +201,9 @@ func TestPendingInboxesAreNotDuplicatedAcrossHistory(t *testing.T) {
 	apply(m, ready(), nil)
 	press(m, "tab")
 	rows := m.rows()
-	if len(rows) != 2 || rows[0].pending != 2 || rows[1].id.agent != "offline" {
-		t.Fatalf("incorrect inbox counts: %+v", rows)
-	}
+	assertEqual(t, "pending inbox rows", len(rows), 2)
+	assertEqual(t, "codex pending", rows[0].pending, 2)
+	assertEqual(t, "offline inbox", rows[1].id.agent, "offline")
 	requireText(t, m.details(), "Pending recipient deliveries: 2", "logical inbox")
 	snapshot := ready()
 	snapshot.DurablePending = nil
@@ -216,4 +212,29 @@ func TestPendingInboxesAreNotDuplicatedAcrossHistory(t *testing.T) {
 		t.Fatal("unavailable pending counts synthesized")
 	}
 	requireText(t, m.View().Content, "Pending counts unavailable")
+}
+
+func assertEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: got %v, want %v", label, got, want)
+	}
+}
+
+func TestQuitCancelsScheduledRefresh(t *testing.T) {
+	m := fixture(t, nil)
+	m.cfg.Interval = time.Minute
+	m.refresh()
+	_, scheduled := m.Update(resultMsg{id: m.request, snapshot: ready()})
+	m.cancel()
+	done := make(chan tea.Msg, 1)
+	go func() { done <- scheduled() }()
+	select {
+	case msg := <-done:
+		if msg != nil {
+			t.Fatal("canceled timer delivered refresh")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("refresh timer did not cancel")
+	}
 }

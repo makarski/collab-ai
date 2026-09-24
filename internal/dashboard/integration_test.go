@@ -84,31 +84,22 @@ func TestDashboardRefreshLeavesRealBrokerOwnersAndMessagesIntact(t *testing.T) {
 	owner := m.snapshot.Sessions[1].SessionID
 	_, err := sender.SendMessage(context.Background(), bridge.SendRequest{To: "codex", Text: "private review", MessageID: "request"})
 	must(t, err)
-	if next(t, sender).Stage != protocol.StageAccepted {
-		t.Fatal("message not accepted")
-	}
-	if next(t, sender).Stage != protocol.StageAdapterReceived {
-		t.Fatal("adapter did not receive")
-	}
+	assertEqual(t, "accepted", next(t, sender).Stage, protocol.StageAccepted)
+	assertEqual(t, "received", next(t, sender).Stage, protocol.StageAdapterReceived)
 	for range 3 {
 		refreshBroker(t, m)
 	}
-	if *m.snapshot.ConnectedSessions != 2 || len(m.snapshot.Sessions) != 2 || m.snapshot.Sessions[1].SessionID != owner {
-		t.Fatal("dashboard changed ownership or registered an inspector")
-	}
-	if m.snapshot.DurablePending.Total != 1 {
-		t.Fatal("dashboard acknowledged delivery")
-	}
+	assertEqual(t, "owner count", *m.snapshot.ConnectedSessions, 2)
+	assertEqual(t, "session count", len(m.snapshot.Sessions), 2)
+	assertEqual(t, "receiver identity", m.snapshot.Sessions[1].SessionID, owner)
+	assertEqual(t, "pending preserved", m.snapshot.DurablePending.Total, 1)
 	message := next(t, receiver)
-	if message.MessageID != "request" || message.Type != protocol.TypeMsg {
-		t.Fatal("dashboard stole recipient message")
-	}
+	assertEqual(t, "recipient retained message", message.MessageID, "request")
+	assertEqual(t, "recipient frame type", message.Type, protocol.TypeMsg)
 	press(m, "q")
 	_, err = sender.SendMessage(context.Background(), bridge.SendRequest{To: "codex", Text: "after UI exit", MessageID: "second"})
 	must(t, err)
-	if next(t, sender).Stage != protocol.StageAccepted {
-		t.Fatal("UI exit stopped routing")
-	}
+	assertEqual(t, "routing after exit", next(t, sender).Stage, protocol.StageAccepted)
 	// Receipt events can precede the next message in the recipient's inbox.
 	var second protocol.Message
 	for range 3 {
@@ -117,7 +108,6 @@ func TestDashboardRefreshLeavesRealBrokerOwnersAndMessagesIntact(t *testing.T) {
 			break
 		}
 	}
-	if second.MessageID != "second" || second.Seq != message.Seq+1 {
-		t.Fatal("inspection allocated sequences or affected routing")
-	}
+	assertEqual(t, "second message", second.MessageID, "second")
+	assertEqual(t, "message sequence unaffected", second.Seq, message.Seq+1)
 }

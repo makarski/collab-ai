@@ -18,19 +18,28 @@ type row struct {
 var states = []string{"all", "transport_connected", "disconnected", "stale"}
 
 func (m *model) rows() []row {
-	var rows []row
 	query := strings.ToLower(m.filter)
 	if m.tab == 1 {
-		if m.snapshot.DurablePending == nil {
-			return rows
-		}
-		for _, recipient := range m.snapshot.DurablePending.Recipients {
-			if strings.Contains(strings.ToLower(recipient.AgentID), query) {
-				rows = append(rows, row{id: identity{agent: recipient.AgentID}, pending: recipient.Pending})
-			}
-		}
+		return m.inboxRows(query)
+	}
+	return m.sessionRows(query)
+}
+
+func (m *model) inboxRows(query string) []row {
+	var rows []row
+	if m.snapshot.DurablePending == nil {
 		return rows
 	}
+	for _, recipient := range m.snapshot.DurablePending.Recipients {
+		if strings.Contains(strings.ToLower(recipient.AgentID), query) {
+			rows = append(rows, row{id: identity{agent: recipient.AgentID}, pending: recipient.Pending})
+		}
+	}
+	return rows
+}
+
+func (m *model) sessionRows(query string) []row {
+	var rows []row
 	for i := range m.snapshot.Sessions {
 		session := &m.snapshot.Sessions[i]
 		if m.state != 0 && session.State != states[m.state] {
@@ -76,14 +85,15 @@ func (m *model) move(delta int) {
 
 func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
-	if key == "ctrl+c" || (!m.editing && key == "q") {
-		m.quitting = true
-		m.cancel()
-		return tea.Quit
+	if key == "ctrl+c" {
+		return m.quit()
 	}
 	if m.editing {
 		m.editFilter(msg)
 		return nil
+	}
+	if key == "q" {
+		return m.quit()
 	}
 	if delta, ok := movement(key, max(1, m.height-10)); ok {
 		m.move(delta)
@@ -135,4 +145,10 @@ func (m *model) editFilter(msg tea.KeyPressMsg) {
 		}
 	}
 	m.syncSelection()
+}
+
+func (m *model) quit() tea.Cmd {
+	m.quitting = true
+	m.cancel()
+	return tea.Quit
 }

@@ -2,38 +2,23 @@ package dashboard
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
-
-type palette struct{ title, accent, muted, selected lipgloss.Style }
-
-func newPalette(color bool) palette {
-	p := palette{}
-	if color {
-		p.title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#C4B5FD"))
-		p.accent = lipgloss.NewStyle().Foreground(lipgloss.Color("#67E8F9"))
-		p.muted = lipgloss.NewStyle().Foreground(lipgloss.Color("#9CA3AF"))
-		p.selected = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#4338CA"))
-	}
-	return p
-}
 
 func (m *model) View() tea.View {
 	lines := m.header()
 	bodyHeight := max(1, m.height-len(lines)-3)
-	lines = append(lines, m.body(bodyHeight)...)
-	lines = append(lines, "", m.styles.muted.Render(controls(m.width)),
+	lines = append(lines, m.body(viewport{m.width, bodyHeight})...)
+	lines = append(lines, "", m.styles.muted.Render((viewport{width: m.width}).controls()),
 		m.styles.muted.Render("Read-only · Connected means transport, not model activity."))
 	if m.width < 35 || m.height < 12 {
 		lines = []string{"collab-ai · " + safe(m.latest.Health), "Resize to at least 35 x 12", "q quit · collab status for text"}
 	}
-	v := tea.NewView(strings.Join(fit(lines, m.width, m.height), "\n"))
+	v := tea.NewView(strings.Join((viewport{m.width, m.height}).fit(lines), "\n"))
 	v.AltScreen = true
 	return v
 }
@@ -92,28 +77,29 @@ func (m *model) notices() string {
 	return strings.Join(notes, " · ")
 }
 
-func (m *model) body(height int) []string {
+func (m *model) body(area viewport) []string {
 	if m.help {
-		return m.scrolled(helpText, height, m.width)
+		return m.scrolled(helpText, area)
 	}
 	if m.detail {
-		return m.scrolled(m.details(), height, m.width)
+		return m.scrolled(m.details(), area)
 	}
 	if m.width >= 105 {
 		leftWidth := m.width / 2
-		left := m.roster(height, leftWidth)
-		right := m.scrolled(m.details(), height, m.width-leftWidth-3)
-		lines := make([]string, height)
+		left := m.roster(viewport{leftWidth, area.height})
+		right := m.scrolled(m.details(), viewport{area.width - leftWidth - 3, area.height})
+		lines := make([]string, area.height)
 		for i := range lines {
 			lines[i] = pad(at(left, i), leftWidth) + " │ " + at(right, i)
 		}
 		return lines
 	}
-	return m.roster(height, m.width)
+	return m.roster(area)
 }
 
-func (m *model) roster(height, width int) []string {
-	title := "Sessions · state " + states[m.state]
+func (m *model) roster(area viewport) []string {
+	height, width := area.height, area.width
+	title := "Sessions · state " + stateLabel(states[m.state])
 	if m.tab == 1 {
 		title = "Pending inboxes · one row per logical ID"
 	}
@@ -124,7 +110,7 @@ func (m *model) roster(height, width int) []string {
 	lines := []string{m.styles.accent.Render(title), "Filter: " + filter}
 	rows := m.rows()
 	if len(rows) == 0 {
-		return fit(append(lines, m.emptyMessage()), width, height)
+		return area.fit(append(lines, m.emptyMessage()))
 	}
 	count := max(1, height-3)
 	start := max(0, m.cursor-count+1)
@@ -136,7 +122,7 @@ func (m *model) roster(height, width int) []string {
 		lines = append(lines, line)
 	}
 	lines = append(lines, m.styles.muted.Render(fmt.Sprintf("%d/%d shown · enter opens full details", m.cursor+1, len(rows))))
-	return fit(lines, width, height)
+	return area.fit(lines)
 }
 
 func rowText(r row, width int) string {
@@ -162,10 +148,10 @@ func (m *model) emptyMessage() string {
 	return "No matching rows in this snapshot."
 }
 
-func (m *model) scrolled(text string, height, width int) []string {
-	lines := strings.Split(ansi.Wrap(text, width, ""), "\n")
-	offset := min(m.scroll, max(0, len(lines)-height))
-	return fit(lines[offset:], width, height)
+func (m *model) scrolled(text string, area viewport) []string {
+	lines := strings.Split(ansi.Wrap(text, area.width, ""), "\n")
+	offset := min(m.scroll, max(0, len(lines)-area.height))
+	return area.fit(lines[offset:])
 }
 
 func (m *model) scrollLimit() int {
@@ -177,7 +163,8 @@ func (m *model) scrollLimit() int {
 	return max(0, len(lines)-max(1, m.height-9))
 }
 
-func controls(width int) string {
+func (area viewport) controls() string {
+	width := area.width
 	if width < 45 {
 		return "? help · q quit"
 	}
@@ -188,34 +175,4 @@ func controls(width int) string {
 		return "↑↓ move  enter details  tab view  / filter  ? help  q quit"
 	}
 	return "↑↓ move  enter details  tab inboxes  / filter  s state  r refresh  ? help  q quit"
-}
-
-// Escape peer-controlled text before any layout or terminal styling. Bound error
-// text as well as identifiers; truncation is explicit, never a terminal control.
-func safe(s string) string {
-	runes := []rune(s)
-	suffix := ""
-	if len(runes) > 2048 {
-		runes, suffix = runes[:2048], "… [truncated]"
-	}
-	quoted := strconv.Quote(string(runes))
-	return quoted[1:len(quoted)-1] + suffix
-}
-
-func fit(lines []string, width, height int) []string {
-	out := make([]string, min(len(lines), height))
-	for i := range out {
-		out[i] = ansi.Truncate(lines[i], width, "…")
-	}
-	return out
-}
-func pad(s string, width int) string {
-	s = ansi.Truncate(s, width, "…")
-	return s + strings.Repeat(" ", max(0, width-ansi.StringWidth(s)))
-}
-func at(lines []string, i int) string {
-	if i < len(lines) {
-		return lines[i]
-	}
-	return ""
 }
