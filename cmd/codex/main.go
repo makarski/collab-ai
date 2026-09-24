@@ -21,12 +21,15 @@ func main() {
 	agent := flag.String("agent-id", "", "logical inbox ID (required)")
 	binary := flag.String("codex", "codex", "Codex executable")
 	terminal := flag.Bool("terminal", false, "launch the normal Codex terminal UI through this proxy; pass Codex arguments after --")
+	mcpSocket := flag.String("mcp-socket", "", "internal stdio relay to the managed session's MCP socket")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cfg := bridge.ClientConfig{SocketPath: *socket, AgentID: *agent, Harness: "codex-app-server"}
 	var err error
-	if *terminal {
+	if *mcpSocket != "" {
+		err = relayMCP(ctx, *mcpSocket, operatorIO{input: os.Stdin, output: os.Stdout})
+	} else if *terminal {
 		err = runTerminal(ctx, cfg, *binary, flag.Args())
 	} else {
 		err = run(ctx, cfg, *binary)
@@ -74,12 +77,26 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 	p := host.NewProxy(host.NewWire(input), host.NewWire(operator.output))
 	p.Listener = bridge.NewListener(ctx, client, p)
 	defer p.Listener.Close()
-	p.Tools, err = host.OpenTools(ctx, p.Listener)
+	return serveWithTools(ctx, p, operator.input, output)
+}
+
+func serveWithTools(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser) error {
+	tools, err := host.OpenTools(ctx, p.Listener)
 	if err != nil {
 		return err
 	}
-	defer p.Tools.Close()
-	return serve(ctx, p, operator.input, output)
+	p.Tools = tools
+	defer tools.Close()
+	endpoint, err := newRuntimeMCP(ctx, p.Listener, func() bool { return p.ThreadID() != "" })
+	if err != nil {
+		return err
+	}
+	defer endpoint.Close()
+	p.RuntimeMCP, err = endpoint.config()
+	if err != nil {
+		return err
+	}
+	return serve(ctx, p, operatorIn, output)
 }
 
 func serve(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser) error {

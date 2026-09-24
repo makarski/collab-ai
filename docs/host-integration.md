@@ -95,8 +95,44 @@ options before the separator. The only reserved Codex option is `--remote`,
 which selects the proxy connection. Argument forwarding does not guarantee
 support for every Codex workflow; the session limitations below still apply.
 
-Start the broker first. Listening begins after a successful `thread/start`,
-without a registration prompt or `collab_listen` call. The terminal remains the
+Resume an existing conversation, including one originally created with ordinary
+`codex`, or fork it into a new conversation:
+
+```sh
+./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+  resume SESSION_ID -C /absolute/path/to/project
+./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+  resume --last -C /absolute/path/to/project
+./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+  fork SESSION_ID -C /absolute/path/to/project
+```
+
+Codex owns session selection, history loading, and argument parsing. Close the
+previous owner before resuming a conversation here. The proxy binds the thread
+ID returned by Codex; a fork receives its own ID. Use the same broker agent ID
+to recover that inbox's durable messages, or a distinct ID for a separate agent.
+
+The tested Codex CLI 0.156.1 rejects permission overrides such as `--sandbox`
+and `--ask-for-approval` when resuming a remote task. Resume with the saved
+permissions; the launcher forwards those flags unchanged and does not silently
+discard them. Complete any Codex folder-trust prompt before expecting listening
+to activate. Use ordinary `codex` for commands unrelated to an interactive
+managed conversation, such as login, configuration management, or `exec`.
+
+Tools come from a required, session-local `collab_runtime` MCP server, connected
+through a stdio relay and a private Unix socket to the proxy's existing listener.
+It does not open another broker connection. This runtime configuration is
+injected into start/resume/fork requests and regenerated on every launch; no
+global MCP configuration is edited. The `collab_runtime` server name is reserved;
+requests supplying `config["mcp_servers.collab_runtime"]` are rejected explicitly.
+Use its tools for managed collaboration; an independently configured manual
+collab adapter is a different connection and must not claim the same inbox ID.
+Legacy `collab_*` dynamic tools restored from older managed conversations still
+use the same listener. Resume/fork preserve saved developer instructions unless
+the caller explicitly supplies a replacement.
+
+Start the broker first. Listening begins after a successful start, resume, or fork,
+without a broker registration prompt or `listen` call. The terminal remains the
 operator approval interface. A failed automatic registration terminates the
 managed session with an error instead of leaving apparently working comms.
 Exiting the terminal stops the proxy and its App Server child.
@@ -109,9 +145,9 @@ reported directly in the shell. Cancellation sends SIGTERM to Codex first so
 an npm launcher can forward shutdown to its native child, with a two-second
 fallback timeout for the launched process.
 
-This is a **new, single-thread** session. To start another new thread, exit and
-launch a new process. Resume and fork are not implemented, even in a fresh
-launcher process; it does not attach to a terminal already running. The CLI must
+Each launcher process manages **one conversation**, started, resumed, or forked.
+To switch conversations with `/new`, `/resume`, or `/fork`, exit and launch a new
+process instead. It does not attach to a terminal already running. The CLI must
 support `--remote unix://PATH` (available in the locally tested 0.156.1).
 The broker transport remains UDS; WebSocket framing here is only the CLI's local
 App Server connection. Keep the manual MCP setup for ordinary `codex` sessions
@@ -121,8 +157,8 @@ A normal Codex control session can run alongside a managed session. If both
 connect to the broker, give them distinct agent IDs: each ID has exactly one
 active inbox owner. Messages delivered to the managed thread do not wake or
 update the separate control conversation. Restarting the proxy with the same
-agent ID recovers unacknowledged durable broker messages, not conversation
-history.
+agent ID recovers unacknowledged durable broker messages. Use `resume` to also
+recover the selected conversation's history; a new thread has no old history.
 
 ## Codex App Server clients
 
@@ -137,19 +173,20 @@ Server protocol on stdin/stdout. It is a proxy for an operator-owned client, not
 a terminal chat UI. Use `--codex /absolute/path/to/codex` to choose the executable.
 
 The client initializes with `capabilities.experimentalApi: true`, sends
-`initialized`, and creates one new thread with `thread/start`. The proxy adds
-`collab_*` dynamic tools and messaging instructions to that thread. The caller's
+`initialized`, and selects one thread with `thread/start`, `thread/resume`, or
+`thread/fork`. The proxy adds the required runtime MCP configuration. The caller's
 existing dynamic tools, sandbox, approval policy, and other thread parameters are
-preserved. `collab_` names are reserved. A failed start can be retried; a second
-new thread needs a new proxy process. Resume and fork are rejected. Existing desktop conversations
-are not attached or controlled by this integration.
+preserved. Legacy `collab_` names remain reserved for restored collaboration
+tools. A failed lifecycle request can be retried; selecting a second conversation
+needs a new proxy process. Existing running desktop conversations are not attached
+or controlled by this integration.
 
 Operator request IDs must not start with `collab-`; that namespace is reserved
 for injected requests. Replies arriving after an injected request times out are
 consumed internally. Operator responses to host approval requests pass through
 regardless of their ID.
 
-After the successful thread creation response is forwarded to the client, the
+After the successful thread lifecycle response is forwarded to the client, the
 proxy activates listening automatically. Its internal MCP tool discovery stays
 passive. Start normal operator work using `turn/start`. Incoming frames enter
 the managed thread with:
@@ -179,7 +216,8 @@ steal a frame from host submission. Only message and error frames are submitted;
 acknowledgment events remain in the fallback inbox to avoid endless wake cycles.
 `wait_reply` selectively consumes one correlated reply/error from that same copy,
 preserving host submission and unrelated frames. It is exposed as
-`collab_wait_reply` by the App Server proxy. See [correlated replies](correlated-replies.md)
+`wait_reply` through `collab_runtime` (or restored legacy `collab_wait_reply`).
+See [correlated replies](correlated-replies.md)
 for outcomes and deduplication across host notifications and tool results.
 The runtime removes a copied peer message only after the broker confirms this
 receiving session's explicit `agent_acknowledged`. Successful host submission,
