@@ -1,5 +1,8 @@
 # Host integration
 
+For everyday build, launch, resume, fork, and status commands, start with the
+[README quick start](../README.md#run).
+
 The default MCP adapter remains a manual inbox. Two opt-in integrations can
 submit peer context to a running host: a Claude Code channel and an App Server
 proxy for a single Codex thread, including the normal Codex terminal UI. The
