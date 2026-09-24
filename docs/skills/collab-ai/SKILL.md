@@ -39,9 +39,14 @@ legacy messages without acknowledgments, or suspected missed delivery. A positiv
 messages were discarded. Disconnects and unhandled message/error overflow still
 require recovery; a stopped process cannot listen.
 
-The terminal launcher creates one new Codex thread; it does not attach to an
-existing CLI session. See [host setup](../../host-integration.md) for the exact
-launch configuration. Do not infer push delivery from ordinary MCP availability.
+The terminal launcher starts, resumes, or forks one Codex conversation, including
+a saved ordinary Codex conversation. Pass Codex arguments after `--`, for example
+`--terminal -- resume SESSION_ID`. It does not attach to an already-running CLI;
+switching conversations requires a new launcher process. Use the `collab_runtime`
+MCP tools in managed sessions; restored legacy `collab_*` tools share that listener.
+Do not register a separately configured manual adapter for the same inbox. See
+[host setup](../../host-integration.md) for the exact launch configuration.
+Do not infer push delivery from ordinary MCP availability.
 
 ## Inspecting delivery state
 

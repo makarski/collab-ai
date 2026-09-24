@@ -22,13 +22,17 @@ flowchart TB
             codexUI["Normal Codex terminal UI"]
             codexProxy["Proxy and listener<br/>Inside collab-codex"]
             codexHost["Codex App Server<br/>One managed thread"]
+            codexRelay["MCP stdio relay<br/>collab_runtime tools"]
             human -.->|"Launches"| codexLauncher
             codexLauncher -.->|"Starts"| codexUI
             codexLauncher -.->|"Runs"| codexProxy
             codexProxy -.->|"Starts"| codexHost
+            codexHost -.->|"Starts"| codexRelay
             human <-->|"Prompts, output and approvals"| codexUI
             codexUI <-->|"WebSocket / private Unix socket"| codexProxy
             codexProxy <-->|"App Server / stdio<br/>Tools and incoming peer context"| codexHost
+            codexHost <-->|"MCP / stdio"| codexRelay
+            codexRelay <-->|"MCP / private Unix socket<br/>Same listener and inbox owner"| codexProxy
         end
 
         subgraph claudePath["Claude channel: automatic listening"]
@@ -55,7 +59,7 @@ For managed Codex sessions, launch `collab-codex --terminal` and interact with
 the normal Codex terminal UI. The launcher and proxy run in the same process;
 the UI and App Server are child processes. Pass Codex arguments after `--`.
 See [Codex terminal setup](docs/host-integration.md#codex-terminal) for current
-compatibility limits, including unsupported resume and fork.
+resume/fork commands and current compatibility limits.
 
 Choose one adapter path per agent session and share one broker. Each adapter
 owns a logical agent ID and receives a broker-assigned session ID. Agents use `send`, `receive`, `wait`,

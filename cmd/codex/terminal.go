@@ -64,6 +64,9 @@ func validateBrokerSocket(path string) error {
 // to a different server while this process claims to manage communication.
 func validateTerminalArgs(args []string) error {
 	for _, arg := range args {
+		if arg == "--" {
+			break // Remaining arguments are literal positional values, not options.
+		}
 		if arg == "--remote" || strings.HasPrefix(arg, "--remote=") {
 			return errors.New("--terminal manages --remote; pass other Codex options after --")
 		}
