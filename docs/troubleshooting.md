@@ -10,7 +10,7 @@
 | Codex resume rejects permission flags | Resume with saved permissions; remove `--sandbox` / `--ask-for-approval` overrides. |
 | Delivery stops after a disconnect | Restart the affected adapter or launcher with the same agent ID. Accepted, unacknowledged durable messages replay; use `resume` to also restore Codex conversation history. |
 
-The broker refuses an existing socket path. After a crash, verify its broker is
+The broker refuses an existing socket path. After a crash, verify the broker is
 no longer running before removing a stale socket. Normal shutdown cleans up its
 own socket. The broker's environment variables are optional:
 `COLLAB_SOCKET_PATH` defaults to `/tmp/collab-ai.sock`, and `COLLAB_DB_PATH` defaults
