@@ -1,6 +1,6 @@
 # Broker wire protocol
 
-[Back to the README](../README.md#protocol). This reference covers clients that
+[Back to the README](../README.md#documentation). This reference covers clients that
 connect directly to the broker; agent setup is in the [quick start](../README.md#run).
 
 Newline-delimited JSON, one object per line. Messaging connections start with a
