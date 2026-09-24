@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -74,5 +75,43 @@ func TestFailedResumeAllowsRetryWithoutChangingIdentity(t *testing.T) {
 	check(t, p.FromOperator(context.Background(), request))
 	if len(frameAt(t, down).Error) == 0 || p.ThreadID() != "saved" {
 		t.Fatal("a second lifecycle request changed the managed destination")
+	}
+}
+
+func TestRuntimeConfigCollisionAllowsCorrectedRetry(t *testing.T) {
+	for _, method := range []string{"thread/start", "thread/resume", "thread/fork"} {
+		for _, value := range []string{`{"command":"/caller-server"}`, `null`} {
+			t.Run(method+"/"+value, func(t *testing.T) {
+				checkRuntimeConfigCollision(t, method, value)
+			})
+		}
+	}
+}
+
+func checkRuntimeConfigCollision(t *testing.T, method, value string) {
+	t.Helper()
+	p, up, down := proxyFixture(t)
+	p.RuntimeMCP = map[string]any{"command": "/launcher"}
+	request := Frame{ID: json.RawMessage(`1`), Method: method,
+		Params: json.RawMessage(`{"threadId":"saved","config":{"mcp_servers.collab_runtime":` + value + `}}`)}
+	check(t, p.FromOperator(context.Background(), request))
+	rejected := frameAt(t, down)
+	if string(rejected.ID) != "1" || !strings.Contains(string(rejected.Error), "mcp_servers.collab_runtime is reserved") {
+		t.Fatalf("expected reserved config error for request 1: %+v", rejected)
+	}
+	if len(up) != 0 || p.ThreadID() != "" {
+		t.Fatal("rejected request was forwarded or bound a thread")
+	}
+	request.ID = json.RawMessage(`2`)
+	request.Params = json.RawMessage(`{"threadId":"saved"}`)
+	check(t, p.FromOperator(context.Background(), request))
+	forwarded := frameAt(t, up)
+	if string(forwarded.ID) != "2" {
+		t.Fatalf("corrected request was not forwarded: %+v", forwarded)
+	}
+	check(t, p.FromHost(context.Background(), Frame{ID: forwarded.ID, Result: json.RawMessage(`{"thread":{"id":"selected"}}`)}))
+	frameAt(t, down)
+	if p.ThreadID() != "selected" {
+		t.Fatal("corrected request did not bind the returned thread")
 	}
 }

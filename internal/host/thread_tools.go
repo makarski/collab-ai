@@ -25,6 +25,9 @@ func (p *Proxy) addRuntimeConfig(params map[string]any) error {
 	if params["config"] != nil && !ok {
 		return errors.New("thread config must be an object")
 	}
+	if _, exists := config["mcp_servers.collab_runtime"]; exists {
+		return errors.New("mcp_servers.collab_runtime is reserved by this proxy")
+	}
 	if config == nil {
 		config = make(map[string]any)
 	}

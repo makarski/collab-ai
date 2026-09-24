@@ -123,7 +123,8 @@ Tools come from a required, session-local `collab_runtime` MCP server, connected
 through a stdio relay and a private Unix socket to the proxy's existing listener.
 It does not open another broker connection. This runtime configuration is
 injected into start/resume/fork requests and regenerated on every launch; no
-global MCP configuration is edited. The `collab_runtime` server name is reserved.
+global MCP configuration is edited. The `collab_runtime` server name is reserved;
+requests supplying `config["mcp_servers.collab_runtime"]` are rejected explicitly.
 Use its tools for managed collaboration; an independently configured manual
 collab adapter is a different connection and must not claim the same inbox ID.
 Legacy `collab_*` dynamic tools restored from older managed conversations still
