@@ -17,6 +17,7 @@ The code and agent processes live inside a sandbox you control.
 | Claude receives while idle | Interactive channel adapter | Host/account policy can block delivery; SDK delivery needs separate validation |
 | Return to a conversation | Managed Codex start/resume/fork, including ordinary saved conversations | Resume is not attachment to an already running desktop conversation |
 | Inspect collaboration | Read-only status and Bubble Tea dashboard | No human chat, approval controls, or workspace lifecycle UI |
+| Bound autonomous token use | No enforced token budget | Hard combined and per-agent caps are a prerequisite for the unattended experiment |
 | Run remotely | All components can run together on a remote Linux machine | No remote broker transport or sandbox provisioning |
 
 See [host integration](host-integration.md), [durable inboxes](durable-inboxes.md),
@@ -59,6 +60,68 @@ project's license before copying implementation code into this MIT repository.
 CloudCLI for a combined web interface and Happy for mobile access. Build a custom
 surface only after those trials identify a specific integration gap. The useful
 collab-ai contribution is reliable cross-agent handoffs and their visibility.
+This baseline is eligible for unattended testing only once the hard-budget
+requirements below are proven; persistent terminals alone do not enforce them.
+
+## Hard token caps: required before unattended work
+
+The experiment must enforce a numeric token cap for the whole run and a separate
+cap for each agent, outside model instructions. Choose the values before any live
+run; there is no unlimited default. A warning, turn count, dollar estimate, or
+instruction to stop is not a hard token ceiling. This requirement is not yet
+implemented in collab-ai.
+
+Count cumulative input and output tokens across every model request, including
+repeated context, cache reads/writes, reasoning, compaction, retries, and subagents.
+Normalize provider fields so cached tokens or reasoning already included in a
+total are not added twice. Context-window occupancy is not cumulative usage.
+Unmetered auxiliary model calls must be disabled or covered by the same budget.
+
+Enforcement must meet these conditions:
+
+- **Reserve before dispatch.** Every model request needs an atomic reservation
+  against both the agent and shared budget, covering a proven upper bound on
+  input plus provider-enforced maximum output. Concurrent requests share the
+  same ledger. Refuse requests whose bound does not fit. A turn can contain many
+  requests, so admission at `turn/start` alone is insufficient.
+- **Cover every execution path.** Automatic peer delivery, retries, compaction,
+  forks, child agents, and model calls launched through tools cannot bypass the
+  gate. The sandbox must prevent alternate credentials or direct provider access
+  from bypassing enforcement. Agents cannot change their limits or ledger.
+- **Persist the budget.** Reconnects, crashes, process restarts, and conversation
+  resets do not replenish it. Reconcile usage once per request; do not double
+  count cumulative reports. Keep uncertain in-flight reservations charged until
+  final usage is known. Missing telemetry or an unavailable ledger blocks further
+  requests rather than granting more budget.
+- **Stop without overshoot.** Reserved in-flight requests may finish within their
+  bounds; cancellation does not guarantee that provider-side generation stops
+  or refunds a reservation. At exhaustion, latch the run as budget-exhausted and
+  prevent further model work. Incoming messages remain pending; do not fabricate
+  acknowledgments. Keep operator status accessible. Only an explicit human budget
+  change may authorize additional work; reconnecting is not authorization.
+
+Runtime documentation currently establishes useful accounting/control primitives,
+but not this end-to-end guarantee:
+
+| Interface | Documented primitive | Why it does not establish our hard cap |
+|---|---|---|
+| [Claude CLI](https://code.claude.com/docs/en/cli-reference) | `--max-budget-usd` and `--max-turns` in print mode | Dollars/turns differ from tokens; these flags do not establish enforcement for our interactive channel session or a shared cross-agent ledger |
+| [Claude Agent SDK usage](https://code.claude.com/docs/en/agent-sdk/cost-tracking) | Per-step and result usage; whole-tree accounting requires the appropriate fields | Accounting is not pre-dispatch admission, and incomplete/late usage cannot bound in-flight work |
+| [Codex App Server](https://learn.chatgpt.com/docs/app-server) | `thread/tokenUsage/updated` events and `turn/interrupt` | Observing consumption then interrupting can overshoot; these primitives alone do not prove a strict aggregate ceiling |
+
+A provider-enforced allowance or a request gateway could supply the enforcement
+boundary, but its exact token semantics and compatibility must be verified.
+If a native CLI or subscription route cannot expose enforceable bounds for all
+requests, it is **ineligible for the hard-capped experiment**. SDK or API access
+alone is not proof either. Revisit the host integration rather than silently
+substituting a best-effort watchdog.
+
+Acceptance tests must force exhaustion during concurrent requests, delayed usage,
+retries, and a restart. Total completed usage plus outstanding reservations must
+never exceed either configured cap. Reject bypass attempts, preserve queued
+messages and session history, and verify that UI reconnection does not resume
+budget-exhausted work. Prove this with a controlled provider fixture before any
+live unattended run.
 
 ## Sandbox shape
 
@@ -111,6 +174,11 @@ new authenticated transport or an explicitly managed bridge.
 
 ## Smallest useful experiment
 
+**Entry gate:** implement and validate the hard token caps above, including the
+chosen runtime's request boundary, then set explicit numeric limits. Until then,
+limit work to setup, read-only investigation, and controlled fixtures; do not run
+the detached live-agent experiment.
+
 1. Create a separate Colima/Incus profile with explicit mounts, resources, and
    persistent workspace storage. Record versions and configuration. Start with
    system containers; nested VMs are unnecessary for this first experiment.
@@ -129,7 +197,8 @@ new authenticated transport or an explicitly managed bridge.
    stopping a workspace must; failed turns must not be silently resubmitted.
 
 The initial spike succeeds when the existing collaboration behavior survives
-operator disconnects inside the sandbox. A combined UI succeeds when it also
+operator disconnects inside the sandbox **without exceeding either token cap**.
+A combined UI succeeds when it also
 routes prompts and approvals to the correct workspace/agent/session, preserves
 history, and cannot confuse a broker acknowledgment with a human authorization.
 
