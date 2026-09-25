@@ -20,16 +20,21 @@ Repeatable sandbox setup. Local messaging. Your usual terminal UI.
 [Diagram source (PlantUML)](docs/assets/sandbox.puml)
 
 Provision a resource-limited, unprivileged Incus container through reviewed
-Terraform or OpenTofu plans. On macOS, bootstrap a dedicated Colima host:
+Terraform or OpenTofu plans. On **macOS**, install the host tools, then bootstrap
+the dedicated Colima VM:
 
 ```sh
-# From the cloned repository, after installing the prerequisites in the guide
+brew install colima incus opentofu python
+
+# From the cloned repository
 python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
 
-Follow the [sandbox setup guide](docs/sandbox.md) for prerequisites, image pinning,
-provisioning, and teardown. Linux uses an existing Incus host.
+On macOS, `incus` is the **client**; Colima provides the Linux VM running the
+**Incus server**. On **Linux**, install Incus directly; Colima is not needed.
+Follow the [sandbox setup guide](docs/sandbox.md) for version requirements,
+image pinning, provisioning, and teardown.
 
 **Current scope:** the sandbox is an empty, offline workspace with no host mounts
 or credentials. Agent installation inside it and hard token caps are not yet
@@ -111,47 +116,9 @@ anyone's inbox. [Dashboard controls](docs/dashboard.md) · [Something not workin
 
 ## How it fits together
 
-```mermaid
-flowchart TB
-    subgraph local["One machine"]
-        subgraph codexPath["Managed Codex: automatic listening"]
-            human["Human operator"]
-            codexLauncher["collab-codex --terminal<br/>Launch command"]
-            codexUI["Normal Codex terminal UI"]
-            codexProxy["Proxy and listener<br/>Inside collab-codex"]
-            codexHost["Codex App Server<br/>One managed thread"]
-            codexRelay["MCP stdio relay<br/>collab_runtime tools"]
-            human -.->|"Launches"| codexLauncher
-            codexLauncher -.->|"Starts"| codexUI
-            codexLauncher -.->|"Runs"| codexProxy
-            codexProxy -.->|"Starts"| codexHost
-            codexHost -.->|"Starts"| codexRelay
-            human <-->|"Prompts, output and approvals"| codexUI
-            codexUI <-->|"WebSocket / private Unix socket"| codexProxy
-            codexProxy <-->|"App Server / stdio<br/>Tools and incoming peer context"| codexHost
-            codexHost <-->|"MCP / stdio"| codexRelay
-            codexRelay <-->|"MCP / private Unix socket<br/>Same listener and inbox owner"| codexProxy
-        end
+![Architecture: managed Codex, Claude channel, and manual MCP paths connect to a shared local broker and durable SQLite inboxes.](docs/assets/architecture.svg)
 
-        subgraph claudePath["Claude channel: automatic listening"]
-            claude["Claude Code<br/>Channel opt-in and org policy required"]
-            claudeMcp["collab-mcp<br/>--claude-channel --auto-listen"]
-            claude <-->|"MCP / stdio<br/>Tools and channel notifications"| claudeMcp
-        end
-
-        subgraph manualPath["Alternative: manual inbox checks"]
-            agent["Codex or Claude Code"]
-            manualMcp["collab-mcp<br/>Default mode"]
-            agent <-->|"MCP / stdio<br/>send, receive, wait_reply, acknowledge"| manualMcp
-        end
-
-        codexProxy <-->|"Broker protocol / Unix socket"| broker["collab-ai broker<br/>One owner per logical inbox"]
-        claudeMcp <-->|"Broker protocol / Unix socket"| broker
-        manualMcp <-->|"Broker protocol / Unix socket"| broker
-        operator["Operator console<br/>collab status / dashboard"] <-->|"Read-only status / Unix socket"| broker
-        broker <-->|"Persist state and replay unacknowledged messages"| db[("SQLite<br/>Messages, sessions and receipts")]
-    end
-```
+[Diagram source (PlantUML)](docs/assets/architecture.puml)
 
 Dotted arrows show startup; solid arrows show communication. Agents share one
 machine and one broker, with a separate inbox for each agent.

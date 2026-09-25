@@ -18,6 +18,12 @@ On **macOS**, install Homebrew first if needed, then:
 brew install colima incus opentofu python
 ```
 
+On macOS, the Homebrew `incus` package installs the **client**. The Incus server
+needs Linux: Colima supplies the Linux VM and runs the server inside it using
+its [Incus runtime](https://colima.run/docs/runtimes/#incus). Both tools are
+needed for this local macOS setup. Native Linux can run the server directly
+without Colima.
+
 Use Colima 0.10.3 or later and Python 3.9+. The bootstrap uses Apple's VZ driver.
 OpenTofu 1.9+ or Terraform 1.9+ is required; commands below use `tofu`, which can
 be replaced with `terraform`. The Incus provider is pinned to 1.2.0 with a
