@@ -103,24 +103,106 @@ working directory/state per deployment and serialize operations through the
 tool's state lock. Do not apply a second empty state against the same project,
 or automatically import someone else's resources.
 
-## 4. Inspect the workspace
+## 4. Inspect and use the workspace
 
-Use the bootstrap's verified named remote explicitly. On Linux, replace
-`colima-collab-ai` with your local server's remote name (usually `local`). If you
-changed `project_name`, replace `collab-ai` too:
+The names refer to different layers:
+
+| Layer | macOS | Native Linux |
+| --- | --- | --- |
+| Colima profile (host VM) | `collab-ai` | Not used |
+| Incus remote (server connection) | `colima-collab-ai:` | `local:` |
+| Incus project (resource namespace) | `--project collab-ai` | `--project collab-ai` |
+| Container (inside that project) | `workspace` | `workspace` |
+
+A remote needs its trailing colon. `collab-ai:` is not the macOS remote name;
+`colima-collab-ai:` is. The project name does not create or select a remote.
+Use `incus remote list` to see the server connections known to your client.
+If you changed `project_name`, substitute that value below.
+
+### macOS
 
 ```sh
+# Start/reuse the dedicated VM and register its Incus remote (from the repo)
+python3 scripts/sandbox-host.py apply
+
+# Check the VM, registered server connections, and available projects
+colima list
+incus remote list
+incus project list colima-collab-ai:
+
+# After the Terraform/OpenTofu apply in step 3
 incus --project collab-ai list colima-collab-ai:
 incus --project collab-ai config show colima-collab-ai:workspace --expanded
-incus --project collab-ai exec colima-collab-ai:workspace -- cat /etc/os-release
-incus --project collab-ai exec colima-collab-ai:workspace -- ip -brief link
+incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh
 ```
 
-Expect one `workspace` container, the configured resource limits, only a managed
-root disk, and only loopback networking. The commands above run as the operator;
-`incus exec` defaults to root inside the unprivileged container. This is not yet
-an agent-user installation. Container isolation shares the Linux host kernel;
-it is not a separate VM per agent.
+`colima list` should show the host VM as `Running`; the Incus list should show
+`workspace` as `RUNNING`. These are separate power states. Colima removes its
+Incus remote when the profile stops and adds it again at startup, so a missing
+`colima-collab-ai` remote can simply mean the VM is stopped.
+
+### Native Linux
+
+Run these as a user with access to the initialized local Incus server:
+
+```sh
+# Check the server connection and available projects
+incus remote list
+incus info local:
+incus project list local:
+
+# After the Terraform/OpenTofu apply in step 3
+incus --project collab-ai list local:
+incus --project collab-ai config show local:workspace --expanded
+incus --project collab-ai exec local:workspace -- /bin/sh
+```
+
+On Linux, `local:` connects directly to the Linux server's Unix socket. There
+is no Colima VM to start. On macOS, the default `local:` remote cannot run a
+server natively; use the explicit `colima-collab-ai:` remote instead. Neither
+set of commands requires changing the client's default remote.
+
+If the **project is missing**, complete steps 2–3: starting the host alone does
+not create `collab-ai` or `workspace`. If the **container is stopped**, set
+`running = true` in your variables and plan/apply again. Type `exit` to leave
+the container shell without stopping it.
+
+Expect only a managed root disk and loopback networking. In the container shell,
+`ip -brief link` shows its interfaces. The shell runs as root inside an
+unprivileged container; this is not yet an agent-user installation. Container
+isolation shares the Linux host kernel, rather than giving each agent its own VM.
+
+### Incus web UI
+
+The bootstrap does **not launch a web UI**. Incus supports an optional web
+interface; when the server has its UI assets installed, open it with:
+
+```sh
+# macOS: start the collab-ai Colima profile first
+incus webui colima-collab-ai:
+
+# Native Linux
+incus webui local:
+```
+
+Run only the command for your platform. `incus webui` prints a temporary
+localhost URL and attempts to open your browser. Keep that terminal running;
+Ctrl+C stops the local UI proxy, not the Incus server or containers. Select the
+`collab-ai` project in the UI after provisioning it. This works through the
+existing Unix-socket remote without enabling a public HTTPS listener.
+
+If it reports **"The server doesn't have a web UI installed"**, the UI assets
+are missing on the **Linux Incus server**. Install the appropriate UI package
+there (for example `incus-ui-canonical` with the
+[Zabbly packages](https://github.com/zabbly/incus#other-packages)); installing the
+macOS client does not install server-side UI assets. UI availability depends on
+the server image/distribution. See the
+[web UI command](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/webui/)
+and its [local proxy implementation](https://github.com/lxc/incus/blob/main/cmd/incus/webui_unix.go).
+
+Use the UI to inspect the environment. Make managed configuration changes through
+Terraform/OpenTofu so the next apply does not undo manual edits. The Incus UI
+manages infrastructure; `collab dashboard` shows agent connections and inboxes.
 
 ## Stop or remove
 

@@ -38,7 +38,19 @@ image pinning, provisioning, and teardown.
 
 **Current scope:** the sandbox is an empty, offline workspace with no host mounts
 or credentials. Agent installation inside it and hard token caps are not yet
-implemented. The commands below run collaboration sessions on your host.
+implemented. The agent commands in [Run](#run) launch sessions on your host.
+
+After starting the host, use its **Incus remote** below. `collab-ai` is the
+project name; on macOS the remote is **`colima-collab-ai:`**, including the colon.
+
+| Action | macOS | Native Linux |
+| --- | --- | --- |
+| List projects | `incus project list colima-collab-ai:` | `incus project list local:` |
+| List provisioned containers | `incus --project collab-ai list colima-collab-ai:` | `incus --project collab-ai list local:` |
+| Open optional web UI | `incus webui colima-collab-ai:` | `incus webui local:` |
+
+The UI requires server-side UI assets and stays open while the command runs.
+See [status, shell access, and UI setup](docs/sandbox.md#4-inspect-and-use-the-workspace).
 
 ## Run
 
