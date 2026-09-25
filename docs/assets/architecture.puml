@@ -30,6 +30,9 @@ rectangle {
 .AgentRuntime {
     BackgroundColor $agentColor
 }
+.Socket {
+    BackgroundColor #fce4f0
+}
 .startupFlow {
     LineColor #indigo
     LineThickness 1
@@ -75,15 +78,18 @@ rectangle "One machine" as Local {
     }
 
     rectangle "Claude channel · automatic listening" as ClaudePath {
+        actor "Human operator" as ClaudeHuman
         component "=Claude Code\n//Channel opt-in and org policy required//" as Claude <<AgentRuntime>>
         component "=collab-mcp\n~--claude-channel ~--auto-listen" as ClaudeMCP
     }
 
     rectangle "Alternative · manual inbox checks" as ManualPath {
+        actor "Human operator" as ManualHuman
         component "=Codex or Claude Code" as ManualAgent <<AgentRuntime>>
         component "=collab-mcp\n//Default mode//" as ManualMCP
     }
 
+    file "=Broker socket · UDS\n/tmp/collab-ai.sock\n//Broker-owned endpoint (default path)//" as BrokerSocket <<Socket>>
     component "=collab-ai broker\n//One owner per logical inbox//" as Broker <<Broker>>
     component "=Operator console\ncollab status / dashboard" as Console <<HumanControl>>
     database "=SQLite\nMessages, sessions and receipts" as Store
@@ -103,13 +109,19 @@ Proxy <-down-> AppServer <<sessionFlow>> : App Server / stdio\nTools and incomin
 AppServer <-down-> Relay <<sessionFlow>> : MCP / stdio
 Relay <--> Proxy <<sessionFlow>> : MCP / private Unix socket\nSame listener and inbox owner
 
+ClaudeHuman .down.> Claude <<startupFlow>> : launches
+ClaudeHuman <-down-> Claude <<controlFlow>> : prompts, output\nand approvals
+ManualHuman .down.> ManualAgent <<startupFlow>> : launches
+ManualHuman <-down-> ManualAgent <<controlFlow>> : prompts, output\nand approvals
+
 Claude <-down-> ClaudeMCP <<sessionFlow>> : MCP / stdio\nTools and channel notifications
 ManualAgent <-down-> ManualMCP <<sessionFlow>> : MCP / stdio\nsend, receive, wait_reply, acknowledge
 
-Proxy <--> Broker <<peerFlow>> : Broker protocol / Unix socket
-ClaudeMCP <--> Broker <<peerFlow>> : Broker protocol / Unix socket
-ManualMCP <--> Broker <<peerFlow>> : Broker protocol / Unix socket
-Console <--> Broker <<controlFlow>> : Read-only status / Unix socket
+Proxy <--> BrokerSocket <<peerFlow>> : Broker protocol
+ClaudeMCP <--> BrokerSocket <<peerFlow>> : Broker protocol
+ManualMCP <--> BrokerSocket <<peerFlow>> : Broker protocol
+Console <--> BrokerSocket <<controlFlow>> : Read-only status
+BrokerSocket <--> Broker <<peerFlow>> : accepts connections
 Broker <--> Store : Persist state and replay\nunacknowledged messages
 
 legend bottom

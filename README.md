@@ -2,16 +2,11 @@
 
 **A local foundation for sandboxed AI collaboration.**
 
-Connect Codex and Claude Code, exchange reviews and handoffs, and provision an
-isolated Linux workspace with Incus. Keep control from your terminal, with
-durable inboxes and automatic message delivery in managed Codex sessions—even
-while idle.
+Connect Codex and Claude Code with durable inboxes and automatic message delivery.
+Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 
-Repeatable sandbox setup. Local messaging. Your usual terminal UI.
-[MIT licensed](LICENSE).
-
-[Sandbox setup](#set-up-a-sandbox) · [Agent setup](docs/quickstart.md) · [Resume / fork](#resume-or-fork) ·
-[Claude setup](#claude-code) · [Status](#broker-status) · [Docs](#documentation)
+[Agent setup](#run) · [Sandbox setup](#set-up-a-sandbox) ·
+[Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
 
 ## Set up a sandbox
 
@@ -19,48 +14,35 @@ Repeatable sandbox setup. Local messaging. Your usual terminal UI.
 
 [Diagram source (PlantUML)](docs/assets/sandbox.puml)
 
-Provision a resource-limited, unprivileged Incus container through reviewed
-Terraform or OpenTofu plans. On **macOS**, install the host tools, then bootstrap
-the dedicated Colima VM:
+**Today:** the sandbox is an empty, offline container. Agents run on your host;
+agent installation inside the sandbox and hard token caps are not implemented.
+
+On **macOS**, install the tools and start the dedicated host from this repository:
 
 ```sh
 brew install colima incus opentofu python
-
-# From the cloned repository
-python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
 
-On macOS, `incus` is the **client**; Colima provides the Linux VM running the
-**Incus server**. On **Linux**, install Incus directly; Colima is not needed.
-Follow the [sandbox setup guide](docs/sandbox.md) for version requirements,
-image pinning, provisioning, and teardown.
+Incus is the Mac client; Colima runs its Linux server. On **Linux**, install Incus
+directly; Colima is unnecessary. **Starting the host does not create the workspace.**
+Follow the [sandbox guide](docs/sandbox.md) to pin an image and provision it.
 
-**Current scope:** the sandbox is an empty, offline workspace with no host mounts
-or credentials. Agent installation inside it and hard token caps are not yet
-implemented. The agent commands in [Run](#run) launch sessions on your host.
+Stop the dedicated Mac VM, keeping its data:
 
-After starting the host, use its **Incus remote** below. `collab-ai` is the
-project name; on macOS the remote is **`colima-collab-ai:`**, including the colon.
+```sh
+colima stop collab-ai
+```
 
-| Action | macOS | Native Linux |
-| --- | --- | --- |
-| List projects | `incus project list colima-collab-ai:` | `incus project list local:` |
-| List provisioned containers | `incus --project collab-ai list colima-collab-ai:` | `incus --project collab-ai list local:` |
-| Stop workspace, keep its data | `incus --project collab-ai stop colima-collab-ai:workspace` | `incus --project collab-ai stop local:workspace` |
-| Stop dedicated host VM | `colima stop collab-ai` | Not applicable |
-| Open optional web UI | `incus webui colima-collab-ai:` | `incus webui local:` |
-
-The UI requires server-side UI assets and stays open while the command runs.
-See [status, shell access, and UI setup](docs/sandbox.md#4-inspect-and-use-the-workspace).
-See [stop, restart, or remove](docs/sandbox.md#stop-or-remove) for power-state
-management: an apply with `running = true` starts a manually stopped workspace.
+[Status and shell](docs/sandbox.md#4-inspect-and-use-the-workspace) ·
+[Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
+[Incus web UI](docs/sandbox.md#incus-web-ui)
 
 ## Run
 
 You need **Go 1.25+**, **macOS or Linux**, and your agent CLIs.
 Codex integration is tested with **0.156.1**.
-First time? Follow the [step-by-step setup](docs/quickstart.md) through your first exchange.
+For config files and a first-message check, follow [first-time setup](docs/quickstart.md).
 
 ```sh
 git clone https://github.com/makarski/collab-ai.git
@@ -80,28 +62,19 @@ In another terminal, from the same repository directory:
 ./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- -C /path/to/your/project
 ```
 
-That's your normal Codex UI, with automatic listening. Keep it open and give each
-agent a unique ID. These examples use `/tmp/collab-ai.sock`; use `--socket` for a
-different broker path. Codex options go after `--`.
+Keep the session open for automatic listening. Give each agent a unique ID;
+pass Codex options after `--`.
 
 ### Resume or fork
 
-Works with conversations started through either `collab-codex` or ordinary `codex`.
-Exit the previous managed session before relaunching:
+Resume or fork managed or ordinary Codex conversations. Exit the previous session first:
 
 ```sh
-# Resume a saved conversation
 ./collab-codex --agent-id codex-1 --terminal -- resume SESSION_ID
-
-# Or resume the most recent conversation for a project
-./collab-codex --agent-id codex-1 --terminal -- resume --last -C /path/to/your/project
-
-# Or fork a saved conversation
 ./collab-codex --agent-id codex-1 --terminal -- fork SESSION_ID
 ```
 
-One conversation per launch. Resume with saved permissions; see
-[compatibility notes](docs/host-integration.md#codex-terminal).
+[More options and compatibility](docs/host-integration.md#codex-terminal).
 
 ### Claude Code
 
@@ -116,36 +89,29 @@ claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
 Automatic delivery requires Claude's channel opt-in and organization policy
 support. [Manual MCP setup](docs/mcp.md) is available for either agent.
 
-Verify delivery with the [first-message check](docs/quickstart.md#4-check-both-directions).
-The [collaboration skill](docs/skills/collab-ai/SKILL.md) covers replies and handoffs.
-
 ## Broker status
 
 ```sh
 ./collab dashboard --socket /tmp/collab-ai.sock
 ./collab status --socket /tmp/collab-ai.sock
-./collab status --socket /tmp/collab-ai.sock --json
 ```
 
-See who's connected and which messages await acknowledgment, without consuming
-anyone's inbox. [Dashboard controls](docs/dashboard.md) · [Something not working?](docs/troubleshooting.md)
+See connected agents and pending acknowledgments. [Dashboard controls](docs/dashboard.md).
 
 ## How it fits together
 
-![Architecture: managed Codex, Claude channel, and manual MCP paths connect to a shared local broker and durable SQLite inboxes.](docs/assets/architecture.svg)
+![Architecture: human interaction in each agent mode, a shared broker UDS file, and durable SQLite inboxes.](docs/assets/architecture.svg)
 
 [Diagram source (PlantUML)](docs/assets/architecture.puml)
 
-Dotted arrows show startup; solid arrows show communication. Agents share one
-machine and one broker, with a separate inbox for each agent.
+Dotted arrows show startup; solid arrows show communication. The shared UDS
+connects agents to the broker, with a separate inbox for each agent.
 
 ## Documentation
 
-- **Start here:** [First-time setup](docs/quickstart.md) · [Troubleshooting](docs/troubleshooting.md)
-- **Sandbox setup:** [Provision an offline Incus workspace](docs/sandbox.md)
-- **Reference:** [Host integrations](docs/host-integration.md) · [Manual MCP](docs/mcp.md) · [Dashboard](docs/dashboard.md)
-- **Working together:** [Agent skill](docs/skills/collab-ai/SKILL.md) · [Correlated replies](docs/correlated-replies.md)
-- **Under the hood:** [Architecture](#how-it-fits-together) · [Protocol and storage](docs/protocol.md) · [Durable inboxes](docs/durable-inboxes.md) · [Status](docs/status.md)
+- [First-time setup](docs/quickstart.md) · [Sandbox guide](docs/sandbox.md) · [Troubleshooting](docs/troubleshooting.md)
+- [Agent collaboration skill](docs/skills/collab-ai/SKILL.md) · [Host integrations](docs/host-integration.md) · [Manual MCP](docs/mcp.md)
+- [Protocol and storage](docs/protocol.md) · [Durable inboxes](docs/durable-inboxes.md) · [Implementation status](docs/status.md)
 
 ## Contributing
 

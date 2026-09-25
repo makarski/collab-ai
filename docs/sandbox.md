@@ -1,85 +1,55 @@
-# Provision a local Incus sandbox
+# Set up an Incus sandbox
 
-This provisions an **offline Linux workspace** with Terraform or OpenTofu:
-one dedicated Incus project, a cached image pinned by SHA256, an isolation
-profile, and a persistent container. The default limits are 2 CPUs, 4 GiB memory,
-10 GiB root disk, and 512 processes.
+**Two steps matter:** start an Incus host, then provision a workspace inside it.
+The host bootstrap alone does not create a container.
 
-The container has no NIC, host-directory mounts, forwarded credentials, nested
-containers, or Incus guest API. It does not install or launch coding agents.
-Hard token budgets are not implemented; this offline environment cannot contact
-model providers. The Incus host needs internet access to download images.
+This setup creates an **empty, offline Linux container** with 2 CPUs, 4 GiB memory,
+10 GiB disk, and a 512-process limit. It has no NIC, host mounts, or credentials.
+Agent installation and hard token caps are not implemented.
+
+[Install](#1-install-the-host-tools) · [Provision](#2-select-and-pin-the-image) ·
+[Status and shell](#4-inspect-and-use-the-workspace) · [Stop](#stop-or-remove) · [Web UI](#incus-web-ui)
 
 ## 1. Install the host tools
 
-On **macOS**, install Homebrew first if needed, then:
+**macOS:** install Homebrew, then run from the cloned collab-ai repository:
 
 ```sh
 brew install colima incus opentofu python
-```
-
-On macOS, the Homebrew `incus` package installs the **client**. The Incus server
-needs Linux: Colima supplies the Linux VM and runs the server inside it using
-its [Incus runtime](https://colima.run/docs/runtimes/#incus). Both tools are
-needed for this local macOS setup. Native Linux can run the server directly
-without Colima.
-
-Use Colima 0.10.3 or later and Python 3.9+. The bootstrap uses Apple's VZ driver.
-OpenTofu 1.9+ or Terraform 1.9+ is required; commands below use `tofu`, which can
-be replaced with `terraform`. The Incus provider is pinned to 1.2.0 with a
-checked-in dependency lock file.
-
-From the collab-ai repository:
-
-```sh
 python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
 
-`plan` only prints the host configuration and launch command. `apply` creates a
-dedicated `collab-ai` Colima profile with 4 CPUs, 8 GiB memory and 40 GiB disk,
-using [infra/incus/colima.json](../infra/incus/colima.json). It disables host mounts,
-SSH-agent forwarding, SSH-config generation, and default-context switching.
-Colima adds its named Incus remote but leaves your default remote unchanged.
-Your existing Docker/Colima profiles are not modified.
+`plan` previews; `apply` starts a dedicated `collab-ai` Colima VM. Incus on the Mac
+is the client; its server runs inside that Linux VM. Repeat `apply` to restart it.
+Existing Docker profiles remain separate.
 
-Repeat `apply` to start/reuse the same profile. An unowned profile or changed
-saved configuration is rejected rather than overwritten. Startup failures leave
-the owned configuration available for retry. Inspect drift before reconciling it;
-do not remove a profile containing data just to clear an error.
+**Linux:** [install and initialize Incus](https://linuxcontainers.org/incus/docs/main/installing/)
+directly; skip Colima and the bootstrap script. Use an existing quota-capable
+storage pool, such as ZFS or Btrfs, and a user with access to the Incus socket.
+Do not reinitialize an existing server.
 
-On **Linux**, skip the Colima script. Install and initialize Incus using the
-[distribution instructions](https://linuxcontainers.org/incus/docs/main/installing/).
-Use a supported Incus release and an existing storage pool that enforces volume
-quotas (for example ZFS or Btrfs). Do not reinitialize an existing server. The
-operator needs access to its Unix socket; keep that access outside the container.
+Requirements: Colima 0.10.3+ and Python 3.9+ on Mac; OpenTofu or Terraform 1.9+
+on either platform. Commands below use `tofu`; `terraform` works too.
+The Incus provider is locked to 1.2.0. The host needs internet access for downloads.
 
 ## 2. Select and pin the image
 
-Choose a container image matching the server architecture. For Apple Silicon:
-
 ```sh
+# Apple Silicon / ARM64. For Intel or AMD, replace arm64 with amd64.
 incus image info images:ubuntu/24.04/arm64
 cp infra/incus/sandbox.tfvars.example infra/incus/sandbox.auto.tfvars
 ```
 
-For an Intel/x86_64 host, use `images:ubuntu/24.04/amd64`. In
-`sandbox.auto.tfvars`, set:
+Edit the copied file:
 
-- `incus_socket`: the absolute socket printed by the bootstrap (macOS), or your
-  Linux server's socket, usually `/var/lib/incus/unix.socket`.
-- `image_fingerprint`: the full 64-character `Fingerprint` from the image info.
-  The fingerprint also pins the architecture; choose the host-matching image above.
+| Setting | Value |
+| --- | --- |
+| `incus_socket` | Absolute socket path printed by the Mac bootstrap; usually `/var/lib/incus/unix.socket` on Linux |
+| `image_fingerprint` | Full 64-character fingerprint from the image info above |
+| `storage_pool` | Existing quota-capable pool; `default` for the Colima host |
 
-Aliases and partial fingerprints are rejected by the configuration. Keep the
-same fingerprint for repeat runs. The first apply caches that image in the
-dedicated project. Upstream may eventually remove old images: export the cached
-image if long-term rebuilds matter. Do not silently replace a missing pin with
-the latest image.
-
-This makes the resource configuration and container image repeatable. Host
-packages and Colima's own VM image are not a bit-for-bit locked OS build.
-Record `colima version`, `incus version`, and `tofu version` with live results.
+Keep the fingerprint fixed for repeatable runs. It also pins the image architecture.
 
 ## 3. Preview and apply
 
@@ -87,191 +57,112 @@ Record `colima version`, `incus version`, and `tofu version` with live results.
 tofu -chdir=infra/incus init
 tofu -chdir=infra/incus validate
 tofu -chdir=infra/incus plan -out=sandbox.tfplan
+```
+
+Review the plan: it creates a project, cached image, profile, and container. Then:
+
+```sh
 tofu -chdir=infra/incus apply sandbox.tfplan
 ```
 
-Read the plan before applying it. An initial plan creates four resources: project,
-image, profile, and instance. A subsequent plan with unchanged inputs should report
-no changes. Image changes can replace the instance and its disk;
-check replacement actions before applying. Changes to CPU, memory, disk or power
-state go through the same plan/apply workflow. Disk shrinking may be unsupported
-by your storage backend; do not assume an in-place resize is reversible.
-
-The local `terraform.tfstate`, saved plans and `sandbox.auto.tfvars` stay ignored
-by Git. Keep the state and lock file: they identify managed resources. Use one
-working directory/state per deployment and serialize operations through the
-tool's state lock. Do not apply a second empty state against the same project,
-or automatically import someone else's resources.
+An unchanged second plan should report no changes. Keep the ignored state and
+variables files; use one state per deployment. Image changes may replace the
+workspace and its disk, so review replacement/deletion actions before applying.
 
 ## 4. Inspect and use the workspace
 
-The names refer to different layers:
-
-| Layer | macOS | Native Linux |
+| Name | macOS | Linux |
 | --- | --- | --- |
-| Colima profile (host VM) | `collab-ai` | Not used |
-| Incus remote (server connection) | `colima-collab-ai:` | `local:` |
-| Incus project (resource namespace) | `--project collab-ai` | `--project collab-ai` |
-| Container (inside that project) | `workspace` | `workspace` |
+| Host VM | `collab-ai` | Not needed |
+| Incus remote (server) | `colima-collab-ai:` | `local:` |
+| Incus project | `collab-ai` | `collab-ai` |
+| Container | `workspace` | `workspace` |
 
-A remote needs its trailing colon. `collab-ai:` is not the macOS remote name;
-`colima-collab-ai:` is. The project name does not create or select a remote.
-Use `incus remote list` to see the server connections known to your client.
-If you changed `project_name`, substitute that value below.
+**Keep the colon on the remote.** `collab-ai:` is not the Mac remote name.
+`incus remote list` shows registered connections. No default-remote switch is needed.
 
-### macOS
+Run the command for your platform:
 
-```sh
-# Start/reuse the dedicated VM and register its Incus remote (from the repo)
-python3 scripts/sandbox-host.py apply
+| Action | macOS | Linux |
+| --- | --- | --- |
+| List projects | `incus project list colima-collab-ai:` | `incus project list local:` |
+| List containers | `incus --project collab-ai list colima-collab-ai:` | `incus --project collab-ai list local:` |
+| Open a shell | `incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh` | `incus --project collab-ai exec local:workspace -- /bin/sh` |
 
-# Check the VM, registered server connections, and available projects
-colima list
-incus remote list
-incus project list colima-collab-ai:
+Expect `workspace` to be `RUNNING`. The shell is root inside an unprivileged
+container; `exit` leaves it running. `ip -brief link` should show only loopback.
 
-# After the Terraform/OpenTofu apply in step 3
-incus --project collab-ai list colima-collab-ai:
-incus --project collab-ai config show colima-collab-ai:workspace --expanded
-incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh
-```
-
-`colima list` should show the host VM as `Running`; the Incus list should show
-`workspace` as `RUNNING`. These are separate power states. Colima removes its
-Incus remote when the profile stops and adds it again at startup, so a missing
-`colima-collab-ai` remote can simply mean the VM is stopped.
-
-### Native Linux
-
-Run these as a user with access to the initialized local Incus server:
-
-```sh
-# Check the server connection and available projects
-incus remote list
-incus info local:
-incus project list local:
-
-# After the Terraform/OpenTofu apply in step 3
-incus --project collab-ai list local:
-incus --project collab-ai config show local:workspace --expanded
-incus --project collab-ai exec local:workspace -- /bin/sh
-```
-
-On Linux, `local:` connects directly to the Linux server's Unix socket. There
-is no Colima VM to start. On macOS, the default `local:` remote cannot run a
-server natively; use the explicit `colima-collab-ai:` remote instead. Neither
-set of commands requires changing the client's default remote.
-
-If the **project is missing**, complete steps 2–3: starting the host alone does
-not create `collab-ai` or `workspace`. An empty `incus list` table does not prove
-the project exists; check `incus project list` on the same remote first.
-If the **container is stopped**, set
-`running = true` in your variables and plan/apply again. Type `exit` to leave
-the container shell without stopping it.
-
-Expect only a managed root disk and loopback networking. In the container shell,
-`ip -brief link` shows its interfaces. The shell runs as root inside an
-unprivileged container; this is not yet an agent-user installation. Container
-isolation shares the Linux host kernel, rather than giving each agent its own VM.
-
-### Incus web UI
-
-The bootstrap does **not launch a web UI**. Incus supports an optional web
-interface; when the server has its UI assets installed, open it with:
-
-```sh
-# macOS: start the collab-ai Colima profile first
-incus webui colima-collab-ai:
-
-# Native Linux
-incus webui local:
-```
-
-Run only the command for your platform. `incus webui` prints a temporary
-localhost URL and attempts to open your browser. Keep that terminal running;
-Ctrl+C stops the local UI proxy, not the Incus server or containers. Select the
-`collab-ai` project in the UI after provisioning it. This works through the
-existing Unix-socket remote without enabling a public HTTPS listener.
-
-If it reports **"The server doesn't have a web UI installed"**, the UI assets
-are missing on the **Linux Incus server**. Install the appropriate UI package
-there (for example `incus-ui-canonical` with the
-[Zabbly packages](https://github.com/zabbly/incus#other-packages)); installing the
-macOS client does not install server-side UI assets. UI availability depends on
-the server image/distribution. See the
-[web UI command](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/webui/)
-and its [local proxy implementation](https://github.com/lxc/incus/blob/main/cmd/incus/webui_unix.go).
-
-Use the UI to inspect the environment. Make managed configuration changes through
-Terraform/OpenTofu so the next apply does not undo manual edits. The Incus UI
-manages infrastructure; `collab dashboard` shows agent connections and inboxes.
+- **Remote missing on Mac:** check `colima list`, then rerun the host bootstrap.
+  Colima removes its remote when the VM stops and recreates it on startup.
+- **Empty container list:** check the project list first. An empty table can also
+  mean the project is missing. Complete steps 2–3 to create it.
+- **Workspace stopped:** start it below. Host and container power states are separate.
 
 ## Stop or remove
 
-### Stop the workspace, keep its data
+These commands retain the workspace's data:
 
-For an immediate stop or restart of an existing container, with the Incus host running:
+| Action | macOS | Linux |
+| --- | --- | --- |
+| Stop workspace | `incus --project collab-ai stop colima-collab-ai:workspace` | `incus --project collab-ai stop local:workspace` |
+| Start workspace | `incus --project collab-ai start colima-collab-ai:workspace` | `incus --project collab-ai start local:workspace` |
+| Stop dedicated host | `colima stop collab-ai` | Stop the workspace only |
 
-```sh
-# macOS: stop; run start when you want to resume
-incus --project collab-ai stop colima-collab-ai:workspace
-incus --project collab-ai start colima-collab-ai:workspace
-```
+On Mac, restart the host with `python3 scripts/sandbox-host.py apply`, then start
+the workspace. Incus boot autostart is disabled.
 
-```sh
-# Native Linux: stop; run start when you want to resume
-incus --project collab-ai stop local:workspace
-incus --project collab-ai start local:workspace
-```
+**To keep the workspace stopped across applies**, set `running = false` in
+`sandbox.auto.tfvars`, then repeat step 3. An apply with `running = true` starts
+it again, even if you stopped it manually.
 
-Run only the desired action. These retain the container's root disk. They change
-the live power state; an apply with `running = true` starts it again.
-
-To keep it stopped through subsequent applies, set `running = false` in
-`infra/incus/sandbox.auto.tfvars`, then review and apply:
-
-```sh
-tofu -chdir=infra/incus plan -out=sandbox.tfplan
-tofu -chdir=infra/incus apply sandbox.tfplan
-```
-
-Set `running = true` and repeat plan/apply to resume. Incus boot autostart is disabled.
-
-### Stop the dedicated macOS host VM
-
-```sh
-colima stop collab-ai
-```
-
-This stops the dedicated VM and everything inside it, retaining its data. Your
-other Colima profiles keep running. It also removes the `colima-collab-ai` remote.
-Start the host again from the repository:
-
-```sh
-python3 scripts/sandbox-host.py apply
-```
-
-That restores the host and remote. Resume the workspace separately with `incus
-start` above or with a Terraform/OpenTofu apply using `running = true`. On native
-Linux, stop the workspace only; the Incus server may also host unrelated projects.
-
-### Remove the workspace and its data
-
-To deliberately delete the managed workspace and its data:
+**To delete the workspace and its data**, review a destroy plan before applying:
 
 ```sh
 tofu -chdir=infra/incus plan -destroy -out=destroy.tfplan
-# Review the deletion plan first. Applying it removes the workspace root disk.
+# Review first: the following command deletes the workspace root disk.
 tofu -chdir=infra/incus apply destroy.tfplan
 ```
 
-This does not delete the host VM or shared storage pool. Project deletion does
-not force-delete resources added outside this state. Keep snapshots/exports
-outside the resources being destroyed if their contents must survive teardown.
+This retains the host VM and shared storage pool. Export any data you need first.
 
-## Validation
+## Incus web UI
 
-Offline checks, with no VM or provider requests:
+The bootstrap does not open a UI. With the host running and UI assets installed:
+
+| macOS | Linux |
+| --- | --- |
+| `incus webui colima-collab-ai:` | `incus webui local:` |
+
+The command opens a temporary localhost URL. Keep its terminal running; Ctrl+C
+closes the UI proxy without stopping your containers. Select project `collab-ai`.
+No public HTTPS listener is required.
+
+**“The server doesn't have a web UI installed”** means the Linux server needs UI
+assets, such as `incus-ui-canonical` from [Zabbly](https://github.com/zabbly/incus#other-packages).
+The Mac client does not install them. [Incus web UI command](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/webui/).
+
+Use the UI to inspect; apply managed changes through Terraform/OpenTofu to avoid
+drift. `collab dashboard` separately shows agent connections and inboxes.
+
+<details>
+<summary>Isolation, repeatability, and validation details</summary>
+
+The Mac host uses [colima.json](../infra/incus/colima.json): 4 CPUs, 8 GiB RAM,
+40 GiB disk, no host mounts or SSH-agent forwarding, and no default-context switch.
+The script refuses foreign profiles and saved configuration drift. Inspect an
+error before changing or deleting an existing profile.
+
+The workspace uses an isolated UID mapping, blocks privileged/nested containers,
+and disables the Incus guest API. It shares the Linux host kernel. Keep the host's
+administrative socket outside the workspace.
+
+The image is cached in the project. Upstream may remove older images; export the
+cache for long-term rebuilds. Host packages and Colima's VM image are not pinned
+OS builds. Storage backends may reject disk shrinking. Keep state local, serialize
+applies, and do not use a second empty state for the same project. Project deletion
+does not force-delete resources created outside this state.
+
+Offline checks after provider initialization:
 
 ```sh
 python3 -m unittest discover -s scripts/tests -v
@@ -280,18 +171,9 @@ tofu -chdir=infra/incus validate
 tofu -chdir=infra/incus test
 ```
 
-The provider tests use mocks. They check the planned isolation and input
-validation, not successful Incus execution. A live acceptance check must apply,
-inspect the expanded config and network, and run a second plan to verify no
-changes. Also verify persistence through stop/start and inspect a destroy plan
-before using disposable data for teardown.
-
 Live-tested on Apple Silicon with Colima 0.10.3, Incus server 7.1/client 7.4,
-OpenTofu 1.12.6 and an Ubuntu 24.04 container: creation, an unchanged second plan,
-loopback-only networking, isolated UID mapping, memory/process limits, disabled
-guest API, retained data through stop/start, and teardown. Mock tests also pass
+OpenTofu 1.12.6 and Ubuntu 24.04: create, unchanged second plan, isolation and
+resource settings, stop/start persistence, and teardown. Mock tests also pass
 with Terraform 1.15.4. Native Linux and Intel Mac hosts have not been live-tested.
 
-References: [Incus provider](https://github.com/lxc/terraform-provider-incus),
-[project restrictions](https://linuxcontainers.org/incus/docs/main/reference/projects/),
-[Colima Incus runtime](https://colima.run/docs/runtimes/#incus).
+</details>
