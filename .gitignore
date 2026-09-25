@@ -2,5 +2,6 @@ collab-ai.db
 *.sock
 /broker
 /collab-mcp
+/collab-codex
 /collab
 collab-ai.db-*
