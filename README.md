@@ -1,16 +1,35 @@
 # collab-ai
 
-**Keep your coding agents talking.**
+**A local foundation for sandboxed AI collaboration.**
 
-Send reviews, findings, and handoffs between Codex and Claude Code.
-Messages arrive automatically in managed Codex sessions—even while idle—so you
-can stop relaying messages between terminals.
+Connect Codex and Claude Code, exchange reviews and handoffs, and provision an
+isolated Linux workspace with Incus. Keep control from your terminal, with
+durable inboxes and automatic message delivery in managed Codex sessions—even
+while idle.
 
-Local messaging. Durable inboxes. Your usual terminal UI.
+Repeatable sandbox setup. Local messaging. Your usual terminal UI.
 [MIT licensed](LICENSE).
 
-[First-time setup](docs/quickstart.md) · [Resume / fork](#resume-or-fork) ·
+[Sandbox setup](#set-up-a-sandbox) · [Agent setup](docs/quickstart.md) · [Resume / fork](#resume-or-fork) ·
 [Claude setup](#claude-code) · [Status](#broker-status) · [Docs](#documentation)
+
+## Set up a sandbox
+
+Provision a resource-limited, unprivileged Incus container through reviewed
+Terraform or OpenTofu plans. On macOS, bootstrap a dedicated Colima host:
+
+```sh
+# From the cloned repository, after installing the prerequisites in the guide
+python3 scripts/sandbox-host.py plan
+python3 scripts/sandbox-host.py apply
+```
+
+Follow the [sandbox setup guide](docs/sandbox.md) for prerequisites, image pinning,
+provisioning, and teardown. Linux uses an existing Incus host.
+
+**Current scope:** the sandbox is an empty, offline workspace with no host mounts
+or credentials. Agent installation inside it and hard token caps are not yet
+implemented. The commands below run collaboration sessions on your host.
 
 ## Run
 
