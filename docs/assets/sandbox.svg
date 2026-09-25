@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title description">
+  <title id="title">collab-ai: local collaboration and an isolated Incus workspace</title>
+  <desc id="description">The human operator reviews Terraform or OpenTofu plans to provision Incus through a local Unix socket. Codex and Claude Code currently communicate through the broker on the host. Separately, a Linux Incus host, provided by Colima on macOS, contains a restricted project and an offline, unprivileged workspace. Default limits are 2 CPUs, 4 GiB memory, 10 GiB disk and 512 processes. The workspace has no NIC, host mounts or credentials. Agents are not yet installed inside it.</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1">
+      <stop stop-color="#101e32"/>
+      <stop offset="1" stop-color="#080f1c"/>
+    </linearGradient>
+    <linearGradient id="workspace" x2="1" y2="1">
+      <stop stop-color="#123d3b"/>
+      <stop offset="1" stop-color="#102c31"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto-start-reverse">
+      <path d="M1 1 6 4 1 7" fill="none" stroke="#83a6d2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="greenArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M1 1 6 4 1 7" fill="none" stroke="#66ddbd" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .heading { fill: #f0f5fc; font-weight: 650; }
+      .body { fill: #b9c9dd; font-size: 19px; }
+      .label { fill: #9fb5cf; font-size: 15px; font-weight: 650; letter-spacing: 1.6px; }
+      .green { fill: #80e8ca; }
+      .line { fill: none; stroke: #83a6d2; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="820" rx="24" fill="url(#background)"/>
+  <rect x="40" y="39" width="5" height="35" rx="2.5" fill="#66ddbd"/>
+  <text x="61" y="65" class="heading" font-size="30">Local collaboration. Isolated workspace.</text>
+  <text x="1158" y="62" text-anchor="end" class="label">COLLAB-AI</text>
+
+  <rect x="28" y="98" width="1144" height="662" rx="22" fill="#101c2c" stroke="#2c4059"/>
+  <rect x="52" y="122" width="1096" height="100" rx="16" fill="#1b2a40" stroke="#354b67"/>
+  <circle cx="96" cy="162" r="10" fill="none" stroke="#bacde5" stroke-width="2"/>
+  <path d="M78 191v-5a18 18 0 0 1 36 0v5" fill="none" stroke="#bacde5" stroke-width="2" stroke-linecap="round"/>
+  <text x="134" y="164" class="heading" font-size="23">You control the setup</text>
+  <text x="134" y="192" class="body">Review changes before applying them</text>
+  <rect x="631" y="144" width="488" height="56" rx="11" fill="#101c2c" stroke="#48667a"/>
+  <text x="655" y="179" class="heading" font-size="20">Terraform / OpenTofu</text>
+  <path d="M883 172h35" class="line" marker-end="url(#arrow)"/>
+  <text x="938" y="179" class="green" font-size="20" font-weight="600">Plan + apply</text>
+
+  <path d="M875 222v47" fill="none" stroke="#66ddbd" stroke-width="2" marker-end="url(#greenArrow)"/>
+  <text x="855" y="251" text-anchor="end" class="body" font-size="17">Provision via local Unix socket</text>
+
+  <rect x="52" y="270" width="410" height="466" rx="17" fill="#142237" stroke="#354b67"/>
+  <text x="76" y="304" class="label">HOST · COLLABORATION</text>
+  <rect x="76" y="334" width="174" height="83" rx="13" fill="#203652" stroke="#55779f"/>
+  <text x="163" y="370" text-anchor="middle" class="heading" font-size="23">Codex</text>
+  <text x="163" y="397" text-anchor="middle" class="body" font-size="17">Managed session</text>
+  <rect x="266" y="334" width="172" height="83" rx="13" fill="#302d44" stroke="#817098"/>
+  <text x="352" y="370" text-anchor="middle" class="heading" font-size="23">Claude Code</text>
+  <text x="352" y="397" text-anchor="middle" class="body" font-size="17">MCP / channel</text>
+
+  <path d="M163 423v47" class="line" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <path d="M352 423v47" class="line" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <rect x="76" y="477" width="362" height="92" rx="13" fill="#1c304a" stroke="#55779f"/>
+  <text x="257" y="514" text-anchor="middle" class="heading" font-size="23">collab-ai broker</text>
+  <text x="257" y="544" text-anchor="middle" class="body">Messages · handoffs · receipts</text>
+  <path d="M257 575v30" class="line" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <rect x="125" y="612" width="264" height="51" rx="25" fill="#101c2c" stroke="#354b67"/>
+  <text x="257" y="644" text-anchor="middle" class="body">SQLite · durable inboxes</text>
+  <text x="257" y="705" text-anchor="middle" class="body">Your usual terminal workflow</text>
+
+  <rect x="490" y="270" width="658" height="466" rx="17" fill="#11292f" stroke="#35766f"/>
+  <text x="514" y="304" class="label green">LINUX HOST · COLIMA ON macOS</text>
+  <text x="514" y="333" class="body">Dedicated VM on Mac · existing Incus host on Linux</text>
+  <rect x="514" y="355" width="610" height="357" rx="15" fill="#132f34" stroke="#438d7f" stroke-dasharray="6 5"/>
+  <text x="538" y="390" class="heading green" font-size="21">Incus · restricted project</text>
+
+  <rect x="538" y="413" width="562" height="275" rx="15" fill="url(#workspace)" stroke="#66c7aa"/>
+  <path d="M565 441v13c0 10 13 18 13 18s13-8 13-18v-13l-13-5z" fill="none" stroke="#80e8ca" stroke-width="2" stroke-linejoin="round"/>
+  <path d="m572 453 4 4 8-9" fill="none" stroke="#80e8ca" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="606" y="462" class="heading" font-size="27">Offline workspace</text>
+  <text x="1076" y="459" text-anchor="end" class="label green">DEFAULTS</text>
+  <text x="562" y="496" class="body">Unprivileged container · isolated UID mapping</text>
+
+  <g fill="#10292d" stroke="#37665f">
+    <rect x="562" y="518" width="244" height="46" rx="9"/>
+    <rect x="820" y="518" width="256" height="46" rx="9"/>
+    <rect x="562" y="576" width="244" height="46" rx="9"/>
+    <rect x="820" y="576" width="256" height="46" rx="9"/>
+  </g>
+  <g class="heading" font-size="20">
+    <text x="581" y="548">2 CPUs</text>
+    <text x="839" y="548">4 GiB memory</text>
+    <text x="581" y="606">10 GiB root disk</text>
+    <text x="839" y="606">512 processes</text>
+  </g>
+  <text x="819" y="659" text-anchor="middle" class="green" font-size="18">No NIC · no host mounts · no credentials</text>
+
+  <circle cx="45" cy="793" r="4" fill="#66ddbd"/>
+  <text x="59" y="799" class="body" font-size="17">Current setup: agents run on the host; the offline sandbox is provisioned separately.</text>
+</svg>

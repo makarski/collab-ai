@@ -15,6 +15,8 @@ Repeatable sandbox setup. Local messaging. Your usual terminal UI.
 
 ## Set up a sandbox
 
+![Sandbox boundaries: host agents collaborate through the broker; reviewed plans provision a separate, offline Incus workspace.](docs/assets/sandbox.svg)
+
 Provision a resource-limited, unprivileged Incus container through reviewed
 Terraform or OpenTofu plans. On macOS, bootstrap a dedicated Colima host:
 
