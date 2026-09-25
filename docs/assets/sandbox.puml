@@ -1,0 +1,58 @@
+@startuml sandbox
+' Render from the repository root:
+' plantuml -tsvg -nometadata docs/assets/sandbox.puml
+
+title What the sandbox setup creates
+
+<style>
+title {
+    FontSize 25
+}
+document {
+    Margin 20
+    BackgroundColor #fafafa
+}
+rectangle {
+    LineStyle 5
+    LineColor #grey
+    LineThickness 2
+}
+.Workspace {
+    BackgroundColor #e7f5eb
+}
+legend {
+    FontSize 16
+    Padding 12
+    BackgroundColor #fff3b0
+}
+</style>
+
+hide stereotype
+skinparam {
+    backgroundColor #fafafa
+    shadowing false
+    componentStyle rectangle
+    defaultFontSize 18
+    padding 12
+}
+
+rectangle "Your Mac" as Mac {
+    rectangle "Colima VM: collab-ai\nProvides Linux" as VM {
+        rectangle "Incus project: collab-ai\nGroups the sandbox resources" as Project {
+            component Workspace <<Workspace>> [
+                =workspace
+                Offline Linux container
+                --
+                2 CPUs · 4 GiB memory · 10 GiB disk
+                No network · no host mounts · no credentials
+            ]
+        }
+    }
+}
+
+legend bottom
+    **Today:** Codex, Claude Code and the broker run outside this workspace.
+    **On Linux:** Incus runs directly on the host; the Colima VM is unnecessary.
+endlegend
+
+@enduml
