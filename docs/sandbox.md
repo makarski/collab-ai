@@ -163,7 +163,9 @@ server natively; use the explicit `colima-collab-ai:` remote instead. Neither
 set of commands requires changing the client's default remote.
 
 If the **project is missing**, complete steps 2–3: starting the host alone does
-not create `collab-ai` or `workspace`. If the **container is stopped**, set
+not create `collab-ai` or `workspace`. An empty `incus list` table does not prove
+the project exists; check `incus project list` on the same remote first.
+If the **container is stopped**, set
 `running = true` in your variables and plan/apply again. Type `exit` to leave
 the container shell without stopping it.
 
@@ -206,9 +208,54 @@ manages infrastructure; `collab dashboard` shows agent connections and inboxes.
 
 ## Stop or remove
 
-To stop and retain the workspace, set `running = false` in your variables file,
-then plan/apply. Set it back to `true` to start it. Incus boot autostart is disabled.
-On macOS, `colima stop collab-ai` stops the dedicated host VM and retains its data.
+### Stop the workspace, keep its data
+
+For an immediate stop or restart of an existing container, with the Incus host running:
+
+```sh
+# macOS: stop; run start when you want to resume
+incus --project collab-ai stop colima-collab-ai:workspace
+incus --project collab-ai start colima-collab-ai:workspace
+```
+
+```sh
+# Native Linux: stop; run start when you want to resume
+incus --project collab-ai stop local:workspace
+incus --project collab-ai start local:workspace
+```
+
+Run only the desired action. These retain the container's root disk. They change
+the live power state; an apply with `running = true` starts it again.
+
+To keep it stopped through subsequent applies, set `running = false` in
+`infra/incus/sandbox.auto.tfvars`, then review and apply:
+
+```sh
+tofu -chdir=infra/incus plan -out=sandbox.tfplan
+tofu -chdir=infra/incus apply sandbox.tfplan
+```
+
+Set `running = true` and repeat plan/apply to resume. Incus boot autostart is disabled.
+
+### Stop the dedicated macOS host VM
+
+```sh
+colima stop collab-ai
+```
+
+This stops the dedicated VM and everything inside it, retaining its data. Your
+other Colima profiles keep running. It also removes the `colima-collab-ai` remote.
+Start the host again from the repository:
+
+```sh
+python3 scripts/sandbox-host.py apply
+```
+
+That restores the host and remote. Resume the workspace separately with `incus
+start` above or with a Terraform/OpenTofu apply using `running = true`. On native
+Linux, stop the workspace only; the Incus server may also host unrelated projects.
+
+### Remove the workspace and its data
 
 To deliberately delete the managed workspace and its data:
 

@@ -47,10 +47,14 @@ project name; on macOS the remote is **`colima-collab-ai:`**, including the colo
 | --- | --- | --- |
 | List projects | `incus project list colima-collab-ai:` | `incus project list local:` |
 | List provisioned containers | `incus --project collab-ai list colima-collab-ai:` | `incus --project collab-ai list local:` |
+| Stop workspace, keep its data | `incus --project collab-ai stop colima-collab-ai:workspace` | `incus --project collab-ai stop local:workspace` |
+| Stop dedicated host VM | `colima stop collab-ai` | Not applicable |
 | Open optional web UI | `incus webui colima-collab-ai:` | `incus webui local:` |
 
 The UI requires server-side UI assets and stays open while the command runs.
 See [status, shell access, and UI setup](docs/sandbox.md#4-inspect-and-use-the-workspace).
+See [stop, restart, or remove](docs/sandbox.md#stop-or-remove) for power-state
+management: an apply with `running = true` starts a manually stopped workspace.
 
 ## Run
 
