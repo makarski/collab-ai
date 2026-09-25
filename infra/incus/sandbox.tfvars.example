@@ -1,0 +1,12 @@
+# Copy to sandbox.auto.tfvars and replace both required values.
+# macOS bootstrap prints the socket; Linux commonly uses /var/lib/incus/unix.socket.
+incus_socket = "/absolute/path/to/.colima/collab-ai/incus.sock"
+# From `incus image info images:ubuntu/24.04/arm64` (amd64 for x86_64).
+image_fingerprint = "REPLACE_WITH_FULL_64_CHARACTER_FINGERPRINT"
+
+project_name = "collab-ai"
+storage_pool = "default"
+cpu_count    = 2
+memory_gib   = 4
+disk_gib     = 10
+running      = true

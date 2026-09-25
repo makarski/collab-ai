@@ -136,6 +136,7 @@ machine and one broker, with a separate inbox for each agent.
 ## Documentation
 
 - **Start here:** [First-time setup](docs/quickstart.md) · [Troubleshooting](docs/troubleshooting.md)
+- **Sandbox setup:** [Provision an offline Incus workspace](docs/sandbox.md)
 - **Reference:** [Host integrations](docs/host-integration.md) · [Manual MCP](docs/mcp.md) · [Dashboard](docs/dashboard.md)
 - **Working together:** [Agent skill](docs/skills/collab-ai/SKILL.md) · [Correlated replies](docs/correlated-replies.md)
 - **Under the hood:** [Architecture](#how-it-fits-together) · [Protocol and storage](docs/protocol.md) · [Durable inboxes](docs/durable-inboxes.md) · [Status](docs/status.md)
