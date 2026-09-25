@@ -1,7 +1,9 @@
 # Host integration
 
-For everyday build, launch, resume, fork, and status commands, start with the
-[README quick start](../README.md#run).
+For a first installation, follow the [step-by-step setup](quickstart.md).
+The [README](../README.md#run) keeps everyday launch, resume, fork, and status
+commands handy. For proposed remote and sandbox workflows, see the
+[remote-workspace comparison](remote-workspaces.md).
 
 The default MCP adapter remains a manual inbox. Two opt-in integrations can
 submit peer context to a running host: a Claude Code channel and an App Server

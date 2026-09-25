@@ -9,13 +9,14 @@ can stop relaying messages between terminals.
 Local messaging. Durable inboxes. Your usual terminal UI.
 [MIT licensed](LICENSE).
 
-[Quick start](#run) · [Resume / fork](#resume-or-fork) ·
+[First-time setup](docs/quickstart.md) · [Resume / fork](#resume-or-fork) ·
 [Claude setup](#claude-code) · [Status](#broker-status) · [Docs](#documentation)
 
 ## Run
 
 You need **Go 1.25+**, **macOS or Linux**, and your agent CLIs.
 Codex integration is tested with **0.156.1**.
+First time? Follow the [step-by-step setup](docs/quickstart.md) through your first exchange.
 
 ```sh
 git clone https://github.com/makarski/collab-ai.git
@@ -26,13 +27,13 @@ go build -o collab-mcp ./cmd/mcp
 go build -o collab ./cmd/collab
 
 # Start the broker and leave it running
-COLLAB_SOCKET_PATH=/tmp/collab-ai.sock ./broker
+COLLAB_SOCKET_PATH=/tmp/collab-ai.sock COLLAB_DB_PATH="$PWD/collab-ai.db" ./broker
 ```
 
 In another terminal, from the same repository directory:
 
 ```sh
-./collab-codex --agent-id codex-1 --terminal -- -C /path/to/your/project
+./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- -C /path/to/your/project
 ```
 
 That's your normal Codex UI, with automatic listening. Keep it open and give each
@@ -60,7 +61,7 @@ One conversation per launch. Resume with saved permissions; see
 
 ### Claude Code
 
-Create the [dedicated channel config](docs/host-integration.md#claude-code),
+Create the [dedicated channel config](docs/quickstart.md#3-start-claude-code),
 then launch from your project directory:
 
 ```sh
@@ -71,19 +72,13 @@ claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
 Automatic delivery requires Claude's channel opt-in and organization policy
 support. [Manual MCP setup](docs/mcp.md) is available for either agent.
 
-### Try it
-
-With both agents connected, ask Claude:
-
-> Ask codex-1 to review my changes in /path/to/project and send back its findings.
-
-The request arrives in Codex automatically. The [collaboration skill](docs/skills/collab-ai/SKILL.md)
-covers replies, acknowledgments, and handoffs.
+Verify delivery with the [first-message check](docs/quickstart.md#4-check-both-directions).
+The [collaboration skill](docs/skills/collab-ai/SKILL.md) covers replies and handoffs.
 
 ## Broker status
 
 ```sh
-./collab dashboard
+./collab dashboard --socket /tmp/collab-ai.sock
 ./collab status --socket /tmp/collab-ai.sock
 ./collab status --socket /tmp/collab-ai.sock --json
 ```
@@ -140,7 +135,8 @@ machine and one broker, with a separate inbox for each agent.
 
 ## Documentation
 
-- **Setup:** [Host integrations](docs/host-integration.md) · [Manual MCP](docs/mcp.md) · [Troubleshooting](docs/troubleshooting.md)
+- **Start here:** [First-time setup](docs/quickstart.md) · [Troubleshooting](docs/troubleshooting.md)
+- **Reference:** [Host integrations](docs/host-integration.md) · [Manual MCP](docs/mcp.md) · [Dashboard](docs/dashboard.md)
 - **Working together:** [Agent skill](docs/skills/collab-ai/SKILL.md) · [Correlated replies](docs/correlated-replies.md)
 - **Under the hood:** [Architecture](#how-it-fits-together) · [Protocol and storage](docs/protocol.md) · [Durable inboxes](docs/durable-inboxes.md) · [Status](docs/status.md)
 
