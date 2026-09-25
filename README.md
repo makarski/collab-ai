@@ -10,7 +10,7 @@ Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 
 ## Set up a sandbox
 
-![Sandbox boundaries: host agents collaborate through the broker; reviewed plans provision a separate, offline Incus workspace.](docs/assets/sandbox.svg)
+![Sandbox containment on macOS: a Colima Linux VM contains an Incus project and an offline workspace. Agents currently run outside the workspace. Linux hosts do not need the Colima VM.](docs/assets/sandbox.svg)
 
 [Diagram source (PlantUML)](docs/assets/sandbox.puml)
 

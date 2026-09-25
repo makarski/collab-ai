@@ -1,20 +1,15 @@
 @startuml sandbox
 ' Render from the repository root:
 ' plantuml -tsvg -nometadata docs/assets/sandbox.puml
-' Style inspired by the operator's puml-digarams examples.
 
-title collab-ai · Local collaboration, isolated workspace
-
-!$humanColor = "#fff3b0"
-!$brokerColor = "#lightblue"
-!$agentColor = "#palegreen"
+title What the sandbox setup creates
 
 <style>
 title {
     FontSize 25
 }
 document {
-    Margin 24
+    Margin 20
     BackgroundColor #fafafa
 }
 rectangle {
@@ -22,34 +17,13 @@ rectangle {
     LineColor #grey
     LineThickness 2
 }
-.HumanControl {
-    BackgroundColor $humanColor
-}
-.Broker {
-    BackgroundColor $brokerColor
-}
-.AgentRuntime {
-    BackgroundColor $agentColor
-}
-.Sandbox {
+.Workspace {
     BackgroundColor #e7f5eb
 }
-.controlFlow {
-    LineColor #indigo
-    LineThickness 2
-}
-.peerFlow {
-    LineColor #deepPink
-    LineThickness 2
-}
-.sessionFlow {
-    LineColor #teal
-    LineThickness 2
-}
 legend {
-    FontSize 14
-    Padding 15
-    BackgroundColor #f0f0f0
+    FontSize 16
+    Padding 12
+    BackgroundColor #fff3b0
 }
 </style>
 
@@ -58,61 +32,27 @@ skinparam {
     backgroundColor #fafafa
     shadowing false
     componentStyle rectangle
-    defaultFontSize 16
-    padding 10
-    nodesep 40
-    ranksep 25
+    defaultFontSize 18
+    padding 12
 }
 
-actor "Human operator" as Human
-
-rectangle "Host · collaboration" as Host {
-    component "=Codex\n//Managed session//" as Codex <<AgentRuntime>>
-    component "=Claude Code\n//MCP / channel//" as Claude <<AgentRuntime>>
-    component Broker <<Broker>> [
-        =collab-ai broker
-        --
-        Messages · handoffs · receipts
-        //Durable inboxes · SQLite//
-    ]
-}
-
-component Provision <<HumanControl>> [
-    =Terraform / OpenTofu
-    --
-    Review plan, then apply
-    //Pinned image · explicit limits//
-]
-
-rectangle "Linux host\nColima VM on macOS · existing Incus on Linux" as Linux {
-    rectangle "Incus · restricted project" as Project {
-        component Workspace <<Sandbox>> [
-            =Offline workspace
-            --
-            Unprivileged · isolated UID mapping
-            **Defaults:** 2 CPUs · 4 GiB memory
-            10 GiB disk · 512 processes
-            --
-            No NIC · no host mounts
-            No credentials · no guest API
-        ]
+rectangle "Your Mac" as Mac {
+    rectangle "Colima VM: collab-ai\nProvides Linux" as VM {
+        rectangle "Incus project: collab-ai\nGroups the sandbox resources" as Project {
+            component Workspace <<Workspace>> [
+                =workspace
+                Offline Linux container
+                --
+                2 CPUs · 4 GiB memory · 10 GiB disk
+                No network · no host mounts · no credentials
+            ]
+        }
     }
 }
 
-Human -down-> Host <<sessionFlow>> : native terminals
-Human -right-> Provision <<controlFlow>> : review / apply
-Codex <-down-> Broker <<peerFlow>> : send / receive
-Claude <-down-> Broker <<peerFlow>> : send / receive
-Provision -down-> Linux <<controlFlow>> : provision via\nlocal Unix socket
-
-Codex -[hidden]right-> Claude
-Host -[hidden]right-> Linux
-
 legend bottom
-    <color:indigo>━━</color> Provisioning    <color:teal>━━</color> Native sessions    <color:deepPink>━━</color> Peer messages
-    ----
-    **Current setup:** agents run on the host.
-    The offline sandbox is provisioned separately; agents are not installed inside it.
+    **Today:** Codex, Claude Code and the broker run outside this workspace.
+    **On Linux:** Incus runs directly on the host; the Colima VM is unnecessary.
 endlegend
 
 @enduml
