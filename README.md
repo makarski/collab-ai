@@ -10,9 +10,10 @@ Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 
 ## Set up a sandbox
 
-![Sandbox containment on macOS: a Colima Linux VM contains an Incus project and an offline workspace. Agents currently run outside the workspace. Linux hosts do not need the Colima VM.](docs/assets/sandbox.svg)
-
-[Diagram source (PlantUML)](docs/assets/sandbox.puml)
+| macOS | Linux |
+| --- | --- |
+| ![macOS: Colima supplies a Linux VM containing the Incus project and offline workspace.](docs/assets/sandbox-macos.svg) | ![Linux: the Incus project and offline workspace run directly on the Linux host.](docs/assets/sandbox-linux.svg) |
+| [PlantUML source](docs/assets/sandbox-macos.puml) | [PlantUML source](docs/assets/sandbox-linux.puml) |
 
 **Today:** the sandbox is an empty, offline container. Agents run on your host;
 agent installation inside the sandbox and hard token caps are not implemented.
