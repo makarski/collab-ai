@@ -15,3 +15,32 @@ func codexCommand(ctx context.Context, binary string, args ...string) *exec.Cmd 
 	cmd.WaitDelay = 2 * time.Second
 	return cmd
 }
+
+// Only the noninteractive App Server gets its own process group. Moving the
+// terminal UI out of the foreground group would break terminal input.
+func appServerCommand(ctx context.Context, binary string, args ...string) *exec.Cmd {
+	cmd := codexCommand(ctx, binary, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) }
+	return cmd
+}
+
+// Clean up the whole group, even when a launcher exits before its children.
+// This is not containment for descendants deliberately escaping with setsid.
+func stopAppServer(cmd *exec.Cmd) {
+	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }()
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-done:
+		if syscall.Kill(-cmd.Process.Pid, 0) != nil {
+			return
+		}
+		<-timer.C
+	case <-timer.C:
+	}
+	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	<-done
+}

@@ -9,10 +9,22 @@ import (
 	"strings"
 
 	"collab-ai/internal/bridge"
+	"collab-ai/internal/budget"
 	"collab-ai/internal/protocol"
 )
 
 func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, args []string) error {
+	return runBudgetedTerminal(ctx, cfg, binary, args, nil)
+}
+
+func runBudgetedTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, args []string, cap *budget.Budget) (result error) {
+	// Preserve the cap diagnostic even if the terminal exits first. Later
+	// defers finish the endpoint and its budget observer before this runs.
+	defer func() {
+		if cap != nil && cap.Err() != nil {
+			result = cap.Err()
+		}
+	}()
 	if err := protocol.ValidateAgentID(cfg.AgentID); err != nil {
 		return err
 	}
@@ -25,7 +37,7 @@ func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, ar
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	endpoint, err := newTerminalEndpoint(ctx, func(ctx context.Context, stream io.ReadWriteCloser) error {
-		return runWithOperator(ctx, cfg, binary, operatorIO{input: stream, output: stream})
+		return runBudgetedOperator(ctx, cfg, binary, operatorIO{input: stream, output: stream}, cap)
 	})
 	if err != nil {
 		return err
