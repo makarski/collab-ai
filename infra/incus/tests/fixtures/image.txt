@@ -1,0 +1,1 @@
+Mock image content: never imported into a real Incus server.

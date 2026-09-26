@@ -6,7 +6,7 @@ Connect Codex and Claude Code with durable inboxes and automatic message deliver
 Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 
 [Agent setup](#run) · [Sandbox setup](#set-up-a-sandbox) ·
-[Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
+[Dashboards](#dashboards) · [Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
 
 ## Set up a sandbox
 
@@ -15,8 +15,9 @@ Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 | ![macOS: Colima supplies a Linux VM containing the Incus project and offline workspace.](docs/assets/sandbox-macos.svg) | ![Linux: the Incus project and offline workspace run directly on the Linux host.](docs/assets/sandbox-linux.svg) |
 | [PlantUML source](docs/assets/sandbox-macos.puml) | [PlantUML source](docs/assets/sandbox-linux.puml) |
 
-**Today:** the sandbox is an empty, offline container. Agents run on your host;
-agent installation inside the sandbox and hard token caps are not implemented.
+**Included in the workspace image:** collab-ai, Codex, Claude Code, Go, Git and tmux.
+The broker starts automatically; you open agent terminals over SSH. The workspace
+stays offline while hard token caps are still unimplemented.
 
 On **macOS**, install the tools and start the dedicated host from this repository:
 
@@ -27,7 +28,15 @@ python3 scripts/sandbox-host.py apply
 
 Incus is the Mac client; Colima runs its Linux server. On **Linux**, install Incus
 directly; Colima is unnecessary. **Starting the host does not create the workspace.**
-Follow the [sandbox guide](docs/sandbox.md) to pin an image and provision it.
+Follow the [sandbox guide](docs/sandbox.md) to download a released image and provision it.
+[Development builds](docs/sandbox-image.md#development-builds) let you choose app and tool versions.
+
+Once provisioned, configure SSH once and open a terminal (Linux: use `--remote local`):
+
+```sh
+python3 scripts/sandbox-ssh.py --remote colima-collab-ai
+ssh -F infra/incus/ssh/config workspace
+```
 
 Stop the dedicated Mac VM, keeping its data:
 
@@ -35,11 +44,13 @@ Stop the dedicated Mac VM, keeping its data:
 colima stop collab-ai
 ```
 
-[Status and shell](docs/sandbox.md#4-inspect-and-use-the-workspace) ·
+[SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
 [Incus web UI](docs/sandbox.md#incus-web-ui)
 
 ## Run
+
+For agents running directly on your host:
 
 You need **Go 1.25+**, **macOS or Linux**, and your agent CLIs.
 Codex integration is tested with **0.156.1**.
@@ -90,14 +101,33 @@ claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
 Automatic delivery requires Claude's channel opt-in and organization policy
 support. [Manual MCP setup](docs/mcp.md) is available for either agent.
 
-## Broker status
+## Dashboards
+
+**Incus web UI** — inspect containers, resources and logs from your host:
+
+```sh
+incus webui colima-collab-ai:  # Linux: incus webui local:
+```
+
+Open the printed URL and select project `collab-ai`. Keep the command running.
+[UI setup and troubleshooting](docs/sandbox.md#incus-web-ui).
+
+**Collaboration dashboard** — view both agents and pending inboxes in Bubble Tea.
+After the [SSH setup](docs/sandbox.md#4-ssh-into-the-workspace), open it from your host:
+
+```sh
+ssh -t -F infra/incus/ssh/config workspace collab dashboard
+```
+
+For a broker running directly on your host:
 
 ```sh
 ./collab dashboard --socket /tmp/collab-ai.sock
 ./collab status --socket /tmp/collab-ai.sock
 ```
 
-See connected agents and pending acknowledgments. [Dashboard controls](docs/dashboard.md).
+The dashboard is read-only; token usage and cap controls are not implemented.
+Codex prompts and approvals stay in its terminal. [Dashboard controls](docs/dashboard.md).
 
 ## How it fits together
 

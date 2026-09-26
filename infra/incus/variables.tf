@@ -9,12 +9,22 @@ variable "incus_socket" {
 }
 
 variable "image_fingerprint" {
-  description = "Full SHA256 of a container image on images.linuxcontainers.org; aliases are rejected."
+  description = "Full SHA256 of image_file, or of a container image on images.linuxcontainers.org when image_file is null."
   type        = string
   nullable    = false
   validation {
     condition     = can(regex("^[0-9a-f]{64}$", var.image_fingerprint))
     error_message = "Pin the full 64-character lowercase image fingerprint; do not use a moving alias."
+  }
+}
+
+variable "image_file" {
+  description = "Absolute path to a native unified Incus image built by scripts/sandbox-image.py. Null selects the upstream base-image path."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.image_file == null ? true : startswith(var.image_file, "/")
+    error_message = "Use an absolute path to the exported workspace image."
   }
 }
 

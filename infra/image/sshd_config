@@ -1,0 +1,15 @@
+# Invoked in inetd mode through Incus exec; never opens a TCP listener.
+HostKey /etc/ssh/ssh_host_ed25519_key
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+AllowUsers agent
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM yes
+DisableForwarding yes
+PermitUserRC no
+PermitUserEnvironment no
+PrintMotd no
+SetEnv DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1
+Subsystem sftp internal-sftp
