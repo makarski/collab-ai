@@ -1,0 +1,15 @@
+{
+  "cpu": 4,
+  "memory": 8,
+  "disk": 40,
+  "runtime": "incus",
+  "vmType": "vz",
+  "mountType": "virtiofs",
+  "mounts": null,
+  "sshConfig": false,
+  "forwardAgent": false,
+  "autoActivate": false,
+  "network": {
+    "address": false
+  }
+}

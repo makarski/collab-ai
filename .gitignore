@@ -5,3 +5,12 @@ collab-ai.db
 /collab-codex
 /collab
 collab-ai.db-*
+
+# Local infrastructure state, plans, and machine-specific configuration.
+/infra/incus/.terraform/
+/infra/incus/*.tfstate*
+/infra/incus/*.tfplan
+/infra/incus/*.auto.tfvars
+/infra/incus/*.auto.tfvars.json
+/infra/incus/crash.log
+__pycache__/
