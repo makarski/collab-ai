@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['workspace-v*']
+  workflow_dispatch:
+    inputs:
+      collab_ref:
+        description: 'App commit/tag (empty builds this workflow commit)'
+        type: string
+      codex_version:
+        description: 'Exact Codex version (empty uses the lock)'
+        type: string
+      claude_version:
+        description: 'Exact Claude Code version (empty uses the lock)'
+        type: string
+      go_version:
+        description: 'Exact Go version (empty uses the lock)'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.25.14'
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: '1.12.6'
+          tofu_wrapper: false
+      - run: go test -race ./... -timeout=60s
+      - run: python3 -m unittest discover -s scripts/tests -v
+      - run: |
+          tofu -chdir=infra/incus init -input=false -lockfile=readonly
+          tofu -chdir=infra/incus fmt -check
+          tofu -chdir=infra/incus validate
+          tofu -chdir=infra/incus test
+
+  images:
+    needs: checks
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: '1.12.6'
+          tofu_wrapper: false
+      - name: Initialize disposable Incus host
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT bash scripts/ci-incus.sh
+      - name: Build selected app and tools inside Incus
+        env:
+          APP_REF: ${{ inputs.collab_ref || github.sha }}
+          CODEX_VERSION: ${{ inputs.codex_version }}
+          CLAUDE_VERSION: ${{ inputs.claude_version }}
+          GO_VERSION: ${{ inputs.go_version }}
+        run: |
+          args=(--remote local --collab-ref "$APP_REF" --output dist/workspace)
+          if [[ -n "$CODEX_VERSION" ]]; then args+=(--codex-version "$CODEX_VERSION"); fi
+          if [[ -n "$CLAUDE_VERSION" ]]; then args+=(--claude-version "$CLAUDE_VERSION"); fi
+          if [[ -n "$GO_VERSION" ]]; then args+=(--go-version "$GO_VERSION"); fi
+          sudo python3 scripts/sandbox-image.py "${args[@]}"
+      - name: Install the exported artifact and smoke-test offline SSH
+        run: |
+          sudo python3 scripts/sandbox-download.py --remote local --from-dir dist/workspace/release --output dist/installed
+          sudo env "PATH=$PATH" python3 scripts/sandbox-smoke.py --remote local --image-dir dist/installed
+      - name: Upload tested release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workspace-linux-${{ matrix.arch }}
+          path: dist/workspace/release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/workspace-v')
+    needs: [checks, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: workspace-linux-*
+          merge-multiple: true
+          path: release
+      - name: Publish a versioned workspace release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "$RELEASE_TAG" --generate-notes

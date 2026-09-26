@@ -29,14 +29,19 @@ def private_state(directory, endpoint):
     if directory.is_symlink():
         raise ValueError("Refusing a symlinked SSH state directory")
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    for name in ("endpoint.json", "id_ed25519", "id_ed25519.pub", "known_hosts", "config"):
-        if (directory / name).is_symlink():
-            raise ValueError(f"Refusing symlinked SSH state: {name}")
+    check_state_files(directory)
     marker = directory / "endpoint.json"
-    if marker.exists() and json.loads(marker.read_text()) != endpoint:
+    previous = json.loads(marker.read_text()) if marker.exists() else endpoint
+    if previous != endpoint:
         raise ValueError("SSH state belongs to another endpoint; choose a different --state-dir")
     directory.chmod(0o700)
     marker.write_text(json.dumps(endpoint) + "\n")
+
+
+def check_state_files(directory):
+    for name in ("endpoint.json", "id_ed25519", "id_ed25519.pub", "known_hosts", "config"):
+        if (directory / name).is_symlink():
+            raise ValueError(f"Refusing symlinked SSH state: {name}")
 
 
 def pin_host_key(destination, public_key):

@@ -8,7 +8,7 @@ It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
 starts automatically. Hard token caps are not implemented, so model access stays
 disabled by the absence of networking and credentials.
 
-[Install](#1-install-the-host-tools) · [Image](#2-build-the-workspace-image) ·
+[Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
 [SSH](#4-ssh-into-the-workspace) · [Stop](#stop-or-remove) · [Web UI](#incus-web-ui)
 
 ## 1. Install the host tools
@@ -34,19 +34,22 @@ Requirements: Colima 0.10.3+ and Python 3.9+ on Mac; OpenTofu or Terraform 1.9+
 on either platform. Commands below use `tofu`; `terraform` works too.
 The Incus provider is locked to 1.2.0. The host needs internet access for downloads.
 
-## 2. Build the workspace image
+## 2. Download the workspace image
+
+Choose a published tag from [workspace releases](https://github.com/makarski/collab-ai/releases).
+Replace the example tag below with that version. Until the first release is published,
+use a [development build or CI artifact](sandbox-image.md).
 
 ```sh
 # macOS; on Linux replace colima-collab-ai with local.
-python3 scripts/sandbox-image.py --remote colima-collab-ai
+python3 scripts/sandbox-download.py --remote colima-collab-ai --release workspace-v0.1.0
 cp infra/incus/sandbox.tfvars.example infra/incus/sandbox.auto.tfvars
-cp dist/workspace/image.tfvars.json infra/incus/image.auto.tfvars.json
+cp dist/installed-workspace/image.tfvars.json infra/incus/image.auto.tfvars.json
 ```
 
-The builder compiles all four collab binaries **inside a temporary Incus container**,
-installs pinned agent CLIs, exports `dist/workspace/workspace.tar.gz`, then removes
-the builder. It needs a networked bridge (`incusbr0` by default); the finished
-workspace has no NIC. No Docker build or host Go installation is needed.
+The downloader selects your Incus server's architecture and verifies the image's
+SHA256. Nothing compiles locally. CI has already built and tested the image;
+the finished workspace has no NIC. No Docker or host Go installation is needed.
 
 Edit `sandbox.auto.tfvars`:
 
@@ -56,7 +59,7 @@ Edit `sandbox.auto.tfvars`:
 | `storage_pool` | Existing quota-capable pool; `default` for the Colima host |
 
 The generated image variables pin the artifact's absolute path and SHA256.
-Keep that artifact: provisioning verifies its checksum. For another build, use
+Keep that artifact: provisioning verifies its checksum. For another version, use
 a new `--output` directory. [Image contents and build details](sandbox-image.md).
 
 ## 3. Preview and apply

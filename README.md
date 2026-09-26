@@ -28,7 +28,8 @@ python3 scripts/sandbox-host.py apply
 
 Incus is the Mac client; Colima runs its Linux server. On **Linux**, install Incus
 directly; Colima is unnecessary. **Starting the host does not create the workspace.**
-Follow the [sandbox guide](docs/sandbox.md) to build the image and provision it.
+Follow the [sandbox guide](docs/sandbox.md) to download a released image and provision it.
+[Development builds](docs/sandbox-image.md#development-builds) let you choose app and tool versions.
 
 Once provisioned, configure SSH once and open a terminal (Linux: use `--remote local`):
 
