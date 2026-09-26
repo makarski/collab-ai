@@ -80,7 +80,7 @@ class ImageTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, json.dumps({"environment": {"architectures": ["aarch64"]}}))
             if "init" in args:
                 raise subprocess.CalledProcessError(1, args)
-            return subprocess.CompletedProcess(args, 0)
+            return subprocess.CompletedProcess(args, 0, "[]")
 
         with tempfile.TemporaryDirectory() as directory, patch.object(image, "run", side_effect=run):
             with patch.object(image, "source_archive", return_value={}):
@@ -91,7 +91,23 @@ class ImageTests(unittest.TestCase):
         self.assertEqual(len(deleted), 1)
         self.assertEqual(deleted[0][0][3], created)
         self.assertTrue(created.startswith("local:collab-build-"))
-        self.assertEqual(deleted[0][1]["input"], "yes\n")
+        self.assertNotIn("--force", deleted[0][0])
+
+    def test_cleanup_deletes_resources_only_in_owned_project(self):
+        def result(command, **kwargs):
+            resources = []
+            if command[3:5] == ["list", "local:"]:
+                resources = [{"name": "builder"}]
+            if command[3:5] == ["image", "list"]:
+                resources = [{"fingerprint": "a" * 64}]
+            return subprocess.CompletedProcess(command, 0, json.dumps(resources))
+
+        with patch.object(image, "run", side_effect=result) as run:
+            image.cleanup_project("local", "collab-build-test")
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertIn(["incus", "--project", "collab-build-test", "delete", "local:builder", "--force"], commands)
+        self.assertIn(["incus", "--project", "collab-build-test", "image", "delete", "local:" + "a" * 64], commands)
+        self.assertEqual(commands[-1], ["incus", "project", "delete", "local:collab-build-test"])
 
 
 if __name__ == "__main__":

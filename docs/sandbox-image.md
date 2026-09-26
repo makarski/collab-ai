@@ -50,7 +50,9 @@ container, 4 CPUs, 4 GiB RAM and a 12 GiB disk limit. It copies an allowlist of 
 files, with no host bind mounts. Go dependencies are verified against `go.sum`.
 No model requests are made. Cleanup removes only the project it created, including
 on a build failure. If the process is forcibly killed, inspect and delete its
-printed temporary project explicitly with `incus project delete REMOTE:PROJECT --force`.
+printed temporary project explicitly with `incus project delete REMOTE:PROJECT --force`
+on current clients. With Incus 6.0 LTS, remove its instances and images first,
+then delete the empty project without `--force`.
 
 [tools.lock.json](../infra/image/tools.lock.json) pins Ubuntu image fingerprints
 and tool archives for ARM64 and x86-64. Build on a host of the target architecture;

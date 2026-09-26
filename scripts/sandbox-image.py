@@ -28,6 +28,21 @@ def identifier(value):
     return value
 
 
+def cleanup_project(remote, project):
+    # Explicit deletion works with the Incus 6.0 LTS client too. All resources
+    # are confined to the UUID project successfully created by this invocation.
+    scoped = ["incus", "--project", project]
+    instances = json.loads(run(scoped + ["list", f"{remote}:", "--format", "json"],
+                               capture_output=True, text=True).stdout)
+    for instance in instances:
+        run(scoped + ["delete", f"{remote}:{instance['name']}", "--force"])
+    images = json.loads(run(scoped + ["image", "list", f"{remote}:", "--format", "json"],
+                            capture_output=True, text=True).stdout)
+    for image in images:
+        run(scoped + ["image", "delete", f"{remote}:{image['fingerprint']}"])
+    run(["incus", "project", "delete", f"{remote}:{project}"])
+
+
 def build(args, output):
     server = json.loads(run(["incus", "query", f"{args.remote}:/1.0"],
                             capture_output=True, text=True).stdout)
@@ -72,7 +87,7 @@ def build(args, output):
             print(f"Image ready: {image}\nSHA256: {digest}", flush=True)
         finally:
             # UUID project created above is the entire cleanup boundary, even on failure.
-            run(["incus", "project", "delete", f"{args.remote}:{project}", "--force"], input="yes\n", text=True)
+            cleanup_project(args.remote, project)
 
 
 def main():
