@@ -34,13 +34,41 @@ resource "incus_project" "sandbox" {
   }
 }
 
+locals {
+  workspace_fingerprint = one(concat(incus_image.base[*].fingerprint, incus_image.workspace[*].fingerprint))
+}
+
+moved {
+  from = incus_image.base
+  to   = incus_image.base[0]
+}
+
 resource "incus_image" "base" {
+  count   = var.image_file == null ? 1 : 0
   project = incus_project.sandbox.name
   source_image = {
     remote       = "sandbox-images"
     name         = var.image_fingerprint
     type         = "container"
     copy_aliases = false
+  }
+}
+
+resource "incus_image" "workspace" {
+  count   = var.image_file == null ? 0 : 1
+  project = incus_project.sandbox.name
+  source_file = {
+    data_path = var.image_file
+  }
+  lifecycle {
+    precondition {
+      condition     = var.image_file == null ? true : try(filesha256(var.image_file) == var.image_fingerprint, false)
+      error_message = "The workspace image file must exist and match image_fingerprint. Rebuild or restore the original artifact."
+    }
+    postcondition {
+      condition     = self.fingerprint == var.image_fingerprint
+      error_message = "Imported image fingerprint differs from the planned artifact; refusing to create the workspace."
+    }
   }
 }
 
@@ -74,7 +102,7 @@ resource "incus_profile" "sandbox" {
 resource "incus_instance" "workspace" {
   name      = "workspace"
   project   = incus_project.sandbox.name
-  image     = incus_image.base.fingerprint
+  image     = local.workspace_fingerprint
   type      = "container"
   profiles  = [incus_profile.sandbox.name]
   ephemeral = false

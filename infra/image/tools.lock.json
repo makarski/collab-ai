@@ -1,0 +1,25 @@
+{
+  "go_version": "1.25.14",
+  "codex_version": "0.156.1",
+  "claude_version": "2.1.283",
+  "architectures": {
+    "aarch64": {
+      "base_image": "354d46aeb19462028b7aaa03cc71d41b7c7584e49c5efed9033ec88091cc6bad",
+      "go_arch": "arm64",
+      "go_sha256": "9bf234ea70ffec9347fdf6b22ce4add51717d3386a38a441e8c8743fceb5eaee",
+      "codex_target": "aarch64-unknown-linux-musl",
+      "codex_sha256": "fdd47ed6aade0360796fd3f6f95a45096f327c15e19e8c7339f9dc5633041786",
+      "claude_platform": "linux-arm64",
+      "claude_sha256": "346d294f0103d6fc0de11ac953579b5c62dfa90698a4cfc486b6f927c615e697"
+    },
+    "x86_64": {
+      "base_image": "a1f771bd710c64e03893794267cfa35da8e23e8d4749436028af4d606220ce28",
+      "go_arch": "amd64",
+      "go_sha256": "a21ae5633a269bcd7e90cf767e48225633795e99d831742cbf3397064fee7712",
+      "codex_target": "x86_64-unknown-linux-musl",
+      "codex_sha256": "8b711520beddf385467b8da4d2c93736637c6ba1e46811cf0d8606b7c490b6f6",
+      "claude_platform": "linux-x64",
+      "claude_sha256": "1859583ce32920595c61ef868bee52e1b1594f7486db209935e01f1e5e804ae2"
+    }
+  }
+}

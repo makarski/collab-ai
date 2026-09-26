@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "collab": {
+      "command": "/usr/local/bin/collab-mcp",
+      "args": ["--agent-id", "claude-1", "--socket", "/tmp/collab-ai.sock", "--claude-channel", "--auto-listen"]
+    }
+  }
+}

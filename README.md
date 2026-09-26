@@ -15,8 +15,9 @@ Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 | ![macOS: Colima supplies a Linux VM containing the Incus project and offline workspace.](docs/assets/sandbox-macos.svg) | ![Linux: the Incus project and offline workspace run directly on the Linux host.](docs/assets/sandbox-linux.svg) |
 | [PlantUML source](docs/assets/sandbox-macos.puml) | [PlantUML source](docs/assets/sandbox-linux.puml) |
 
-**Today:** the sandbox is an empty, offline container. Agents run on your host;
-agent installation inside the sandbox and hard token caps are not implemented.
+**Included in the workspace image:** collab-ai, Codex, Claude Code, Go, Git and tmux.
+The broker starts automatically; you open agent terminals over SSH. The workspace
+stays offline while hard token caps are still unimplemented.
 
 On **macOS**, install the tools and start the dedicated host from this repository:
 
@@ -27,7 +28,14 @@ python3 scripts/sandbox-host.py apply
 
 Incus is the Mac client; Colima runs its Linux server. On **Linux**, install Incus
 directly; Colima is unnecessary. **Starting the host does not create the workspace.**
-Follow the [sandbox guide](docs/sandbox.md) to pin an image and provision it.
+Follow the [sandbox guide](docs/sandbox.md) to build the image and provision it.
+
+Once provisioned, configure SSH once and open a terminal (Linux: use `--remote local`):
+
+```sh
+python3 scripts/sandbox-ssh.py --remote colima-collab-ai
+ssh -F infra/incus/ssh/config workspace
+```
 
 Stop the dedicated Mac VM, keeping its data:
 
@@ -35,11 +43,13 @@ Stop the dedicated Mac VM, keeping its data:
 colima stop collab-ai
 ```
 
-[Status and shell](docs/sandbox.md#4-inspect-and-use-the-workspace) ·
+[SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
 [Incus web UI](docs/sandbox.md#incus-web-ui)
 
 ## Run
+
+For agents running directly on your host:
 
 You need **Go 1.25+**, **macOS or Linux**, and your agent CLIs.
 Codex integration is tested with **0.156.1**.

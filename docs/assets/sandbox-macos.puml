@@ -37,6 +37,8 @@ rectangle "Incus project: collab-ai" as Project {
     component Workspace <<Workspace>> [
         =workspace
         Offline Linux container
+        collab-ai · Codex · Claude Code
+        SSH terminal via Incus
         --
         Defaults: 2 CPUs · 4 GiB RAM · 10 GiB disk
         No network or host mounts

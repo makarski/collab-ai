@@ -75,6 +75,36 @@ run "reject_moving_image" {
   expect_failures = [var.image_fingerprint]
 }
 
+run "local_workspace_image" {
+  command = plan
+  override_resource {
+    target = incus_image.workspace
+    values = {
+      # SHA256 of tests/fixtures/image.txt; OpenTofu evaluates this at plan time.
+      fingerprint = "023d926408ae9494f18ccfae5057a3f9a34e6b107f10527373fb7138505af9a8"
+    }
+  }
+  variables {
+    image_file        = abspath("tests/fixtures/image.txt")
+    image_fingerprint = filesha256("tests/fixtures/image.txt")
+  }
+  assert {
+    condition = (
+      length(incus_image.base) == 0 &&
+      incus_image.workspace[0].source_file.data_path == var.image_file
+    )
+    error_message = "A built workspace must be imported from the verified local artifact, never an upstream base."
+  }
+}
+
+run "reject_changed_image_artifact" {
+  command = plan
+  variables {
+    image_file = abspath("tests/fixtures/image.txt")
+  }
+  expect_failures = [incus_image.workspace[0]]
+}
+
 run "reject_remote_endpoint" {
   command = plan
   variables {

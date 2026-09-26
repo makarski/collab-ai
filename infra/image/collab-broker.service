@@ -1,0 +1,17 @@
+[Unit]
+Description=collab-ai local message broker
+After=local-fs.target
+
+[Service]
+User=agent
+Group=agent
+WorkingDirectory=/workspace
+Environment=COLLAB_SOCKET_PATH=/tmp/collab-ai.sock
+Environment=COLLAB_DB_PATH=/var/lib/collab-ai/inboxes.db
+ExecStart=/usr/local/bin/broker
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

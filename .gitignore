@@ -14,3 +14,5 @@ collab-ai.db-*
 /infra/incus/*.auto.tfvars.json
 /infra/incus/crash.log
 __pycache__/
+/dist/
+/infra/incus/ssh/
