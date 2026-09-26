@@ -6,7 +6,7 @@ Connect Codex and Claude Code with durable inboxes and automatic message deliver
 Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 
 [Agent setup](#run) · [Sandbox setup](#set-up-a-sandbox) ·
-[Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
+[Dashboards](#dashboards) · [Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
 
 ## Set up a sandbox
 
@@ -101,14 +101,33 @@ claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
 Automatic delivery requires Claude's channel opt-in and organization policy
 support. [Manual MCP setup](docs/mcp.md) is available for either agent.
 
-## Broker status
+## Dashboards
+
+**Incus web UI** — inspect containers, resources and logs from your host:
+
+```sh
+incus webui colima-collab-ai:  # Linux: incus webui local:
+```
+
+Open the printed URL and select project `collab-ai`. Keep the command running.
+[UI setup and troubleshooting](docs/sandbox.md#incus-web-ui).
+
+**Collaboration dashboard** — view both agents and pending inboxes in Bubble Tea.
+After the [SSH setup](docs/sandbox.md#4-ssh-into-the-workspace), open it from your host:
+
+```sh
+ssh -t -F infra/incus/ssh/config workspace collab dashboard
+```
+
+For a broker running directly on your host:
 
 ```sh
 ./collab dashboard --socket /tmp/collab-ai.sock
 ./collab status --socket /tmp/collab-ai.sock
 ```
 
-See connected agents and pending acknowledgments. [Dashboard controls](docs/dashboard.md).
+The dashboard is read-only; token usage and cap controls are not implemented.
+Codex prompts and approvals stay in its terminal. [Dashboard controls](docs/dashboard.md).
 
 ## How it fits together
 

@@ -9,7 +9,8 @@ starts automatically. Hard token caps are not implemented, so model access stays
 disabled by the absence of networking and credentials.
 
 [Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
-[SSH](#4-ssh-into-the-workspace) · [Stop](#stop-or-remove) · [Web UI](#incus-web-ui)
+[SSH](#4-ssh-into-the-workspace) · [Agent dashboard](dashboard.md#open-the-dashboard) ·
+[Stop](#stop-or-remove) · [Web UI](#incus-web-ui)
 
 ## 1. Install the host tools
 
@@ -181,22 +182,48 @@ This retains the host VM and shared storage pool. Export any data you need first
 
 ## Incus web UI
 
-The bootstrap does not open a UI. With the host running and UI assets installed:
+Run this **on your host**, with the Incus server running. On Mac, start it with
+`python3 scripts/sandbox-host.py apply` if needed. The bootstrap does not open a browser.
 
 | macOS | Linux |
 | --- | --- |
 | `incus webui colima-collab-ai:` | `incus webui local:` |
 
-The command opens a temporary localhost URL. Keep its terminal running; Ctrl+C
-closes the UI proxy without stopping your containers. Select project `collab-ai`.
-No public HTTPS listener is required.
+Open the exact localhost URL printed by the command if your browser does not
+open automatically. Its port and login token are temporary; keep the URL private.
+Keep the terminal running; Ctrl+C closes the UI proxy without stopping containers.
+Select project **`collab-ai`**, then instance **`workspace`** to inspect its state,
+resources, logs and console. If the project or instance is missing, complete
+steps 2–3; starting Colima alone does not provision a workspace.
 
-**“The server doesn't have a web UI installed”** means the Linux server needs UI
-assets, such as `incus-ui-canonical` from [Zabbly](https://github.com/zabbly/incus#other-packages).
-The Mac client does not install them. [Incus web UI command](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/webui/).
+The proxy uses your existing Incus access. No public HTTPS listener, workspace NIC
+or browser certificate setup is required for this local command.
+[Incus web UI command](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/webui/).
+
+**UI assets missing?** They belong on the Linux **server**, outside the workspace.
+The tested Colima host already includes `incus-ui-canonical`; the Mac client alone
+does not supply it. On Debian/Ubuntu servers using the
+[Zabbly package repository](https://github.com/zabbly/incus#other-packages), install it with:
+
+```sh
+# macOS: install inside the dedicated Colima VM, only if missing.
+colima ssh --profile collab-ai -- sudo apt-get update
+colima ssh --profile collab-ai -- sudo apt-get install incus-ui-canonical
+
+# Linux: run on the Incus server, only if missing.
+sudo apt-get update
+sudo apt-get install incus-ui-canonical
+```
+
+If the package cannot be found, follow your Incus distributor's UI installation
+instructions; these commands assume its package repository is already configured.
+If `webui` is an unknown command, update the host's Incus client to a release that
+provides it. On Mac: `brew upgrade incus`.
 
 Use the UI to inspect; apply managed changes through Terraform/OpenTofu to avoid
-drift. `collab dashboard` separately shows agent connections and inboxes.
+drift. For Codex and Claude connections, use the separate
+[collaboration dashboard over SSH](dashboard.md#open-the-dashboard). Incus resource
+limits do not enforce token caps.
 
 <details>
 <summary>Isolation, repeatability, and validation details</summary>

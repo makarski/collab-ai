@@ -1,6 +1,23 @@
 # Operator dashboard
 
-Watch the broker without repeating `collab status`:
+The Bubble Tea dashboard shows **both Codex and Claude connections and pending
+inboxes**. It runs in a terminal; collab-ai does not serve a browser dashboard.
+For containers and resource usage, open the separate [Incus web UI](sandbox.md#incus-web-ui).
+
+## Open the dashboard
+
+**Sandbox (macOS or Linux):** complete the [SSH setup](sandbox.md#4-ssh-into-the-workspace),
+then run from the repository root on your host:
+
+```sh
+ssh -t -F infra/incus/ssh/config workspace collab dashboard
+```
+
+The `-t` allocates the terminal Bubble Tea needs. From an existing sandbox shell,
+run `collab dashboard`. The binary is already installed and the broker starts at
+boot. Press `q` to close the dashboard; the workspace and agents keep running.
+
+**Host broker:** build once, then watch without repeating `collab status`:
 
 ```sh
 go build -o collab ./cmd/collab
@@ -11,7 +28,17 @@ go build -o collab ./cmd/collab
 The socket defaults to `COLLAB_SOCKET_PATH`, then `/tmp/collab-ai.sock`.
 The dashboard requires interactive stdin and stdout. For a pipe, script, or log,
 use `collab status` or `collab status --json`. Set `NO_COLOR=1` for plain rendering.
-Bubble Tea 2.0.9 keeps the project's Go 1.25 requirement.
+
+## Agent terminals and token caps
+
+The dashboard observes collaboration; prompts, output and approval requests stay
+in each agent's terminal. Open another SSH terminal or tmux pane for
+[`collab-codex --terminal` and Claude Code](sandbox.md#4-ssh-into-the-workspace).
+The sandbox currently stays offline, so live model sessions are unavailable.
+
+**Token accounting, a shared token ceiling and per-agent budget controls are not
+implemented.** Incus CPU, memory and disk limits do not limit model tokens.
+There is no cap-setting command or web panel in this release.
 
 ## Controls
 
@@ -72,8 +99,6 @@ delivery, or allocates a message sequence. Closing it cancels outstanding I/O
 and restores the terminal; the broker and agent processes keep running.
 Peer-supplied identifiers and errors are escaped before rendering. Long errors
 are bounded and explicitly marked as truncated; color is never the only indicator.
-
-Message timelines and disconnect controls are separate follow-up work.
 
 ## Recorded validation
 
