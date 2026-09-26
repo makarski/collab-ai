@@ -1,10 +1,13 @@
-# This file is maintained automatically by "terraform init".
+# This file is maintained automatically by "tofu init".
 # Manual edits may be lost in future updates.
 
 provider "registry.terraform.io/lxc/incus" {
   version     = "1.2.0"
   constraints = "1.2.0"
   hashes = [
+    "h1:9G5MaYQY9mKIpO341aG6f0Bt46DFD/bssrtNB+r861U=",
+    "h1:9GgLr8ZMjMh1oEyxRL94xdwmX+7S/hucszDkv4BSYtI=",
+    "h1:Gfbm0YZqFs3++Kxsf6a3oHBfEZcltLYaq7cEiptAevQ=",
     "h1:KVtzfYxkBeflrdh4Sv155N2JkXiYo+BaPUq8c8wZHR8=",
     "zh:3be797962ed009eedcd6badb2cce1f707345032d48814f050f2103f00eba0177",
     "zh:53fd1bf8685ef140372ab3282267fba38219dd2351efa723888a80aa41aa9367",

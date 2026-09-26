@@ -67,15 +67,19 @@ def check_versions(ssh, lock):
             raise ValueError(f"Installed version differs from the manifest: {command}")
 
 
-def check_workspace(args, directory, project, manifest):
-    target = f"{args.remote}:workspace"
-    execute = ["incus", "--project", project, "exec", target, "-T", "--"]
+def check_offline_image(execute):
     links = json.loads(run(execute + ["ip", "-json", "link"], capture_output=True, text=True).stdout)
     if [link["ifname"] for link in links] != ["lo"]:
         raise ValueError("Workspace unexpectedly has a network interface")
     key_check = run(execute + ["find", "/etc/ssh", "-name", "ssh_host_*"], capture_output=True, text=True)
     if key_check.stdout.strip():
         raise ValueError("Image shipped SSH host keys")
+
+
+def check_workspace(args, directory, project, manifest):
+    target = f"{args.remote}:workspace"
+    execute = ["incus", "--project", project, "exec", target, "-T", "--"]
+    check_offline_image(execute)
     ssh_dir = directory / "ssh"
     run([sys.executable, str(ROOT / "scripts/sandbox-ssh.py"), "--remote", args.remote,
          "--project", project, "--state-dir", str(ssh_dir)])
@@ -92,6 +96,15 @@ def check_workspace(args, directory, project, manifest):
     run(["incus", "--project", project, "start", target])
     wait_for_broker(ssh)
     run(ssh + ["test -f /workspace/restart-check"])
+
+
+def destroy_deployment(tofu, directory, project):
+    try:
+        run(tofu + ["destroy", "-auto-approve", "-input=false"])
+    except BaseException:
+        print(f"Cleanup failed; retained deployment state for {project} at {directory}", file=sys.stderr)
+        raise
+    shutil.rmtree(directory)
 
 
 def main():
@@ -111,12 +124,7 @@ def main():
         check_workspace(args, directory, project, manifest)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     finally:
-        try:
-            run(tofu + ["destroy", "-auto-approve", "-input=false"])
-        except BaseException:
-            print(f"Cleanup failed; retained deployment state for {project} at {directory}", file=sys.stderr)
-            raise
-        shutil.rmtree(directory)
+        destroy_deployment(tofu, directory, project)
 
 
 if __name__ == "__main__":

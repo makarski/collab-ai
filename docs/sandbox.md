@@ -228,7 +228,7 @@ tofu -chdir=infra/incus test
 Live-tested on Apple Silicon with Colima 0.10.3 and Incus server 7.1/client 7.4:
 image build/export, provisioning, unchanged second plan, unprivileged SSH,
 host-key replacement detection, offline networking, and restart persistence.
-Mock tests pass with OpenTofu 1.12.6 and Terraform 1.15.4. Native Linux and x86-64
-image builds have not been live-tested.
+Mock tests pass with OpenTofu 1.12.6 and Terraform 1.15.4. The image workflow also
+exercises provisioning and SSH on AMD64 and ARM64 Ubuntu runners.
 
 </details>
