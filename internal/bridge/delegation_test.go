@@ -272,12 +272,14 @@ func TestDelegatedWaitWakesOnErrorsAndRetainsBoundedInbox(t *testing.T) {
 	awaitDelegationBusy(t, owner.delegation, true)
 	_, err = owner.SendMessage(context.Background(), SendRequest{To: "unknown", Text: "missing", MessageID: "missing"})
 	requireNoError(t, err)
+	var cursor uint64
 	select {
 	case out := <-ready:
 		requireNoError(t, <-failure)
 		assertEqual(t, "error batch size", len(out.Inbox.Messages), 1)
 		assertEqual(t, "broker error", out.Inbox.Messages[0].Code, protocol.ErrUnknownRecipient)
 		assertEqual(t, "correlated error", out.Inbox.Messages[0].MessageID, "missing")
+		cursor = out.NextCursor
 	case <-time.After(time.Second):
 		t.Fatal("delegated wait did not wake on a broker error")
 	}
@@ -286,11 +288,16 @@ func TestDelegatedWaitWakesOnErrorsAndRetainsBoundedInbox(t *testing.T) {
 	assertEqual(t, "parent retains error", inbox.Messages[0].MessageID, "missing")
 	peer := connectAgent(t, path, "peer")
 	// Non-durable frames can fill the adapter beyond the durable broker quota.
-	for range maxInboxMessages + 1 {
-		if err := peer.Send(context.Background(), "owner", "bounded"); err != nil {
-			t.Fatal(err)
-		}
+	// Observe each retained copy before sending more: the overflow deadline must
+	// not include persisting/delivering the entire backlog or fill the broker's
+	// smaller outbound queue before reaching the adapter's own bound.
+	for range maxInboxMessages {
+		requireNoError(t, peer.Send(context.Background(), "owner", "bounded"))
+		batch := readGrant(t, grant, cursor, 1)
+		assertEqual(t, "retained frame", len(batch.Inbox.Messages), 1)
+		cursor = batch.NextCursor
 	}
+	requireNoError(t, peer.Send(context.Background(), "owner", "overflow"))
 	select {
 	case <-owner.client.done:
 	case <-time.After(3 * time.Second):
