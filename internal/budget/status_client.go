@@ -43,8 +43,11 @@ func decodeStatus(response *http.Response, name string) (Snapshot, error) {
 	if err := json.NewDecoder(http.MaxBytesReader(nil, response.Body, 65536)).Decode(&out); err != nil {
 		return out, err
 	}
-	if out.SchemaVersion != 1 || out.Name != name || out.Cap <= 0 {
-		return Snapshot{}, errors.New("budget controller returned an invalid or different budget")
+	if out.Name != name {
+		return Snapshot{}, errors.New("budget controller returned a different budget")
+	}
+	if out.SchemaVersion != 1 || out.Cap <= 0 {
+		return Snapshot{}, errors.New("budget controller returned an invalid snapshot")
 	}
 	return out, nil
 }

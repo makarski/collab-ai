@@ -44,8 +44,11 @@ func validateStatusDirectory(path string) error {
 	if err != nil {
 		return err
 	}
+	if !info.IsDir() || info.Mode().Perm()&0022 != 0 {
+		return errors.New("budget status directory must not be group/world writable")
+	}
 	owner, ok := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || !ok || owner.Uid != uint32(os.Geteuid()) || info.Mode().Perm()&0022 != 0 {
+	if !ok || owner.Uid != uint32(os.Geteuid()) {
 		return errors.New("budget status directory must belong to the launcher and not be group/world writable")
 	}
 	return nil

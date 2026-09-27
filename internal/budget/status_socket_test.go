@@ -40,31 +40,39 @@ func TestStatusSocketCannotMutateOrSelectBudget(t *testing.T) {
 		{"POST", "/v1/observe"}, {"POST", "/v1/create"}, {"POST", "/v1/reset"},
 		{"GET", "/v1/status?name=other&cap=999999"}, {"GET", "/v1/admin"},
 	} {
-		request, err := http.NewRequest(attempt.method, "http://budget"+attempt.route,
-			strings.NewReader(`{"role":"admin","cap":999999,"reported_tokens":0}`))
-		if err != nil {
-			t.Fatal(err)
-		}
-		request.Header.Set("Authorization", "Bearer pretend-admin")
-		response, err := client.Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response.Body.Close()
-		if response.StatusCode != 404 && response.StatusCode != 405 {
-			t.Fatal(attempt, response.Status)
-		}
+		assertMutationDenied(t, client, attempt.method, attempt.route)
 	}
 	b.Observe("thread", 107)
 	out, err := ReadStatus(context.Background(), path, "task")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Cap != 100 || out.ReportedTokens != 107 || out.State != "exhausted" {
+	if out.Cap != 100 || out.ReportedTokens != 107 {
+		t.Fatal(out)
+	}
+	if out.State != "exhausted" {
 		t.Fatal(out)
 	}
 	if _, err := ReadStatus(context.Background(), path, "other"); err == nil {
 		t.Fatal("another budget selected")
+	}
+}
+
+func assertMutationDenied(t *testing.T, client *http.Client, method, route string) {
+	t.Helper()
+	request, err := http.NewRequest(method, "http://budget"+route,
+		strings.NewReader(`{"role":"admin","cap":999999,"reported_tokens":0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer pretend-admin")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != 404 && response.StatusCode != 405 {
+		t.Fatal(method, route, response.Status)
 	}
 }
 

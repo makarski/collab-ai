@@ -59,11 +59,19 @@ def claude_command(directory, port):
 def verify(kind, result, observed):
     if result.returncode or len(observed) != 3:
         raise ValueError(f"{kind} fixture failed: {result.stdout}\n{result.stderr}")
+    verify_files(kind, result)
+    verify_local_rejection(kind, result)
+
+
+def verify_files(kind, result):
     if Path("/var/lib/collab-proof/private").read_text() != "controller-only":
         raise ValueError("Native tool modified secured-container state")
     marker = "proof-native" if kind == "codex" else "proof-claude"
     if Path("/workspace", marker).exists() or "isolated" not in result.stdout:
         raise ValueError(f"Remote execution failed or ran locally: {result.stdout}\n{result.stderr}")
+
+
+def verify_local_rejection(kind, result):
     if kind == "codex" and "unknown turn environment id `local`" not in result.stderr:
         raise ValueError("Codex did not explicitly reject the local environment")
     if kind == "claude" and "No such tool available: Bash" not in result.stdout:

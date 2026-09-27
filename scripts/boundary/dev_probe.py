@@ -38,8 +38,10 @@ def check_mutations():
         if code not in (404, 405):
             raise ValueError(f"Budget mutation accepted: {method} {route}")
     code, data = request("GET", "/v1/status")
+    if code != 200:
+        raise ValueError("Public status failed after mutation attempts")
     snapshot = json.loads(data)
-    if code != 200 or snapshot["cap"] != 100 or snapshot["reported_tokens"] != 60:
+    if snapshot["cap"] != 100 or snapshot["reported_tokens"] != 60:
         raise ValueError(f"Unexpected budget after mutation attempts: {snapshot}")
 
 
@@ -47,8 +49,15 @@ def check_filesystem():
     for command in [["touch", "/mnt/proof-status/public/overwrite"], ["rm", SOCKET],
                     ["cat", "/var/lib/collab-proof/budgets/task.json"], ["cat", "/var/lib/collab-proof/private"],
                     ["cat", "/proc/1/root/var/lib/collab-proof/budgets/task.json"]]:
-        if subprocess.run(command, capture_output=True).returncode == 0:
-            raise ValueError(f"Dev accessed or changed protected state: {command}")
+        require_denied(command)
+
+
+def require_denied(command):
+    if subprocess.run(command, capture_output=True).returncode == 0:
+        raise ValueError(f"Dev accessed or changed protected state: {command}")
+
+
+def check_host_isolation():
     if os.path.exists("/var/lib/incus/unix.socket"):
         raise ValueError("Incus admin socket exposed to dev")
     links = json.loads(subprocess.check_output(["ip", "-json", "link"]))
@@ -59,4 +68,5 @@ def check_filesystem():
 if __name__ == "__main__":
     check_mutations()
     check_filesystem()
+    check_host_isolation()
     print("PASS: dev reads the fixed cap; mutation, socket replacement, state access and admin access are denied.")

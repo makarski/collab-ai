@@ -104,15 +104,20 @@ def check_budget(host):
 def check_exhaustion(host, command):
     run(host.base + ["restart", host.remote + "secured"])
     saved = json.loads(host.exe("secured", *ENV, CLI, "budget", "status", "task", "--json"))
-    if saved["state"] != "exhausted" or saved["cap"] != 100 or saved["reported_tokens"] != 107:
+    expected = {"state": "exhausted", "cap": 100, "reported_tokens": 107}
+    if {key: saved[key] for key in expected} != expected:
         raise ValueError(f"Restart changed the budget: {saved}")
     retry = subprocess.run(command, input="", capture_output=True, text=True, timeout=10)
     if retry.returncode == 0 or "soft token cap reached" not in retry.stderr:
         raise ValueError("Exhausted budget permitted relaunch")
+    check_missing_status(host)
+    print("PASS: cap stops protected fake client; exhaustion survives restart; lost status never falls back.", flush=True)
+
+
+def check_missing_status(host):
     lost = subprocess.run(status_command(host), capture_output=True, text=True, timeout=5)
     if lost.returncode == 0 or lost.stdout:
         raise ValueError("Controller loss returned a usable budget snapshot")
-    print("PASS: cap stops protected fake client; exhaustion survives restart; lost status never falls back.", flush=True)
 
 
 def check_native(host, kind):

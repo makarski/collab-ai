@@ -47,18 +47,23 @@ func main() {
 	}
 	defer closeStatus()
 	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap}
-	if *mcpSocket != "" {
-		err = relayMCP(ctx, *mcpSocket, operatorIO{input: os.Stdin, output: os.Stdout})
-	} else if *terminal {
-		err = launcher.runTerminal(ctx, flag.Args())
-	} else {
-		err = launcher.runOperator(ctx, operatorIO{input: os.Stdin, output: os.Stdout})
-	}
+	err = launcher.runMode(ctx, *mcpSocket, *terminal, flag.Args())
 	if err != nil {
 		closeStatus()
 		log.Print(err)
 		os.Exit(1)
 	}
+}
+
+func (l codexLauncher) runMode(ctx context.Context, mcpSocket string, terminal bool, args []string) error {
+	operator := operatorIO{input: os.Stdin, output: os.Stdout}
+	if mcpSocket != "" {
+		return relayMCP(ctx, mcpSocket, operator)
+	}
+	if terminal {
+		return l.runTerminal(ctx, args)
+	}
+	return l.runOperator(ctx, operator)
 }
 
 func optionalBudget(path string, limit int64, relay string) (*budget.Budget, error) {

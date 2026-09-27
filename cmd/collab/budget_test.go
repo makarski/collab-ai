@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,12 +65,13 @@ func TestBudgetHelpDoesNotRequireAStore(t *testing.T) {
 	}
 }
 
-func TestRemoteBudgetStatusNeverFallsBackToLocalBudget(t *testing.T) {
+func budgetCLISocket(t *testing.T) (string, *http.Server) {
+	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "budget-cli-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	s := budget.Store{Directory: dir}
 	if _, err := s.Create("task", 100); err != nil {
 		t.Fatal(err)
@@ -78,13 +80,18 @@ func TestRemoteBudgetStatusNeverFallsBackToLocalBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer b.Close()
+	t.Cleanup(func() { b.Close() })
 	path := filepath.Join(dir, "status.sock")
 	server, err := budget.OpenStatusSocket(path, "task", b)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Close()
+	t.Cleanup(func() { server.Close() })
+	return path, server
+}
+
+func TestRemoteBudgetStatusNeverFallsBackToLocalBudget(t *testing.T) {
+	path, server := budgetCLISocket(t)
 	// A hostile local setting cannot redirect a remote status query.
 	t.Setenv("COLLAB_BUDGET_DIR", "invalid-local-directory")
 	code, out, diagnostic := budgetCLI(t, "status", "task", "--socket", path, "--json")
@@ -92,7 +99,7 @@ func TestRemoteBudgetStatusNeverFallsBackToLocalBudget(t *testing.T) {
 		t.Fatal(code, out, diagnostic)
 	}
 	server.Close()
-	t.Setenv("COLLAB_BUDGET_DIR", dir)
+	t.Setenv("COLLAB_BUDGET_DIR", filepath.Dir(path))
 	code, out, _ = budgetCLI(t, "status", "task", "--socket", path)
 	if code == 0 || out != "" {
 		t.Fatal("fell back to local budget", code, out)
