@@ -153,6 +153,48 @@ Each launcher process manages **one conversation**, started, resumed, or forked.
 To switch conversations with `/new`, `/resume`, or `/fork`, exit and launch a new
 process instead. It does not attach to a terminal already running. The CLI must
 support `--remote unix://PATH` (available in the locally tested 0.156.1).
+
+### Codex soft cap
+
+Add `--token-cap 100000 --budget-file /absolute/path/task-budget.json` before
+`--` when launching `collab-codex`. Create the parent directory first. Both flags
+are required together; omitting both leaves the session uncapped. Existing
+subscription authentication and native approvals are unchanged.
+
+The supervisor records App Server `thread/tokenUsage/updated` cumulative
+`totalTokens`, once per reported thread, in a private JSON file. It does not add
+cached-input or reasoning subtotals again. These are native-client token counts,
+not dollars, subscription quota, RTK savings estimates or a provider billing audit.
+The file's `threads` values are the observed high-water marks; their sum is the
+recorded spend. A missing report is unknown usage, not evidence of zero spend.
+
+Reuse the **same file and cap** after restarting or resuming. Duplicate reports
+never add charges. A lower reported total stops the session, since it could mean
+a counter reset; it never refunds tokens. Reported history from an ordinary resumed session
+is included; a fork's new thread ID counts separately, including any history
+Codex reports for it. The file supports one launcher at a time and refuses cap
+changes or relaunch after exhaustion. A new file deliberately starts a separate
+budget. Keep budget files outside repositories and do not delete them to resume
+the same task.
+
+At the observed limit, the proxy rejects new operator requests and peer-triggered
+turns, requests `turn/interrupt`, then ends the session after two seconds. The App
+Server process group receives SIGTERM, followed by SIGKILL after another two
+seconds if needed. The shell diagnostic shows reported usage, cap and overshoot;
+late usage received during interruption is still recorded. Durable unacknowledged
+peer messages remain recoverable through the broker. Pending work is not retried.
+
+Malformed usage or a persistence error also stops the session. Inspect the error
+and reconcile unknown usage before starting a new budget. Accounting failures are
+saved when storage permits; a storage failure or crash can lose the latest report.
+
+**This is a soft guardrail.** Delayed or absent reports, internal calls and work
+already running remotely can overshoot; there is no proven maximum overshoot.
+Unreported subagent or auxiliary usage is not covered. A local account can bypass
+the wrapper, change its files or launch detached processes; this is not a sandbox
+security boundary. Claude supervision and shared budget splits are not yet
+available. Tests use offline protocol/process fixtures; no live subscription
+spending was used to validate the cap.
 The broker transport remains UDS; WebSocket framing here is only the CLI's local
 App Server connection. Keep the manual MCP setup for ordinary `codex` sessions
 that do not use this launcher; that setup still requires inbox checks.

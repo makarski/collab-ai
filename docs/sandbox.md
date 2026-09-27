@@ -5,8 +5,8 @@
 This setup creates an **offline Linux workspace** with 2 CPUs, 4 GiB memory,
 10 GiB disk, and a 512-process limit. It has no NIC, host mounts, or credentials.
 It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
-starts automatically. Hard token caps are not implemented, so model access stays
-disabled by the absence of networking and credentials.
+starts automatically. Model access remains disabled by the absence of networking
+and credentials; provisioning does not yet configure subscription logins or model access.
 
 [Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
 [SSH](#4-ssh-into-the-workspace) · [Agent dashboard](dashboard.md#open-the-dashboard) ·

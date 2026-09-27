@@ -13,25 +13,26 @@ import (
 )
 
 func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, args []string) error {
-	if err := protocol.ValidateAgentID(cfg.AgentID); err != nil {
-		return err
-	}
-	if err := validateTerminalArgs(args); err != nil {
-		return err
-	}
-	if err := validateBrokerSocket(cfg.SocketPath); err != nil {
+	return (codexLauncher{client: cfg, binary: binary}).runTerminal(ctx, args)
+}
+
+func (l codexLauncher) runTerminal(ctx context.Context, args []string) (result error) {
+	// Preserve the cap diagnostic even if the terminal exits first. Later
+	// defers finish the endpoint and its budget observer before this runs.
+	defer func() { result = l.budgetResult(result) }()
+	if err := l.validateTerminal(args); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	endpoint, err := newTerminalEndpoint(ctx, func(ctx context.Context, stream io.ReadWriteCloser) error {
-		return runWithOperator(ctx, cfg, binary, operatorIO{input: stream, output: stream})
+		return l.runOperator(ctx, operatorIO{input: stream, output: stream})
 	})
 	if err != nil {
 		return err
 	}
 	defer endpoint.Close()
-	cmd := codexCommand(ctx, binary, append([]string{"--remote", endpoint.URL()}, args...)...)
+	cmd := codexCommand(ctx, l.binary, append([]string{"--remote", endpoint.URL()}, args...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start Codex terminal: %w", err)
@@ -46,6 +47,16 @@ func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, ar
 		<-done
 		return err
 	}
+}
+
+func (l codexLauncher) validateTerminal(args []string) error {
+	if err := protocol.ValidateAgentID(l.client.AgentID); err != nil {
+		return err
+	}
+	if err := validateTerminalArgs(args); err != nil {
+		return err
+	}
+	return validateBrokerSocket(l.client.SocketPath)
 }
 
 func validateBrokerSocket(path string) error {

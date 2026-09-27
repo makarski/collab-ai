@@ -1,9 +1,14 @@
 # collab-ai
 
-**A local foundation for sandboxed AI collaboration.**
+**Real-time AI collaboration in a sandbox, with visibility and control over token spend.**
 
-Connect Codex and Claude Code with durable inboxes and automatic message delivery.
-Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
+Three goals:
+
+- **AI collaboration in real time** — connect Codex and Claude Code with durable inboxes and automatic message delivery.
+- **A sandboxed environment** — provision a reproducible, isolated Linux workspace with Incus.
+- **Token spend visibility and soft cap enforcement** — track reported usage and stop managed agents when they reach your limit.
+
+[MIT licensed](LICENSE).
 
 [Agent setup](#run) · [Sandbox setup](#set-up-a-sandbox) ·
 [Dashboards](#dashboards) · [Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
@@ -17,7 +22,7 @@ Provision an isolated Linux workspace with Incus. [MIT licensed](LICENSE).
 
 **Included in the workspace image:** collab-ai, Codex, Claude Code, Go, Git and tmux.
 The broker starts automatically; you open agent terminals over SSH. The workspace
-stays offline while hard token caps are still unimplemented.
+stays offline; network access and subscription login are not provisioned yet.
 
 On **macOS**, install the tools and start the dedicated host from this repository:
 
@@ -87,6 +92,20 @@ Resume or fork managed or ordinary Codex conversations. Exit the previous sessio
 ```
 
 [More options and compatibility](docs/host-integration.md#codex-terminal).
+
+### Set a Codex soft cap
+
+```sh
+mkdir -p "$HOME/.local/state/collab-ai"
+./collab-codex --agent-id codex-1 --terminal \
+  --token-cap 100000 --budget-file "$HOME/.local/state/collab-ai/task-budget.json" -- \
+  -C /path/to/your/project
+```
+
+Reuse the file on resume to retain accounting. At the limit, the supervisor
+interrupts Codex and shuts it down. Usage reports can arrive late, so overshoot
+is possible. This currently covers the managed Codex process; Claude and shared
+budget controls are not included. [Accounting and limits](docs/host-integration.md#codex-soft-cap).
 
 ### Claude Code
 
