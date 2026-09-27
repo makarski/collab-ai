@@ -35,6 +35,7 @@ class ImageTests(unittest.TestCase):
                 names = source.getnames()
                 self.assertIn("cmd/broker/main.go", names)
                 self.assertIn("infra/image/tools.lock.json", names)
+                self.assertIn("infra/image/collab-secured-setup.service", names)
                 self.assertNotIn(".git/config", names)
                 self.assertNotIn("infra/incus/sandbox.auto.tfvars", names)
                 self.assertNotIn("scripts/sandbox-image.py", names)
