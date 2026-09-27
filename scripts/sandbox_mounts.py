@@ -7,16 +7,21 @@ import re
 import tempfile
 
 
-def canonical_source(value):
+def validate_source_path(value):
     if not isinstance(value, str) or not value.startswith("/"):
         raise ValueError("Mount sources must be absolute directories")
-    if any(character in value for character in (",", "\n", "\r")):
+    if re.search(r"[,\n\r]", value):
         raise ValueError("Mount sources cannot contain commas or newlines")
+
+
+def canonical_source(value):
+    validate_source_path(value)
     source = Path(value).resolve(strict=True)
     if not source.is_dir():
         raise ValueError(f"Mount source is not a directory: {source}")
     if source in (Path("/"), Path.home().resolve()):
         raise ValueError("Select a project directory, not / or your entire home")
+    validate_source_path(str(source))
     return str(source)
 
 
@@ -25,13 +30,17 @@ def validated_mount(name, spec):
         raise ValueError(f"Invalid mount name: {name!r}")
     if not isinstance(spec, dict) or set(spec) - {"source", "path", "readonly"}:
         raise ValueError(f"Mount {name} accepts only source, path and readonly")
-    target = spec.get("path", "")
-    if not isinstance(target, str) or not re.fullmatch(r"/workspace/[a-zA-Z0-9][a-zA-Z0-9._-]*", target):
-        raise ValueError("Mount destinations must be directly under /workspace")
+    target = validated_target(spec.get("path", ""))
     readonly = spec.get("readonly", True)
     if not isinstance(readonly, bool):
         raise ValueError("readonly must be true or false")
     return {"source": canonical_source(spec.get("source")), "path": target, "readonly": readonly}
+
+
+def validated_target(target):
+    if not isinstance(target, str) or not re.fullmatch(r"/workspace/[a-zA-Z0-9][a-zA-Z0-9._-]*", target):
+        raise ValueError("Mount destinations must be directly under /workspace")
+    return target
 
 
 def read_mounts(path):
@@ -39,6 +48,11 @@ def read_mounts(path):
     if not isinstance(manifest, dict):
         raise ValueError("The mount manifest must be an object keyed by mount name")
     mounts = {name: validated_mount(name, spec) for name, spec in manifest.items()}
+    validate_mount_set(mounts)
+    return mounts
+
+
+def validate_mount_set(mounts):
     targets = [mount["path"] for mount in mounts.values()]
     if len(targets) != len(set(targets)):
         raise ValueError("Mount destinations must be distinct")
@@ -46,7 +60,6 @@ def read_mounts(path):
     for previous, source in zip(sources, sources[1:]):
         if Path(source).is_relative_to(previous):
             raise ValueError("Mount sources must not overlap or repeat")
-    return mounts
 
 
 def mount_variables(mounts, uid=None, gid=None):

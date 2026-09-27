@@ -87,15 +87,19 @@ def check_remote(socket, required=False):
     if remote is None and not required:
         return
     # Older Incus clients expose Addr; newer clients expose an Addrs list.
-    addresses = remote.get("Addrs", [remote.get("Addr")]) if remote else []
+    addresses = remote_addresses(remote)
     if addresses != [f"unix://{socket}"] or remote.get("Protocol") != "incus":
         raise ValueError(f"Incus remote {REMOTE} does not point exclusively to {socket}; refusing to use it")
 
 
+def remote_addresses(remote):
+    if remote is None:
+        return []
+    return remote.get("Addrs", [remote.get("Addr")])
+
+
 def start_host(directory, config, command):
-    for executable in ("colima", "incus"):
-        if shutil.which(executable) is None:
-            raise ValueError(f"Install {executable} first; see docs/sandbox.md")
+    require_host_tools()
     socket = directory / "incus.sock"
     check_remote(socket)
     apply_profile(directory, config)
@@ -108,24 +112,39 @@ def start_host(directory, config, command):
     print(f"Incus ready. Set incus_socket = {json.dumps(str(socket))}")
 
 
+def require_host_tools():
+    for executable in ("colima", "incus"):
+        if shutil.which(executable) is None:
+            raise ValueError(f"Install {executable} first; see docs/sandbox.md")
+
+
+def host_directory():
+    if os.environ.get("COLIMA_HOME"):
+        raise ValueError("Unset COLIMA_HOME; this bootstrap uses the standard ~/.colima location")
+    return Path.home() / ".colima" / PROFILE
+
+
 def bootstrap(args):
     if platform.system() != "Darwin":
         raise ValueError("This bootstrap is for macOS; on Linux use your initialized Incus server (docs/sandbox.md)")
-    if os.environ.get("COLIMA_HOME"):
-        raise ValueError("Unset COLIMA_HOME; this bootstrap uses the standard ~/.colima location")
-    directory = Path.home() / ".colima" / PROFILE
+    directory = host_directory()
     config = profile_config(directory)
     check_profile(directory, config)
-    command = ["colima", "start", PROFILE, "--save-config=false", "--template=false",
-               "--activate=false", "--ssh-config=false", "--ssh-agent=false"]
-    if not config["mounts"]:
-        command += ["--mount", "none"]
+    command = start_command(config)
     print(json.dumps(config, indent=2))
     print(shlex.join(command), flush=True)
     if args.action == "plan":
         print("Preview only: no files written or VM started.")
         return
     start_host(directory, config, command)
+
+
+def start_command(config):
+    command = ["colima", "start", PROFILE, "--save-config=false", "--template=false",
+               "--activate=false", "--ssh-config=false", "--ssh-agent=false"]
+    if not config["mounts"]:
+        command += ["--mount", "none"]
+    return command
 
 
 def require_stopped():
@@ -138,9 +157,7 @@ def require_stopped():
 
 
 def configure_profile_mounts(mounts):
-    if os.environ.get("COLIMA_HOME"):
-        raise ValueError("Unset COLIMA_HOME; this bootstrap uses the standard ~/.colima location")
-    directory = Path.home() / ".colima" / PROFILE
+    directory = host_directory()
     current = profile_config(directory)
     desired = {**current, "mounts": colima_mounts(mounts)}
     if desired == current:
@@ -166,14 +183,18 @@ def configure_mounts(args):
     print(f"Wrote {args.output}. Review and apply the Incus plan; macOS: start the dedicated host first.")
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["plan", "apply", "mounts-plan", "mounts-apply"])
     parser.add_argument("--mounts-file", type=Path, help="JSON map of selected source/path/readonly entries")
     parser.add_argument("--output", type=Path, default=CONFIG.parent / "mounts.auto.tfvars.json")
     parser.add_argument("--uid", type=int, help="Incus-host UID mapped to agent; defaults to your UID")
     parser.add_argument("--gid", type=int, help="Incus-host GID mapped to agent; defaults to your GID")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
     if args.action.startswith("mounts-"):
         configure_mounts(args)
     else:
