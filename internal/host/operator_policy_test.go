@@ -116,8 +116,11 @@ func TestRestrictedInvalidEnvelopesNeverReachHost(t *testing.T) {
 func TestRestrictedHostApprovalStopsAndFailsBudget(t *testing.T) {
 	p, _, down := restrictedFixture(t)
 	err := p.FromHost(context.Background(), Frame{ID: json.RawMessage(`9`), Method: "item/commandExecution/requestApproval", Params: json.RawMessage(`{}`)})
-	if err == nil || p.Budget.Err() == nil || len(down) != 0 {
+	if err == nil || p.Budget.Err() == nil {
 		t.Fatal("unexpected approval did not fail closed")
+	}
+	if len(down) != 0 {
+		t.Fatal("unsupported approval reached the operator")
 	}
 }
 

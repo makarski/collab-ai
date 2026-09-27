@@ -62,10 +62,8 @@ func (p *Proxy) ThreadID() string {
 }
 
 func (p *Proxy) FromOperator(ctx context.Context, frame Frame) error {
-	if p.RestrictedOperator {
-		if err := p.restrictOperator(&frame); err != nil {
-			return p.rejectOperator(ctx, frame, err)
-		}
+	if err := p.restrictOperator(&frame); err != nil {
+		return p.rejectOperator(ctx, frame, err)
 	}
 	if err := p.operatorBudgetError(frame); err != nil {
 		return p.rejectOperator(ctx, frame, err)
@@ -162,11 +160,7 @@ func (p *Proxy) FromHost(ctx context.Context, frame Frame) error {
 			return errors.New("host tool queue overflow; connection must restart")
 		}
 	}
-	if p.RestrictedOperator && frame.Method != "" && len(frame.ID) != 0 {
-		err := errors.New("restricted operator does not support host approval or input requests; stopping session")
-		if p.Budget != nil {
-			p.Budget.Fail(err)
-		}
+	if err := p.restrictedHostRequest(frame); err != nil {
 		return err
 	}
 	if err := p.Operator.Write(ctx, frame); err != nil {

@@ -149,25 +149,29 @@ def scenario(name, cap):
                        env=environment, check=True, capture_output=True, timeout=5)
         command = run_client(directory, environment, name, cap == 30)
         check_accounting(environment, command, name, cap == 30)
-        verify_boundary(server, cap)
+        verify_boundary()
+        if cap == 100:
+            verify_collaboration(server)
         print(f"PASS: restricted native session {name}, persisted accounting and ingress denials.", flush=True)
     finally:
         server.shutdown()
         server.server_close()
 
 
-def verify_boundary(server, cap):
+def verify_boundary():
     if Path("/var/lib/collab-proof/escaped").exists():
         raise ValueError("Operator command escaped into secured runtime")
     if Path("/var/lib/collab-proof/private").read_text() != "controller-only":
         raise ValueError("Native command changed private state")
     if Path("/workspace/proof-native").exists():
         raise ValueError("Native command ran in secured runtime")
-    if cap == 100:
-        if len(server.observed) != 3:
-            raise ValueError("Native fixture did not finish its tool sequence")
-        if "listening_delivery_unconfirmed" not in json.dumps(server.observed[-1]):
-            raise ValueError("Native client did not receive the dynamic collaboration tool result")
+
+
+def verify_collaboration(server):
+    if len(server.observed) != 3:
+        raise ValueError("Native fixture did not finish its tool sequence")
+    if "listening_delivery_unconfirmed" not in json.dumps(server.observed[-1]):
+        raise ValueError("Native client did not receive the dynamic collaboration tool result")
 
 
 if __name__ == "__main__":

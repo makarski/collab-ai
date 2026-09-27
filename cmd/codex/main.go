@@ -29,7 +29,8 @@ func main() {
 	statusSocket := flag.String("budget-status-socket", "", "publish read-only named-budget status at this absolute Unix socket path")
 	restricted := flag.Bool("restricted-operator", false, "experimental text-only stdio ingress; requires --budget; blocks configuration, resume and terminal mode")
 	flag.Parse()
-	if err := validateRestrictedMode(*restricted, *budgetName, *terminal, *mcpSocket, flag.Args()); err != nil {
+	mode := restrictedMode{enabled: *restricted, budgetName: *budgetName}
+	if err := mode.validate(*terminal, *mcpSocket, flag.Args()); err != nil {
 		log.Print(err)
 		os.Exit(1)
 	}
