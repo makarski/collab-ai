@@ -28,6 +28,8 @@ a 16 MiB status volume. It inherits no dev mounts and does not start the broker.
 private-state permissions to `0700` and public-status permissions to `0755`, both
 owned by root.
 No authenticated clients or budget supervisor launch automatically.
+The [offline boundary proof](budget-boundary.md#experimental-restricted-operator)
+also exercises a restricted Codex operator protocol; it is not installed as a service.
 
 **This provisions isolation and storage, not integrated agent-resistant sessions.**
 Native authentication, interactive/resume routing and shared accounting remain

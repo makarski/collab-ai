@@ -127,6 +127,8 @@ def check_native(host, kind):
     try:
         wait_for_executor(host, transport)
         print(host.exe("secured", "python3", "/opt/proof/native.py", kind), end="", flush=True)
+        if kind == "codex":
+            print(host.exe("secured", "python3", "/opt/proof/restricted.py"), end="", flush=True)
         marker, expected = ("proof-native", "remote") if kind == "codex" else ("proof-claude", "claude-remote")
         if host.exe("dev", "cat", "/workspace/" + marker) != expected:
             raise ValueError("Native tool did not write the dev container")
