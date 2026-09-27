@@ -60,15 +60,18 @@ def check_configuration(deployment):
     denied(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-broker"))
 
 
-def check_volume_permissions(deployment):
+def await_permission_setup(deployment):
     for _ in range(40):
         result = subprocess.run(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-secured-setup"),
                                 capture_output=True, timeout=5)
         if result.returncode == 0:
-            break
+            return
         time.sleep(0.25)
-    else:
-        raise ValueError("Secured volume permission setup did not complete")
+    raise ValueError("Secured volume permission setup did not complete")
+
+
+def check_volume_permissions(deployment):
+    await_permission_setup(deployment)
     for path, expected in ((STATE, "700 0 0"), ("/mnt/collab-status", "755 0 0")):
         actual = run(deployment.execute("secured", "stat", "-c", "%a %u %g", path)).strip()
         if actual != expected:
