@@ -142,7 +142,8 @@ def verify(args, directory, project):
     enable_secured(deployment, directory)
     check_configuration(deployment)
     command = prepare_budget(deployment)
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # Inherit the test log; undrained output pipes could stall the launcher.
+    process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
     try:
         report(process, 60)
         await_status(deployment)
