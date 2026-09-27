@@ -37,7 +37,8 @@ class Deployment:
                             "--group", str(uid), "--", *command]
 
     def status(self):
-        return self.execute("workspace", "collab", "budget", "status", "smoke", "--socket", STATUS, "--json", uid=1001)
+        return self.execute("workspace", "env", "COLLAB_BUDGET_DIR=/tmp/decoy", "collab", "budget", "status",
+                            "smoke", "--socket", STATUS, "--json", uid=1001)
 
     def snapshot(self):
         return json.loads(run(self.execute("secured", *ENV, "collab", "budget", "status", "smoke", "--json")))
