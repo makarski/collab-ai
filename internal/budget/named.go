@@ -81,9 +81,12 @@ func (s Store) Open(name string) (*Budget, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("open budget %q: %w", name, err)
+	}
 	lock, err := lockBudgetFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open budget %q: %w", name, err)
 	}
 	b := &Budget{path: path, lock: lock, done: make(chan struct{})}
 	if err := b.loadNamed(); err != nil {

@@ -215,7 +215,10 @@ saved when storage permits; a storage failure or crash can lose the latest repor
 already running remotely can overshoot; there is no proven maximum overshoot.
 Unreported subagent or auxiliary usage is not covered. A local account can bypass
 the wrapper, change its files or launch detached processes; this is not a sandbox
-security boundary. Claude supervision and shared budget splits are not yet
+security boundary: an agent with the same write access can also change its own cap.
+Protecting a human-set ceiling requires enforcement and budget storage outside
+the agent's writable environment, with separate permissions; this version does
+not provide that separation. Claude supervision and shared budget splits are not yet
 available. Tests use offline protocol/process fixtures; no live subscription
 spending was used to validate the cap.
 The broker transport remains UDS; WebSocket framing here is only the CLI's local

@@ -138,6 +138,25 @@ func TestNamedBudgetRejectsTraversalAndMissingFiles(t *testing.T) {
 	}
 }
 
+func TestOpenMissingBudgetDoesNotCreateLock(t *testing.T) {
+	parent := t.TempDir()
+	for _, directory := range []string{parent, filepath.Join(parent, "absent")} {
+		s := Store{Directory: directory}
+		b, err := s.Open("missing")
+		if b != nil {
+			b.Close()
+			t.Fatal("missing budget opened")
+		}
+		requireErrorContains(t, err, `open budget "missing"`)
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		if _, err := os.Lstat(filepath.Join(directory, "missing.json.lock")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("opening a missing budget left a lock file", err)
+		}
+	}
+}
+
 func TestLegacyInlineBudgetStatusAndDirectorySelection(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("COLLAB_BUDGET_DIR", dir)
