@@ -23,6 +23,15 @@ variable "host_mounts" {
     condition     = length(distinct([for mount in var.host_mounts : mount.path])) == length(var.host_mounts)
     error_message = "Each mount must have a distinct /workspace destination."
   }
+
+  validation {
+    condition = alltrue(flatten([for name, mount in var.host_mounts : [
+      for other_name, other in var.host_mounts : name == other_name || (
+        mount.source != other.source && !startswith(mount.source, "${other.source}/")
+      )
+    ]]))
+    error_message = "Mount source directories must not repeat or overlap."
+  }
 }
 
 variable "mount_owner" {

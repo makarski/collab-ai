@@ -191,3 +191,15 @@ run "reject_root_identity" {
   }
   expect_failures = [var.mount_owner]
 }
+
+run "reject_nested_mount_sources" {
+  command = plan
+  variables {
+    host_mounts = {
+      repo = { source = "/home/operator/repo", path = "/workspace/repo" }
+      nested = { source = "/home/operator/repo/subdir", path = "/workspace/nested" }
+    }
+    mount_owner = { uid = 501, gid = 20 }
+  }
+  expect_failures = [var.host_mounts]
+}

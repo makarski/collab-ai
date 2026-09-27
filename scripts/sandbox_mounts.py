@@ -25,16 +25,24 @@ def canonical_source(value):
     return str(source)
 
 
-def validated_mount(name, spec):
+def validate_mount_shape(name, spec):
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,29}", name):
         raise ValueError(f"Invalid mount name: {name!r}")
     if not isinstance(spec, dict) or set(spec) - {"source", "path", "readonly"}:
         raise ValueError(f"Mount {name} accepts only source, path and readonly")
-    target = validated_target(spec.get("path", ""))
-    readonly = spec.get("readonly", True)
+
+
+def validated_mount(name, spec):
+    validate_mount_shape(name, spec)
+    return {"source": canonical_source(spec.get("source")),
+            "path": validated_target(spec.get("path", "")),
+            "readonly": validated_readonly(spec.get("readonly", True))}
+
+
+def validated_readonly(readonly):
     if not isinstance(readonly, bool):
         raise ValueError("readonly must be true or false")
-    return {"source": canonical_source(spec.get("source")), "path": target, "readonly": readonly}
+    return readonly
 
 
 def validated_target(target):
@@ -56,7 +64,10 @@ def validate_mount_set(mounts):
     targets = [mount["path"] for mount in mounts.values()]
     if len(targets) != len(set(targets)):
         raise ValueError("Mount destinations must be distinct")
-    sources = sorted(mount["source"] for mount in mounts.values())
+    validate_sources(sorted(mount["source"] for mount in mounts.values()))
+
+
+def validate_sources(sources):
     for previous, source in zip(sources, sources[1:]):
         if Path(source).is_relative_to(previous):
             raise ValueError("Mount sources must not overlap or repeat")
@@ -65,10 +76,14 @@ def validate_mount_set(mounts):
 def mount_variables(mounts, uid=None, gid=None):
     if not mounts:
         return {"host_mounts": {}, "mount_owner": None}
+    return {"host_mounts": mounts, "mount_owner": validated_owner(uid, gid)}
+
+
+def validated_owner(uid, gid):
     owner = {"uid": os.getuid() if uid is None else uid, "gid": os.getgid() if gid is None else gid}
     if any(value <= 0 or value >= 2147483647 for value in owner.values()):
         raise ValueError("Use non-root host IDs with --uid and --gid (id -u / id -g)")
-    return {"host_mounts": mounts, "mount_owner": owner}
+    return owner
 
 
 def colima_mounts(mounts):
