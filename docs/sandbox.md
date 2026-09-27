@@ -32,7 +32,7 @@ directly; skip Colima and the bootstrap script. Use an existing quota-capable
 storage pool, such as ZFS or Btrfs, and a user with access to the Incus socket.
 Do not reinitialize an existing server.
 
-Requirements: Colima 0.10.3+ and Python 3.9+ on Mac; OpenTofu or Terraform 1.9+
+Requirements: Colima 0.10.3+ on Mac; Python 3.9+ and OpenTofu or Terraform 1.9+
 on either platform. Commands below use `tofu`; `terraform` works too.
 The Incus provider is locked to 1.2.0. The host needs internet access for downloads.
 
@@ -66,20 +66,28 @@ a new `--output` directory. [Image contents and build details](sandbox-image.md)
 
 ## 3. Preview and apply
 
+For separate dev and secured containers, add `secured_runtime = true` to
+`sandbox.auto.tfvars`. Stop an existing workspace before enabling it; the apply
+will restart it. See [secured runtime setup](secured-runtime.md) for private
+state, host-only budget commands and lifecycle instructions. It remains offline.
+
 ```sh
 tofu -chdir=infra/incus init
 tofu -chdir=infra/incus validate
 tofu -chdir=infra/incus plan -out=sandbox.tfplan
 ```
 
-Review the plan: it creates a project, cached image, profile, and container. Then:
+Review the plan: it creates a project, cached image, profile, and container.
+With `secured_runtime = true`, it also adds a secured container/profile and two
+managed volumes. Then:
 
 ```sh
 tofu -chdir=infra/incus apply sandbox.tfplan
 ```
 
 An unchanged second plan should report no changes. Keep the ignored state and
-variables files; use one state per deployment. Image changes may replace the
+variables files; use one state per deployment. Keep these files and this operator
+checkout outside writable dev mounts. Image changes may replace the
 workspace and its disk, so review replacement/deletion actions before applying.
 
 ## 4. SSH into the workspace
@@ -156,7 +164,8 @@ After starting it, allow a few seconds for the broker to become ready.
 
 ## Stop or remove
 
-These commands retain the workspace's data:
+These commands retain the workspace's data. With secured mode enabled,
+[stop or start both runtimes](secured-runtime.md#status-stop-and-restart).
 
 | Action | macOS | Linux |
 | --- | --- | --- |

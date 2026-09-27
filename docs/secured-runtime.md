@@ -1,0 +1,113 @@
+# Separate dev and secured runtimes
+
+Use a workspace image built from this revision or later. For an existing deployment,
+stop dev first (Linux: replace `colima-collab-ai:` with `local:`):
+
+```sh
+incus --project collab-ai stop colima-collab-ai:workspace
+```
+
+Then add `secured_runtime = true` to `infra/incus/sandbox.auto.tfvars` and follow
+[plan and apply](sandbox.md#3-preview-and-apply). The apply starts both containers
+when `running = true`; existing workspace data is preserved. Fresh installations
+can enable this option directly.
+
+An apply-time host preflight rejects enabling the layout while dev is running.
+Incus hot-added read-only mounts can be remounted writable by container root;
+the status mount must be present at boot to lock its read-only flag. Keep dev
+stopped if an apply fails, then retry. Do not manually hot-add or replace this mount.
+
+| Runtime | Purpose | Access |
+| --- | --- | --- |
+| `workspace` (dev) | Repositories, builds, agent-executed commands and broker | Existing unprivileged SSH setup; selected host mounts |
+| `secured` | Private settings and budget storage | Human administrator through the host's Incus socket |
+
+Both containers are offline, unprivileged and have separate UID mappings.
+Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, a 1 GiB state volume and
+a 16 MiB status volume. It inherits no dev mounts and does not start the broker. A boot service sets
+private-state permissions to `0700` and public-status permissions to `0755`, both
+owned by root.
+No authenticated clients or budget supervisor launch automatically.
+
+**This provisions isolation and storage, not integrated agent-resistant sessions.**
+Native authentication, interactive/resume routing and shared accounting remain
+tracked in [#34](https://github.com/makarski/collab-ai/issues/34). Keep credentials
+out of dev and do not enable model access as part of this setup.
+
+## Human budget administration
+
+Run on your host. On Linux replace `colima-collab-ai:` with `local:`:
+
+```sh
+incus --project collab-ai exec colima-collab-ai:secured -- \
+  env COLLAB_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
+  collab budget create my-task --tokens 100000
+
+incus --project collab-ai exec colima-collab-ai:secured -- \
+  env COLLAB_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
+  collab budget status my-task --json
+```
+
+The budget directory lives on a root-only custom volume mounted only in secured.
+Creation refuses to overwrite a cap or reset usage. There is no workload-facing
+administration endpoint. Incus administrators remain trusted: they can change
+containers and disks. Keep host control scripts, state, credentials and the Incus
+socket outside dev mounts; run project code only in `workspace`.
+
+`/mnt/collab-status` is a separate volume: secured root can publish a status socket;
+dev receives a read-only mount. Its root-owned directory is not world-writable.
+Only public status belongs here, never budget JSON, credentials or admin sockets.
+Once a protected launcher publishes `status.sock`, a dev terminal can use:
+
+```sh
+collab budget status my-task --socket /mnt/collab-status/status.sock --json
+```
+
+Provisioning alone leaves this directory empty. A missing socket is an error;
+there is no fallback to a dev-local budget. Read-only mounting prevents directory
+changes but does **not** prevent socket requests; the status server's read-only
+API rejects mutations. Polling this endpoint is visibility, not admission control.
+
+## Status, stop and restart
+
+```sh
+# macOS; Linux: use local: instead.
+incus --project collab-ai list colima-collab-ai:
+incus --project collab-ai stop colima-collab-ai:workspace colima-collab-ai:secured
+incus --project collab-ai start colima-collab-ai:secured colima-collab-ai:workspace
+```
+
+Set `running = false` and apply to keep **both** containers stopped across applies.
+Set it back to `true` and apply to restart. Boot autostart is disabled. The Incus
+web UI shows both containers under project `collab-ai`.
+
+Private state survives restarts and replacement of the secured root disk.
+Changing an image can still replace the dev root disk. Export needed data first.
+Setting `secured_runtime = false`, changing the project/pool, or applying a destroy
+plan can delete the custom volumes and their budgets: review deletions carefully.
+The [destroy procedure](sandbox.md#stop-or-remove) now includes both runtimes and
+volumes. It retains the host VM and shared storage pool.
+
+## Validation
+
+CI tests both architectures with an offline fake client: rejection of unsafe hot upgrades,
+stopped-workspace upgrade without data loss, unchanged second plan,
+separate mappings, denied private-state access, denied status replacement/remount,
+real status reads over the shared UDS, persisted accounting after stop/start and
+secured replacement, and teardown. Dev host mounts are tested in the same deployment.
+No provider requests or subscription credentials are used.
+
+To repeat with a disposable project (macOS shown):
+
+```sh
+python3 scripts/sandbox-smoke.py --remote colima-collab-ai \
+  --image-dir dist/installed-workspace --secured-check
+```
+
+Use a maintained Incus release (CI uses [Zabbly's 6.0 LTS packages](https://github.com/zabbly/incus#60-lts-repository)).
+Ubuntu 24.04's original Incus 6.0.0 package can reject these mounts on newer
+kernels because of an [upstream detection bug](https://github.com/lxc/incus/issues/882).
+The storage pool/kernel must support Incus ID-mapped custom volumes
+([`security.shifted`](https://linuxcontainers.org/incus/docs/main/reference/storage_zfs/#storage-volume-configuration));
+ZFS requires 2.2+ for idmaps. Unsupported hosts should fail provisioning rather
+than sharing the containers' identities or using world-writable IPC directories.

@@ -9,6 +9,25 @@ if test -e /var/lib/incus/database; then
     exit 1
 fi
 apt-get update
+apt-get install -y ca-certificates curl gnupg
+# Ubuntu 24.04's original 6.0.0 package misdetects idmapped mounts on newer
+# kernels (https://github.com/lxc/incus/issues/882). Use maintained 6.0 LTS.
+# Repository and signing key: https://github.com/zabbly/incus
+install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+key_fingerprint=$(gpg --batch --show-keys --with-colons /etc/apt/keyrings/zabbly.asc | awk -F: '$1 == "fpr" {print $10; exit}')
+test "$key_fingerprint" = 4EFC590696CB15B87C73A3AD82CC8797C838DCFD
+chmod 0644 /etc/apt/keyrings/zabbly.asc
+. /etc/os-release
+cat > /etc/apt/sources.list.d/zabbly-incus-lts-6.0.sources <<EOF
+Types: deb
+URIs: https://pkgs.zabbly.com/incus/lts-6.0
+Suites: $VERSION_CODENAME
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/zabbly.asc
+EOF
+apt-get update
 apt-get install -y incus btrfs-progs
 # The mount smoke test maps just its fixture owner into the container. Ubuntu's
 # newuidmap/newgidmap also require this host-level allowance, independently of
@@ -28,3 +47,5 @@ fi
 iptables -I "$forward_chain" -i incusbr0 -j ACCEPT
 iptables -I "$forward_chain" -o incusbr0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 incus version
+uname -r
+incus query /1.0 | python3 -c 'import json,sys; e=json.load(sys.stdin)["environment"]; print("Kernel features:", e["kernel_features"]); print("LXC features:", e["lxc_features"])'

@@ -1,0 +1,16 @@
+[Unit]
+Description=Initialize permissions on collab-ai secured volumes
+After=local-fs.target
+Before=multi-user.target
+ConditionPathIsMountPoint=/var/lib/collab-ai-secured
+ConditionPathIsMountPoint=/mnt/collab-status
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/chown root:root /var/lib/collab-ai-secured /mnt/collab-status
+ExecStart=/usr/bin/chmod 0700 /var/lib/collab-ai-secured
+ExecStart=/usr/bin/chmod 0755 /mnt/collab-status
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

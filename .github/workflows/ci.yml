@@ -88,7 +88,7 @@ jobs:
       - name: Install the exported artifact and smoke-test offline SSH
         run: |
           sudo python3 scripts/sandbox-download.py --remote local --from-dir dist/workspace/release --output dist/installed
-          sudo env "PATH=$PATH" python3 scripts/sandbox-smoke.py --remote local --image-dir dist/installed --mount-check
+          sudo env "PATH=$PATH" python3 scripts/sandbox-smoke.py --remote local --image-dir dist/installed --mount-check --secured-check
       - name: Prove offline controller and dev boundaries
         run: sudo env "PATH=$PATH" python3 scripts/sandbox-boundary.py --remote local --image-dir dist/installed
       - name: Upload tested release assets

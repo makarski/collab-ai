@@ -15,6 +15,8 @@ provider "incus" {
 }
 
 resource "incus_project" "sandbox" {
+  depends_on = [terraform_data.secured_preflight]
+
   name          = var.project_name
   description   = "collab-ai offline sandbox, managed by infra/incus"
   force_destroy = false
@@ -26,10 +28,10 @@ resource "incus_project" "sandbox" {
     "restricted"                      = "true"
     "restricted.containers.privilege" = "isolated"
     "restricted.containers.nesting"   = "block"
-    "restricted.devices.disk"         = length(var.host_mounts) == 0 ? "block" : "allow"
+    "restricted.devices.disk"         = length(var.host_mounts) > 0 ? "allow" : (var.secured_runtime ? "managed" : "block")
     "restricted.devices.nic"          = "block"
     "restricted.devices.proxy"        = "block"
-    "limits.containers"               = "1"
+    "limits.containers"               = var.secured_runtime ? "2" : "1"
     "limits.virtual-machines"         = "0"
   }, local.mount_project_config)
 
@@ -102,6 +104,20 @@ resource "incus_profile" "sandbox" {
       path = "/"
       pool = var.storage_pool
       size = "${var.disk_gib}GiB"
+    }
+  }
+
+  dynamic "device" {
+    for_each = incus_storage_volume.budget_status
+    content {
+      name = "budget-status"
+      type = "disk"
+      properties = {
+        source   = device.value.name
+        pool     = var.storage_pool
+        path     = "/mnt/collab-status"
+        readonly = "true"
+      }
     }
   }
 

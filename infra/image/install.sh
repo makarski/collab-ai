@@ -32,13 +32,13 @@ cp build-source.json /usr/local/share/collab-ai/
 cp docs/skills/collab-ai/SKILL.md /usr/local/share/collab-ai/SKILL.md
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
 cp infra/image/sshd_config /etc/ssh/sshd_config.collab-ai
-cp infra/image/collab-broker.service /etc/systemd/system/
+cp infra/image/collab-broker.service infra/image/collab-secured-setup.service /etc/systemd/system/
 printf 'd /run/sshd 0755 root root -\n' >/etc/tmpfiles.d/collab-ssh.conf
 printf 'DISABLE_UPDATES=1\nDISABLE_AUTOUPDATER=1\n' >>/etc/environment
 printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/profile.d/collab-ai.sh
 systemctl disable ssh.service ssh.socket || true
 systemctl mask ssh.service ssh.socket
-systemctl enable collab-broker.service
+systemctl enable collab-broker.service collab-secured-setup.service
 dpkg-query -W >/usr/local/share/collab-ai/os-packages.txt
 
 # Images must not share SSH host keys, machine identities, credentials or state.
