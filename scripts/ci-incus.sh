@@ -10,6 +10,10 @@ if test -e /var/lib/incus/database; then
 fi
 apt-get update
 apt-get install -y incus btrfs-progs
+# The mount smoke test maps just its fixture owner into the container. Ubuntu's
+# newuidmap/newgidmap also require this host-level allowance, independently of
+# the restricted Incus project's UID/GID allowlist.
+usermod --add-subuids 1001-1001 --add-subgids 1001-1001 root
 modprobe btrfs
 systemctl start incus.socket
 incus admin init --preseed <infra/image/ci-host.json

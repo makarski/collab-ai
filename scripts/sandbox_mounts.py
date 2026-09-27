@@ -68,9 +68,12 @@ def validate_mount_set(mounts):
 
 
 def validate_sources(sources):
-    for previous, source in zip(sources, sources[1:]):
-        if Path(source).is_relative_to(previous):
+    seen = set()
+    for source in sources:
+        path = Path(source)
+        if path in seen or seen.intersection(path.parents):
             raise ValueError("Mount sources must not overlap or repeat")
+        seen.add(path)
 
 
 def mount_variables(mounts, uid=None, gid=None):

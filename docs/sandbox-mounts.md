@@ -56,6 +56,19 @@ On **Linux**, generate the Incus variables directly:
 python3 scripts/sandbox-host.py mounts-apply --mounts-file /path/to/mounts.json
 ```
 
+On Linux hosts using `/etc/subuid` and `/etc/subgid` (including Ubuntu), an
+administrator must also allow Incus to map the selected host IDs. From your normal
+user's shell, grant **only your UID and GID** once, keeping the existing ranges:
+
+```sh
+sudo usermod --add-subuids "$(id -u)-$(id -u)" --add-subgids "$(id -g)-$(id -g)" root
+```
+
+If you supplied `--uid`/`--gid`, substitute those IDs instead. Check the existing
+`root` allocations first and omit IDs already covered. This is separate from the
+project's allowlist; without it, startup can fail with `newuidmap ... not allowed`.
+See [Incus ID mappings](https://linuxcontainers.org/incus/docs/main/userns-idmap/).
+
 On **both platforms**, apply the generated `infra/incus/mounts.auto.tfvars.json`
 with your existing workspace configuration:
 

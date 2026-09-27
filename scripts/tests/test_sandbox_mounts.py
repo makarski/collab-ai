@@ -80,6 +80,10 @@ class MountTests(unittest.TestCase):
         run.assert_not_called()
         self.assertEqual(json.loads(self.output.read_text())["mount_owner"]["uid"], 501)
 
+    def test_overlap_is_rejected_when_sibling_sorts_between_parent_and_child(self):
+        with self.assertRaisesRegex(ValueError, "overlap"):
+            mounts.validate_sources(["/project", "/project-other", "/project/child"])
+
     def test_empty_manifest_clears_mounts_without_owner_mapping(self):
         self.assertEqual(mounts.mount_variables({}, 0, 0), {"host_mounts": {}, "mount_owner": None})
         self.assertIsNone(mounts.colima_mounts({}))
