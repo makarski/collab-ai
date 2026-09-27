@@ -37,6 +37,10 @@ def check_mutations():
         code, _ = request(method, route)
         if code not in (404, 405):
             raise ValueError(f"Budget mutation accepted: {method} {route}")
+    check_snapshot()
+
+
+def check_snapshot():
     code, data = request("GET", "/v1/status")
     if code != 200:
         raise ValueError("Public status failed after mutation attempts")
