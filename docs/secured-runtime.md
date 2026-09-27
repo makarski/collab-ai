@@ -26,7 +26,7 @@ Both containers are offline, unprivileged and have separate UID mappings.
 Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, a 1 GiB state volume and
 a 16 MiB status volume. It inherits no dev mounts and does not start the broker. A boot service sets
 private-state permissions to `0700` and public-status permissions to `0755`, both
-owned by root (compatible with Incus 6.0 and newer).
+owned by root.
 No authenticated clients or budget supervisor launch automatically.
 
 **This provisions isolation and storage, not integrated agent-resistant sessions.**
@@ -104,6 +104,9 @@ python3 scripts/sandbox-smoke.py --remote colima-collab-ai \
   --image-dir dist/installed-workspace --secured-check
 ```
 
+Use a maintained Incus release (CI uses [Zabbly's 6.0 LTS packages](https://github.com/zabbly/incus#60-lts-repository)).
+Ubuntu 24.04's original Incus 6.0.0 package can reject these mounts on newer
+kernels because of an [upstream detection bug](https://github.com/lxc/incus/issues/882).
 The storage pool/kernel must support Incus ID-mapped custom volumes
 ([`security.shifted`](https://linuxcontainers.org/incus/docs/main/reference/storage_zfs/#storage-volume-configuration));
 ZFS requires 2.2+ for idmaps. Unsupported hosts should fail provisioning rather
