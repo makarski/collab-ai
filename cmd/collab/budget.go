@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -11,13 +12,14 @@ import (
 	"collab-ai/internal/budget"
 )
 
-const budgetUsage = "usage: collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--json]"
+const budgetUsage = "usage: collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--socket PATH] [--json]"
 
 type budgetOptions struct {
 	action string
 	name   string
 	tokens int64
 	asJSON bool
+	socket string
 }
 
 func parseBudgetOptions(args []string, stderr io.Writer) (budgetOptions, error) {
@@ -34,6 +36,8 @@ func parseBudgetOptions(args []string, stderr io.Writer) (budgetOptions, error) 
 	flags.BoolVar(&cfg.asJSON, "json", false, "emit a versioned accounting snapshot")
 	if cfg.action == "create" {
 		flags.Int64Var(&cfg.tokens, "tokens", 0, "positive soft token cap")
+	} else {
+		flags.StringVar(&cfg.socket, "socket", "", "read from a controller's status socket; never falls back to local storage")
 	}
 	if err := flags.Parse(args[2:]); err != nil {
 		return cfg, err
@@ -57,12 +61,7 @@ func runBudget(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	store, err := budget.DefaultStore()
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return 1
-	}
-	out, err := cfg.execute(store)
+	out, err := cfg.execute()
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
@@ -86,7 +85,14 @@ func wantsBudgetHelp(args []string) bool {
 	}
 }
 
-func (cfg budgetOptions) execute(store budget.Store) (budget.Snapshot, error) {
+func (cfg budgetOptions) execute() (budget.Snapshot, error) {
+	if cfg.socket != "" {
+		return budget.ReadStatus(context.Background(), cfg.socket, cfg.name)
+	}
+	store, err := budget.DefaultStore()
+	if err != nil {
+		return budget.Snapshot{}, err
+	}
 	if cfg.action == "create" {
 		return store.Create(cfg.name, cfg.tokens)
 	}

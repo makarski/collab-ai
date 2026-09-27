@@ -26,6 +26,7 @@ func main() {
 	tokenCap := flag.Int64("token-cap", 0, "soft cap on reported Codex totalTokens; requires --budget-file")
 	budgetFile := flag.String("budget-file", "", "persistent token budget file (one launcher at a time)")
 	budgetName := flag.String("budget", "", "named budget created by collab budget create; cannot combine with inline cap flags")
+	statusSocket := flag.String("budget-status-socket", "", "publish read-only named-budget status at this absolute Unix socket path")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -39,6 +40,12 @@ func main() {
 	if cap != nil {
 		defer cap.Close()
 	}
+	closeStatus, err := openBudgetStatus(ctx, *statusSocket, *budgetName, cap)
+	if err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+	defer closeStatus()
 	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap}
 	if *mcpSocket != "" {
 		err = relayMCP(ctx, *mcpSocket, operatorIO{input: os.Stdin, output: os.Stdout})
@@ -48,6 +55,7 @@ func main() {
 		err = launcher.runOperator(ctx, operatorIO{input: os.Stdin, output: os.Stdout})
 	}
 	if err != nil {
+		closeStatus()
 		log.Print(err)
 		os.Exit(1)
 	}
@@ -176,7 +184,7 @@ func serve(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser)
 	stop := context.AfterFunc(ctx, func() { operatorIn.Close(); output.Close() })
 	defer stop()
 	group.Go(func() error {
-		return host.ReadFrames(operatorIn, func(f host.Frame) error { return p.FromOperator(ctx, f) })
+		return readOperatorFrames(ctx, operatorIn, func(f host.Frame) error { return p.FromOperator(ctx, f) })
 	})
 	group.Go(func() error { return host.ReadFrames(output, func(f host.Frame) error { return p.FromHost(ctx, f) }) })
 	group.Go(func() error { return p.ServeTools(ctx) })

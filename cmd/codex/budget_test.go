@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +50,50 @@ done
 	}
 	if ctx.Err() != nil {
 		t.Fatal("external timeout, not budget, ended process")
+	}
+}
+
+type uninterruptibleInput struct {
+	release chan struct{}
+	closed  chan struct{}
+	once    sync.Once
+}
+
+func (r *uninterruptibleInput) Read([]byte) (int, error) { <-r.release; return 0, io.EOF }
+func (r *uninterruptibleInput) Close() error             { r.once.Do(func() { close(r.closed) }); return nil }
+
+func TestBudgetShutdownDoesNotWaitForUninterruptibleOperatorInput(t *testing.T) {
+	dir := t.TempDir()
+	b, err := budget.Open(filepath.Join(dir, "budget.json"), 100)
+	terminalCheck(t, err)
+	defer b.Close()
+	binary := filepath.Join(dir, "fake-codex")
+	terminalCheck(t, os.WriteFile(binary, []byte(`#!/bin/sh
+printf '%s\n' '{"method":"thread/tokenUsage/updated","params":{"threadId":"fake","turnId":"turn","tokenUsage":{"total":{"totalTokens":107}}}}'
+while IFS= read -r line; do :; done
+`), 0700))
+	input := &uninterruptibleInput{release: make(chan struct{}), closed: make(chan struct{})}
+	defer close(input.release)
+	output, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	terminalCheck(t, err)
+	defer output.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	launcher := codexLauncher{client: bridge.ClientConfig{AgentID: "budget-test", SocketPath: "/unused"}, binary: binary, budget: b}
+	finished := make(chan error, 1)
+	go func() { finished <- launcher.runOperator(ctx, operatorIO{input: input, output: output}) }()
+	select {
+	case err := <-finished:
+		if err == nil || !strings.Contains(err.Error(), "107 reported / 100 cap") {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("uninterruptible stdin prevented budget shutdown")
+	}
+	select {
+	case <-input.closed:
+	case <-time.After(time.Second):
+		t.Fatal("operator input was not closed")
 	}
 }
 

@@ -221,6 +221,18 @@ the agent's writable environment, with separate permissions; this version does
 not provide that separation. Claude supervision and shared budget splits are not yet
 available. Tests use offline protocol/process fixtures; no live subscription
 spending was used to validate the cap.
+
+For a separately protected launcher, `--budget-status-socket /absolute/path/status.sock`
+publishes one named budget through a read-only Unix API. The existing parent
+directory must belong to the launcher and must not be group/world writable.
+Expose only this directory to the workload, read-only; retain the launcher,
+budget files and administration outside its filesystem and process access.
+Inside the workload, `collab budget status NAME --socket /mounted/status.sock --json`
+reads that endpoint without opening local budget storage. A missing endpoint is
+an error. The socket has no create, reset, report-usage or cap-update operations.
+This is visibility only; stopping remains the protected launcher's responsibility.
+See the [offline two-container proof](budget-boundary.md) for tested cases and limits.
+
 The broker transport remains UDS; WebSocket framing here is only the CLI's local
 App Server connection. Keep the manual MCP setup for ordinary `codex` sessions
 that do not use this launcher; that setup still requires inbox checks.
