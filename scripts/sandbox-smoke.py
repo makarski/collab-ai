@@ -130,6 +130,10 @@ def main():
         if args.mount_check:
             sandbox_mount_checks.verify(args, directory, project)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
+    except Exception:
+        subprocess.run(["incus", "--project", project, "info", f"{args.remote}:workspace", "--show-log"],
+                       check=False, timeout=30)
+        raise
     finally:
         destroy_deployment(tofu, directory, project)
 
