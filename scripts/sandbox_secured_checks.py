@@ -94,7 +94,8 @@ def check_denials(deployment):
                         ["cat", f"{STATE}/budgets/smoke.json"],
                         ["cat", f"/proc/1/root{STATE}/budgets/smoke.json"]):
             denied(deployment.execute("workspace", *command, uid=uid))
-    denied(deployment.execute("workspace", "mount", "-o", "remount,rw", "/mnt/collab-status"))
+    for options in ("remount,rw", "remount,bind,rw"):
+        denied(deployment.execute("workspace", "mount", "-o", options, "/mnt/collab-status"))
     denied(deployment.execute("secured", "cat", f"{STATE}/budgets/smoke.json", uid=1001))
     denied(deployment.execute("secured", "touch", "/mnt/collab-status/forbidden", uid=1001))
     # Creating a same-name budget in dev must not change the mounted authority.
