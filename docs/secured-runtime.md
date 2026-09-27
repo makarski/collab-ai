@@ -24,7 +24,9 @@ stopped if an apply fails, then retry. Do not manually hot-add or replace this m
 
 Both containers are offline, unprivileged and have separate UID mappings.
 Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, a 1 GiB state volume and
-a 16 MiB status volume. It inherits no dev mounts and does not start the broker.
+a 16 MiB status volume. It inherits no dev mounts and does not start the broker. A boot service sets
+private-state permissions to `0700` and public-status permissions to `0755`, both
+owned by root (compatible with Incus 6.0 and newer).
 No authenticated clients or budget supervisor launch automatically.
 
 **This provisions isolation and storage, not integrated agent-resistant sessions.**

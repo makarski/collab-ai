@@ -45,6 +45,7 @@ class Deployment:
 
 
 def check_configuration(deployment):
+    check_volume_permissions(deployment)
     instances = {item["name"]: item for item in json.loads(run(
         deployment.base + ["list", deployment.remote, "--format", "json"]))}
     mappings = [instances[role]["expanded_config"]["volatile.idmap.current"]
@@ -57,6 +58,21 @@ def check_configuration(deployment):
     if set(devices) != {"root", "secured-state", "budget-status"}:
         raise ValueError("Secured inherited unexpected devices")
     denied(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-broker"))
+
+
+def check_volume_permissions(deployment):
+    for _ in range(40):
+        result = subprocess.run(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-secured-setup"),
+                                capture_output=True, timeout=5)
+        if result.returncode == 0:
+            break
+        time.sleep(0.25)
+    else:
+        raise ValueError("Secured volume permission setup did not complete")
+    for path, expected in ((STATE, "700 0 0"), ("/mnt/collab-status", "755 0 0")):
+        actual = run(deployment.execute("secured", "stat", "-c", "%a %u %g", path)).strip()
+        if actual != expected:
+            raise ValueError(f"Unsafe secured volume permissions: {path}: {actual}")
 
 
 def check_offline(deployment, role):

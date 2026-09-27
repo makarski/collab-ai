@@ -235,11 +235,10 @@ run "secured_runtime" {
   }
   assert {
     condition = (
-      incus_storage_volume.secured_state[0].config["initial.mode"] == "0700" &&
-      incus_storage_volume.budget_status[0].config["initial.mode"] == "0755" &&
+      incus_storage_volume.secured_state[0].config["security.shifted"] == "true" &&
       incus_storage_volume.budget_status[0].config["security.shifted"] == "true"
     )
-    error_message = "State must be root-only and status must support isolated mappings without world-writable directories."
+    error_message = "Persistent volumes must support isolated mappings; boot permissions are checked by the live smoke test."
   }
 }
 

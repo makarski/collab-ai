@@ -29,9 +29,6 @@ resource "incus_storage_volume" "secured_state" {
   content_type = "filesystem"
   config = {
     "size"             = "1GiB"
-    "initial.uid"      = "0"
-    "initial.gid"      = "0"
-    "initial.mode"     = "0700"
     "security.shifted" = "true"
   }
 }
@@ -45,9 +42,6 @@ resource "incus_storage_volume" "budget_status" {
   content_type = "filesystem"
   config = {
     "size"             = "16MiB"
-    "initial.uid"      = "0"
-    "initial.gid"      = "0"
-    "initial.mode"     = "0755"
     "security.shifted" = "true"
   }
 }
