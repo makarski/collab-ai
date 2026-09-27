@@ -23,7 +23,8 @@ done
 codex --version
 codex app-server --help >/dev/null
 claude --version
-adduser --disabled-password --gecos '' agent
+addgroup --gid 1001 agent
+adduser --uid 1001 --gid 1001 --disabled-password --gecos '' agent
 install -d -o agent -g agent /workspace /var/lib/collab-ai
 install -d /etc/collab-ai /etc/ssh/authorized_keys /usr/local/share/collab-ai
 cp infra/image/tools.lock.json /usr/local/share/collab-ai/
