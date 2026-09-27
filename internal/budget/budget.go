@@ -8,13 +8,15 @@ import (
 	"math"
 	"os"
 	"sync"
+	"time"
 )
 
 type state struct {
-	Version int              `json:"version"`
-	Limit   int64            `json:"limit"`
-	Threads map[string]int64 `json:"threads"`
-	Stopped string           `json:"stopped,omitempty"`
+	Version    int              `json:"version"`
+	Limit      int64            `json:"limit"`
+	Threads    map[string]int64 `json:"threads"`
+	Stopped    string           `json:"stopped,omitempty"`
+	ReportedAt *time.Time       `json:"reported_at,omitempty"`
 }
 
 var errLimit = errors.New("soft token cap reached")
@@ -81,9 +83,8 @@ func (b *Budget) Observe(thread string, total int64) {
 		b.failAccounting(errors.New("reported token total regressed; stopping because accounting is unknown"))
 		return
 	}
-	if total == previous {
-		return
-	}
+	now := time.Now().UTC()
+	b.state.ReportedAt = &now
 	b.spent += total - previous
 	b.state.Threads[thread] = total
 	if err := b.save(); err != nil {

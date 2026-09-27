@@ -25,11 +25,14 @@ func main() {
 	mcpSocket := flag.String("mcp-socket", "", "internal stdio relay to the managed session's MCP socket")
 	tokenCap := flag.Int64("token-cap", 0, "soft cap on reported Codex totalTokens; requires --budget-file")
 	budgetFile := flag.String("budget-file", "", "persistent token budget file (one launcher at a time)")
+	budgetName := flag.String("budget", "", "named budget created by collab budget create; cannot combine with inline cap flags")
+	statusSocket := flag.String("budget-status-socket", "", "publish read-only named-budget status at this absolute Unix socket path")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cfg := bridge.ClientConfig{SocketPath: *socket, AgentID: *agent, Harness: "codex-app-server"}
-	cap, err := optionalBudget(*budgetFile, *tokenCap, *mcpSocket)
+	selection := budgetSelection{name: *budgetName, path: *budgetFile, limit: *tokenCap}
+	cap, err := selection.open(*mcpSocket)
 	if err != nil {
 		log.Print(err)
 		os.Exit(1)
@@ -37,21 +40,46 @@ func main() {
 	if cap != nil {
 		defer cap.Close()
 	}
-	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap}
-	if *mcpSocket != "" {
-		err = relayMCP(ctx, *mcpSocket, operatorIO{input: os.Stdin, output: os.Stdout})
-	} else if *terminal {
-		err = launcher.runTerminal(ctx, flag.Args())
-	} else {
-		err = launcher.runOperator(ctx, operatorIO{input: os.Stdin, output: os.Stdout})
-	}
+	closeStatus, err := openBudgetStatus(ctx, *statusSocket, *budgetName, cap)
 	if err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+	defer closeStatus()
+	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap}
+	err = launcher.runMode(ctx, *mcpSocket, *terminal, flag.Args())
+	if err != nil {
+		closeStatus()
 		log.Print(err)
 		os.Exit(1)
 	}
 }
 
+func (l codexLauncher) runMode(ctx context.Context, mcpSocket string, terminal bool, args []string) error {
+	operator := operatorIO{input: os.Stdin, output: os.Stdout}
+	if mcpSocket != "" {
+		return relayMCP(ctx, mcpSocket, operator)
+	}
+	if terminal {
+		return l.runTerminal(ctx, args)
+	}
+	return l.runOperator(ctx, operator)
+}
+
 func optionalBudget(path string, limit int64, relay string) (*budget.Budget, error) {
+	return (budgetSelection{path: path, limit: limit}).open(relay)
+}
+
+type budgetSelection struct {
+	name, path string
+	limit      int64
+}
+
+func (s budgetSelection) open(relay string) (*budget.Budget, error) {
+	if s.name != "" {
+		return s.openNamed(relay)
+	}
+	path, limit := s.path, s.limit
 	if path == "" && limit == 0 {
 		return nil, nil
 	}
@@ -59,6 +87,20 @@ func optionalBudget(path string, limit int64, relay string) (*budget.Budget, err
 		return nil, errors.New("token caps belong on the launcher, not the internal MCP relay")
 	}
 	return budget.Open(path, limit)
+}
+
+func (s budgetSelection) openNamed(relay string) (*budget.Budget, error) {
+	if s.path != "" || s.limit != 0 {
+		return nil, errors.New("--budget cannot be combined with --token-cap or --budget-file")
+	}
+	if relay != "" {
+		return nil, errors.New("token caps belong on the launcher, not the internal MCP relay")
+	}
+	store, err := budget.DefaultStore()
+	if err != nil {
+		return nil, err
+	}
+	return store.Open(s.name)
 }
 
 func run(ctx context.Context, cfg bridge.ClientConfig, binary string) error {
@@ -147,7 +189,7 @@ func serve(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser)
 	stop := context.AfterFunc(ctx, func() { operatorIn.Close(); output.Close() })
 	defer stop()
 	group.Go(func() error {
-		return host.ReadFrames(operatorIn, func(f host.Frame) error { return p.FromOperator(ctx, f) })
+		return readOperatorFrames(ctx, operatorIn, func(f host.Frame) error { return p.FromOperator(ctx, f) })
 	})
 	group.Go(func() error { return host.ReadFrames(output, func(f host.Frame) error { return p.FromHost(ctx, f) }) })
 	group.Go(func() error { return p.ServeTools(ctx) })
