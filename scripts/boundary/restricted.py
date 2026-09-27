@@ -170,8 +170,15 @@ def verify_boundary():
 def verify_collaboration(server):
     if len(server.observed) != 3:
         raise ValueError("Native fixture did not finish its tool sequence")
-    if "listening_delivery_unconfirmed" not in json.dumps(server.observed[-1]):
-        raise ValueError("Native client did not receive the dynamic collaboration tool result")
+    require_tool_output(server.observed[-1], "isolated")
+    require_tool_output(server.observed[-1], "listening_delivery_unconfirmed")
+
+
+def require_tool_output(request, expected):
+    outputs = [item.get("output") for item in request.get("input", [])
+               if item.get("type") == "function_call_output"]
+    if not any(expected in json.dumps(output) for output in outputs):
+        raise ValueError(f"Native client did not receive tool output: {expected}")
 
 
 if __name__ == "__main__":
