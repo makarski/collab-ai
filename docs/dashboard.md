@@ -37,8 +37,9 @@ in each agent's terminal. Open another SSH terminal or tmux pane for
 The sandbox currently stays offline, so live model sessions are unavailable.
 
 The dashboard has no token accounting or budget controls yet.
-[`collab-codex --token-cap`](host-integration.md#codex-soft-cap) provides an opt-in
-soft stop for managed Codex sessions. Shared budgets and Claude supervision are
+[`collab budget`](host-integration.md#codex-soft-cap) creates named soft caps and
+reports usage; `collab-codex --budget NAME` applies one to a managed session.
+Shared budgets and Claude supervision are
 not implemented. Incus CPU, memory and disk limits do not limit model tokens.
 
 ## Controls

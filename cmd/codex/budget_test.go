@@ -74,3 +74,30 @@ func TestOptionalBudgetRequiresACompleteLauncherConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestNamedSelectionUsesSavedCapAndRejectsOverrides(t *testing.T) {
+	t.Setenv("COLLAB_BUDGET_DIR", t.TempDir())
+	store, err := budget.DefaultStore()
+	terminalCheck(t, err)
+	_, err = store.Create("task", 100)
+	terminalCheck(t, err)
+	for _, selection := range []budgetSelection{
+		{name: "task", limit: 1000}, {name: "task", path: "override.json"},
+	} {
+		if b, err := selection.open(""); err == nil {
+			b.Close()
+			t.Fatal("named cap override accepted")
+		}
+	}
+	if b, err := (budgetSelection{name: "task"}).open("relay.sock"); err == nil {
+		b.Close()
+		t.Fatal("relay accepted budget")
+	}
+	b, err := (budgetSelection{name: "task"}).open("")
+	terminalCheck(t, err)
+	defer b.Close()
+	b.Observe("thread", 100)
+	if b.Err() == nil {
+		t.Fatal("saved cap was not enforced")
+	}
+}

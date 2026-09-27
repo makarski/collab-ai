@@ -23,19 +23,31 @@ func lockBudgetFile(path string) (*os.File, error) {
 }
 
 func (b *Budget) load() error {
-	data, err := os.ReadFile(b.path)
+	saved, err := readState(b.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
+	return b.restore(saved)
+}
+
+func readState(path string) (state, error) {
 	var saved state
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return fmt.Errorf("invalid budget file: %w", err)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return saved, err
 	}
-	if err := saved.validate(); err != nil {
-		return err
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return saved, fmt.Errorf("invalid budget file: %w", err)
+	}
+	return saved, saved.validate()
+}
+
+func (b *Budget) restore(saved state) error {
+	if saved.Stopped != "" {
+		return fmt.Errorf("budget previously stopped with unknown accounting: %s", saved.Stopped)
 	}
 	spent, err := saved.totalUsage()
 	if err != nil {
@@ -51,9 +63,6 @@ func (s state) validate() error {
 	}
 	if s.Threads == nil {
 		return errors.New("missing saved thread usage")
-	}
-	if s.Stopped != "" {
-		return fmt.Errorf("budget previously stopped with unknown accounting: %s", s.Stopped)
 	}
 	return nil
 }

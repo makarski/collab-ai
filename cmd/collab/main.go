@@ -1,4 +1,4 @@
-// Command collab provides read-only operator tools for the local broker.
+// Command collab provides local operator tools for collaboration and budgets.
 package main
 
 import (
@@ -24,9 +24,19 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == "dashboard" {
+	if len(args) == 0 {
+		return runStatus(ctx, args, stdout, stderr)
+	}
+	switch args[0] {
+	case "budget":
+		return runBudget(args[1:], stdout, stderr)
+	case "dashboard":
 		return runDashboard(ctx, args[1:], stdout, stderr)
 	}
+	return runStatus(ctx, args, stdout, stderr)
+}
+
+func runStatus(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	cfg, code := parseOptions(args, stderr)
 	if code != -1 {
 		return code
@@ -60,7 +70,7 @@ type options struct {
 func parseOptions(args []string, stderr io.Writer) (options, int) {
 	var cfg options
 	if len(args) == 0 || args[0] != "status" {
-		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]")
+		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]\n       collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--json]")
 		return cfg, 2
 	}
 	socketDefault := defaultSocket()

@@ -156,10 +156,33 @@ support `--remote unix://PATH` (available in the locally tested 0.156.1).
 
 ### Codex soft cap
 
-Add `--token-cap 100000 --budget-file /absolute/path/task-budget.json` before
-`--` when launching `collab-codex`. Create the parent directory first. Both flags
-are required together; omitting both leaves the session uncapped. Existing
-subscription authentication and native approvals are unchanged.
+Create a budget once, then select it by name when launching or resuming Codex:
+
+```sh
+collab budget create my-task --tokens 100000
+collab budget status my-task --json
+collab-codex --agent-id codex-1 --budget my-task --terminal -- resume SESSION_ID
+```
+
+`collab budget status` shows the cap, reported tokens, remaining allocation from
+reports, overshoot, last report time and accounting errors. It works while Codex
+is running. A new budget explicitly says no usage has been reported; the displayed
+remaining amount is based on observations, not a real-time provider balance.
+An old timestamp can mean an idle session or delayed reporting; status does not
+claim to know which. No broker or model connection is needed for these commands.
+
+Budgets live in `~/.local/state/collab-ai/budgets`. Set `COLLAB_BUDGET_DIR` to the
+same absolute directory for both commands to use another location. Named budgets
+must be created explicitly; repeating `create` never resets usage or changes a
+cap. Each currently supports one managed Codex launcher, not simultaneous agents.
+Keep the files across restarts; destroying a sandbox also destroys budgets stored
+only on its root disk.
+
+The inline form remains supported: `--token-cap 100000 --budget-file
+/absolute/path/task-budget.json`, before `--`. Create its parent directory first.
+Use either `--budget NAME` or the two inline flags; combining them is rejected.
+Omitting all budget options leaves the session uncapped. Existing subscription
+authentication and native approvals are unchanged.
 
 The supervisor records App Server `thread/tokenUsage/updated` cumulative
 `totalTokens`, once per reported thread, in a private JSON file. It does not add
@@ -168,7 +191,7 @@ not dollars, subscription quota, RTK savings estimates or a provider billing aud
 The file's `threads` values are the observed high-water marks; their sum is the
 recorded spend. A missing report is unknown usage, not evidence of zero spend.
 
-Reuse the **same file and cap** after restarting or resuming. Duplicate reports
+Reuse the **same named budget**, or the same inline file and cap, after restarting or resuming. Duplicate reports
 never add charges. A lower reported total stops the session, since it could mean
 a counter reset; it never refunds tokens. Reported history from an ordinary resumed session
 is included; a fork's new thread ID counts separately, including any history

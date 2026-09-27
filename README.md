@@ -96,13 +96,13 @@ Resume or fork managed or ordinary Codex conversations. Exit the previous sessio
 ### Set a Codex soft cap
 
 ```sh
-mkdir -p "$HOME/.local/state/collab-ai"
-./collab-codex --agent-id codex-1 --terminal \
-  --token-cap 100000 --budget-file "$HOME/.local/state/collab-ai/task-budget.json" -- \
+./collab budget create my-task --tokens 100000
+./collab budget status my-task
+./collab-codex --agent-id codex-1 --budget my-task --terminal -- \
   -C /path/to/your/project
 ```
 
-Reuse the file on resume to retain accounting. At the limit, the supervisor
+Reuse `--budget my-task` on resume to retain accounting. At the limit, the supervisor
 interrupts Codex and shuts it down. Usage reports can arrive late, so overshoot
 is possible. This currently covers the managed Codex process; Claude and shared
 budget controls are not included. [Accounting and limits](docs/host-integration.md#codex-soft-cap).
