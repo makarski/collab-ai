@@ -3,10 +3,11 @@
 **Host → image → workspace → SSH.** Run these commands from the repository root.
 
 This setup creates an **offline Linux workspace** with 2 CPUs, 4 GiB memory,
-10 GiB disk, and a 512-process limit. It has no NIC, host mounts, or credentials.
+10 GiB disk, and a 512-process limit. By default it has no NIC, host mounts, or credentials.
 It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
 starts automatically. Model access remains disabled by the absence of networking
 and credentials; provisioning does not yet configure subscription logins or model access.
+To work on a local checkout, opt into [selected host directory mounts](sandbox-mounts.md).
 
 [Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
 [SSH](#4-ssh-into-the-workspace) · [Agent dashboard](dashboard.md#open-the-dashboard) ·
@@ -229,7 +230,7 @@ limits do not enforce token caps.
 <summary>Isolation, repeatability, and validation details</summary>
 
 The Mac host uses [colima.json](../infra/incus/colima.json): 4 CPUs, 8 GiB RAM,
-40 GiB disk, no host mounts or SSH-agent forwarding, and no default-context switch.
+40 GiB disk, no host mounts by default, no SSH-agent forwarding, and no default-context switch.
 The script refuses foreign profiles and saved configuration drift. Inspect an
 error before changing or deleting an existing profile.
 

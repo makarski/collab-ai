@@ -130,3 +130,76 @@ run "reject_unbounded_resources" {
   }
   expect_failures = [var.cpu_count, var.memory_gib, var.disk_gib]
 }
+
+run "selected_host_mounts" {
+  command = plan
+  variables {
+    host_mounts = {
+      source = { source = "/home/operator/source", path = "/workspace/source" }
+      work   = { source = "/home/operator/work", path = "/workspace/work", readonly = false }
+    }
+    mount_owner = { uid = 501, gid = 20 }
+  }
+  assert {
+    condition = (
+      incus_project.sandbox.config["restricted.devices.disk.paths"] == "/home/operator/source,/home/operator/work" &&
+      incus_project.sandbox.config["restricted.idmap.uid"] == "501" &&
+      incus_project.sandbox.config["restricted.devices.nic"] == "block" &&
+      incus_profile.sandbox.config["raw.idmap"] == "uid 501 1001\ngid 20 1001" &&
+      incus_profile.sandbox.config["security.idmap.isolated"] == "true"
+    )
+    error_message = "Only selected paths and one non-root host identity may be shared."
+  }
+  assert {
+    condition = alltrue([for device in incus_profile.sandbox.device :
+      device.name == "root" ? true : device.properties.readonly == (device.name == "host-source" ? "true" : "false")
+    ])
+    error_message = "Mounts must be read-only unless explicitly writable."
+  }
+}
+
+run "reject_root_mount" {
+  command = plan
+  variables {
+    host_mounts = { bad = { source = "/", path = "/workspace/root" } }
+    mount_owner = { uid = 501, gid = 20 }
+  }
+  expect_failures = [var.host_mounts]
+}
+
+run "reject_escaping_target" {
+  command = plan
+  variables {
+    host_mounts = { bad = { source = "/home/operator/repo", path = "/workspace/../etc" } }
+    mount_owner = { uid = 501, gid = 20 }
+  }
+  expect_failures = [var.host_mounts]
+}
+
+run "reject_missing_mount_owner" {
+  command = plan
+  variables {
+    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo" } }
+  }
+  expect_failures = [incus_project.sandbox]
+}
+
+run "reject_root_identity" {
+  command = plan
+  variables {
+    mount_owner = { uid = 0, gid = 20 }
+  }
+  expect_failures = [var.mount_owner]
+}
+
+run "reject_nested_mount_sources" {
+  command = plan
+  variables {
+    host_mounts = {
+      repo = { source = "/home/operator/repo", path = "/workspace/repo" }
+      nested = { source = "/home/operator/repo/subdir", path = "/workspace/nested" }
+    }
+    mount_owner = { uid = 501, gid = 20 }
+  }
+  expect_failures = [var.host_mounts]
+}

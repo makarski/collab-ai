@@ -19,18 +19,25 @@ resource "incus_project" "sandbox" {
   description   = "collab-ai offline sandbox, managed by infra/incus"
   force_destroy = false
 
-  config = {
+  config = merge({
     "features.images"                 = "true"
     "features.profiles"               = "true"
     "features.storage.volumes"        = "true"
     "restricted"                      = "true"
     "restricted.containers.privilege" = "isolated"
     "restricted.containers.nesting"   = "block"
-    "restricted.devices.disk"         = "block"
+    "restricted.devices.disk"         = length(var.host_mounts) == 0 ? "block" : "allow"
     "restricted.devices.nic"          = "block"
     "restricted.devices.proxy"        = "block"
     "limits.containers"               = "1"
     "limits.virtual-machines"         = "0"
+  }, local.mount_project_config)
+
+  lifecycle {
+    precondition {
+      condition     = length(var.host_mounts) == 0 || var.mount_owner != null
+      error_message = "Host mounts require mount_owner; use sandbox-host.py mounts-apply to generate it."
+    }
   }
 }
 
@@ -76,7 +83,7 @@ resource "incus_profile" "sandbox" {
   name    = "offline"
   project = incus_project.sandbox.name
 
-  config = {
+  config = merge({
     "security.privileged"     = "false"
     "security.nesting"        = "false"
     "security.idmap.isolated" = "true"
@@ -85,9 +92,9 @@ resource "incus_profile" "sandbox" {
     "limits.cpu"              = tostring(var.cpu_count)
     "limits.memory"           = "${var.memory_gib}GiB"
     "limits.processes"        = "512"
-  }
+  }, local.mount_profile_config)
 
-  # Deliberately no NIC, host bind mount, proxy or inherited default profile.
+  # Deliberately no NIC, proxy or inherited default profile. Host mounts opt in.
   device {
     name = "root"
     type = "disk"
@@ -95,6 +102,20 @@ resource "incus_profile" "sandbox" {
       path = "/"
       pool = var.storage_pool
       size = "${var.disk_gib}GiB"
+    }
+  }
+
+  dynamic "device" {
+    for_each = var.host_mounts
+    content {
+      name = "host-${device.key}"
+      type = "disk"
+      properties = {
+        source   = device.value.source
+        path     = device.value.path
+        readonly = tostring(device.value.readonly)
+        required = "true"
+      }
     }
   }
 }
