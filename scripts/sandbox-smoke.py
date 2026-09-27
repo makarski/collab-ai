@@ -12,6 +12,7 @@ import time
 import uuid
 
 import sandbox_mount_checks
+import sandbox_secured_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,6 +116,7 @@ def main():
     parser.add_argument("--image-dir", required=True, type=Path)
     parser.add_argument("--tofu", default="tofu", help="OpenTofu or Terraform executable")
     parser.add_argument("--mount-check", action="store_true", help="also test disposable local Linux host mounts")
+    parser.add_argument("--secured-check", action="store_true", help="also test persistent secured state and read-only status IPC")
     args = parser.parse_args()
     project = "collab-smoke-" + uuid.uuid4().hex[:12]
     directory = Path(tempfile.mkdtemp(prefix="collab-smoke-"))
@@ -127,6 +129,8 @@ def main():
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         run(tofu + ["plan", "-detailed-exitcode", "-input=false"])
         check_workspace(args, directory, project, manifest)
+        if args.secured_check:
+            sandbox_secured_checks.verify(args, directory, project)
         if args.mount_check:
             sandbox_mount_checks.verify(args, directory, project)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")

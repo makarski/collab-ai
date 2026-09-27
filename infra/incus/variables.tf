@@ -72,7 +72,7 @@ variable "disk_gib" {
 }
 
 variable "running" {
-  description = "Desired power state; false stops the instance while retaining its root disk."
+  description = "Desired power state; false stops all managed instances while retaining their disks."
   type        = bool
   default     = true
 }

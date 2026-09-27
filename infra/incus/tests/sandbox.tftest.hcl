@@ -203,3 +203,56 @@ run "reject_nested_mount_sources" {
   }
   expect_failures = [var.host_mounts]
 }
+
+run "secured_runtime" {
+  command = plan
+  variables {
+    secured_runtime = true
+    running = false
+    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
+    mount_owner = { uid = 501, gid = 20 }
+  }
+  assert {
+    condition = (
+      incus_project.sandbox.config["limits.containers"] == "2" &&
+      incus_instance.secured[0].running == false &&
+      incus_instance.workspace.running == false &&
+      length(incus_instance.secured[0].profiles) == 1 &&
+      one(incus_instance.secured[0].profiles) == incus_profile.secured[0].name &&
+      incus_profile.secured[0].config["security.idmap.isolated"] == "true" &&
+      !contains(keys(incus_profile.secured[0].config), "raw.idmap")
+    )
+    error_message = "Secured must have its own isolated identity/profile and follow the desired power state."
+  }
+  assert {
+    condition = (
+      length(incus_profile.secured[0].device) == 3 &&
+      alltrue([for device in incus_profile.secured[0].device : device.type == "disk" && contains(keys(device.properties), "pool")]) &&
+      alltrue([for device in incus_profile.sandbox.device : device.name != "secured-state"]) &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "budget-status"]).properties.readonly == "true"
+    )
+    error_message = "Secured must have only managed volumes; dev must receive only read-only status, never private state."
+  }
+  assert {
+    condition = (
+      incus_storage_volume.secured_state[0].config["initial.mode"] == "0700" &&
+      incus_storage_volume.budget_status[0].config["initial.mode"] == "0755" &&
+      incus_storage_volume.budget_status[0].config["security.shifted"] == "true"
+    )
+    error_message = "State must be root-only and status must support isolated mappings without world-writable directories."
+  }
+}
+
+run "secured_without_host_mounts" {
+  command = plan
+  variables {
+    secured_runtime = true
+  }
+  assert {
+    condition = (
+      incus_project.sandbox.config["restricted.devices.disk"] == "managed" &&
+      !contains(keys(incus_project.sandbox.config), "restricted.devices.disk.paths")
+    )
+    error_message = "Secured IPC must allow managed volumes while rejecting host bind mounts."
+  }
+}

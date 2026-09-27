@@ -1,0 +1,111 @@
+variable "secured_runtime" {
+  description = "Add an offline secured runtime with private persistent state and a read-only status mount in workspace."
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+resource "incus_storage_volume" "secured_state" {
+  count        = var.secured_runtime ? 1 : 0
+  name         = "secured-state"
+  project      = incus_project.sandbox.name
+  pool         = var.storage_pool
+  type         = "custom"
+  content_type = "filesystem"
+  config = {
+    "size"             = "1GiB"
+    "initial.uid"      = "0"
+    "initial.gid"      = "0"
+    "initial.mode"     = "0700"
+    "security.shifted" = "true"
+  }
+}
+
+resource "incus_storage_volume" "budget_status" {
+  count        = var.secured_runtime ? 1 : 0
+  name         = "budget-status"
+  project      = incus_project.sandbox.name
+  pool         = var.storage_pool
+  type         = "custom"
+  content_type = "filesystem"
+  config = {
+    "size"             = "16MiB"
+    "initial.uid"      = "0"
+    "initial.gid"      = "0"
+    "initial.mode"     = "0755"
+    "security.shifted" = "true"
+  }
+}
+
+resource "incus_profile" "secured" {
+  count   = var.secured_runtime ? 1 : 0
+  name    = "secured-offline"
+  project = incus_project.sandbox.name
+  config = {
+    "security.privileged"     = "false"
+    "security.nesting"        = "false"
+    "security.idmap.isolated" = "true"
+    "security.guestapi"       = "false"
+    "boot.autostart"          = "false"
+    "limits.cpu"              = "1"
+    "limits.memory"           = "2GiB"
+    "limits.processes"        = "256"
+  }
+
+  # No host paths, raw.idmap, NIC, proxy, or inherited workspace/default profile.
+  device {
+    name = "root"
+    type = "disk"
+    properties = {
+      path = "/"
+      pool = var.storage_pool
+      size = "${var.disk_gib}GiB"
+    }
+  }
+  device {
+    name = "secured-state"
+    type = "disk"
+    properties = {
+      source = incus_storage_volume.secured_state[0].name
+      pool   = var.storage_pool
+      path   = "/var/lib/collab-ai-secured"
+    }
+  }
+  device {
+    name = "budget-status"
+    type = "disk"
+    properties = {
+      source = incus_storage_volume.budget_status[0].name
+      pool   = var.storage_pool
+      path   = "/mnt/collab-status"
+    }
+  }
+}
+
+resource "incus_instance" "secured" {
+  count     = var.secured_runtime ? 1 : 0
+  name      = "secured"
+  project   = incus_project.sandbox.name
+  image     = local.workspace_fingerprint
+  type      = "container"
+  profiles  = [incus_profile.secured[0].name]
+  ephemeral = false
+  running   = var.running
+  config = {
+    "user.collab-ai.managed" = "infra/incus"
+    "user.collab-ai.role"    = "secured"
+  }
+}
+
+output "secured" {
+  description = "Host-only administration; provisioning does not start authenticated clients or a budget supervisor."
+  value = var.secured_runtime ? {
+    project       = incus_project.sandbox.name
+    instance      = incus_instance.secured[0].name
+    budget_dir    = "/var/lib/collab-ai-secured/budgets"
+    status_dir    = "/mnt/collab-status"
+    network       = "none"
+    state_volume  = incus_storage_volume.secured_state[0].name
+    status_volume = incus_storage_volume.budget_status[0].name
+  } : null
+}

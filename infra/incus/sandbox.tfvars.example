@@ -10,3 +10,7 @@ cpu_count    = 2
 memory_gib   = 4
 disk_gib     = 10
 running      = true
+
+# Optional second runtime with private state; both containers remain offline.
+# See docs/secured-runtime.md. Existing deployments are unchanged unless enabled.
+secured_runtime = false
