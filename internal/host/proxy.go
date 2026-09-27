@@ -61,13 +61,8 @@ func (p *Proxy) ThreadID() string {
 }
 
 func (p *Proxy) FromOperator(ctx context.Context, frame Frame) error {
-	if frame.Method != "" {
-		if err := p.budgetError(); err != nil {
-			if len(frame.ID) == 0 {
-				return err
-			}
-			return p.Operator.Write(ctx, errorFrame(frame.ID, err))
-		}
+	if err := p.operatorBudgetError(frame); err != nil {
+		return p.rejectOperator(ctx, frame, err)
 	}
 	if reservedRequest(frame) {
 		return p.Operator.Write(ctx, errorFrame(frame.ID, errors.New("request IDs starting with collab- are reserved by this proxy")))
@@ -79,6 +74,13 @@ func (p *Proxy) FromOperator(ctx context.Context, frame Frame) error {
 		}
 	}
 	return p.Upstream.Write(ctx, frame)
+}
+
+func (p *Proxy) rejectOperator(ctx context.Context, frame Frame, err error) error {
+	if len(frame.ID) == 0 {
+		return err
+	}
+	return p.Operator.Write(ctx, errorFrame(frame.ID, err))
 }
 
 func reservedRequest(frame Frame) bool {

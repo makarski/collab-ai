@@ -14,20 +14,48 @@ func (p *Proxy) budgetError() error {
 	return p.Budget.Err()
 }
 
+func (p *Proxy) operatorBudgetError(frame Frame) error {
+	// Allow responses (including declined approvals) during shutdown.
+	if frame.Method == "" {
+		return nil
+	}
+	return p.budgetError()
+}
+
+type tokenUsageReport struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	Usage    struct {
+		Total struct {
+			Tokens *int64 `json:"totalTokens"`
+		} `json:"total"`
+	} `json:"tokenUsage"`
+}
+
+func (r tokenUsageReport) validate() error {
+	if r.ThreadID == "" || r.TurnID == "" {
+		return errors.New("missing thread or turn identity")
+	}
+	if r.Usage.Total.Tokens == nil {
+		return errors.New("missing cumulative totalTokens")
+	}
+	return nil
+}
+
+func parseTokenUsage(data json.RawMessage) (tokenUsageReport, error) {
+	var report tokenUsageReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return report, err
+	}
+	return report, report.validate()
+}
+
 func (p *Proxy) observeBudget(frame Frame) {
 	if p.Budget == nil || frame.Method != "thread/tokenUsage/updated" {
 		return
 	}
-	var args struct {
-		ThreadID string `json:"threadId"`
-		TurnID   string `json:"turnId"`
-		Usage    struct {
-			Total struct {
-				Tokens *int64 `json:"totalTokens"`
-			} `json:"total"`
-		} `json:"tokenUsage"`
-	}
-	if json.Unmarshal(frame.Params, &args) != nil || args.ThreadID == "" || args.TurnID == "" || args.Usage.Total.Tokens == nil {
+	args, err := parseTokenUsage(frame.Params)
+	if err != nil {
 		p.Budget.Fail(errors.New("invalid token usage notification; stopping because accounting is unknown"))
 		return
 	}

@@ -37,7 +37,8 @@ done
 	defer output.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	err = runBudgetedOperator(ctx, bridge.ClientConfig{AgentID: "budget-test", SocketPath: "/unused"}, binary, operatorIO{input: input, output: output}, b)
+	launcher := codexLauncher{client: bridge.ClientConfig{AgentID: "budget-test", SocketPath: "/unused"}, binary: binary, budget: b}
+	err = launcher.runOperator(ctx, operatorIO{input: input, output: output})
 	if err == nil || !strings.Contains(err.Error(), "107 reported / 100 cap (7 overshoot)") {
 		t.Fatalf("cap shutdown diagnostic: %v", err)
 	}

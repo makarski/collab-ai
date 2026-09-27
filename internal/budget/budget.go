@@ -3,14 +3,11 @@
 package budget
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"sync"
-	"syscall"
 )
 
 type state struct {
@@ -36,65 +33,37 @@ type Budget struct {
 // Open preserves the cap and per-thread high-water marks across restarts. A
 // different cap requires an explicitly separate budget file.
 func Open(path string, limit int64) (*Budget, error) {
-	if path == "" || limit <= 0 {
-		return nil, errors.New("--token-cap must be positive and requires --budget-file")
+	if path == "" {
+		return nil, errors.New("--budget-file is required with --token-cap")
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if limit <= 0 {
+		return nil, errors.New("--token-cap must be positive")
+	}
+	lock, err := lockBudgetFile(path)
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		lock.Close()
-		return nil, fmt.Errorf("budget already in use or cannot be locked: %w", err)
-	}
 	b := &Budget{path: path, lock: lock, done: make(chan struct{}),
 		state: state{Version: 1, Limit: limit, Threads: make(map[string]int64)}}
-	if err := b.load(); err != nil {
+	if err := b.initialize(limit); err != nil {
 		b.Close()
 		return nil, err
-	}
-	if b.state.Limit != limit {
-		b.Close()
-		return nil, fmt.Errorf("saved token cap is %d; refusing to change it to %d", b.state.Limit, limit)
-	}
-	if err := b.save(); err != nil {
-		b.Close()
-		return nil, err
-	}
-	b.checkLimit()
-	if b.err != nil {
-		b.Close()
-		return nil, b.Err()
 	}
 	return b, nil
 }
 
-func (b *Budget) load() error {
-	data, err := os.ReadFile(b.path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+func (b *Budget) initialize(limit int64) error {
+	if err := b.load(); err != nil {
 		return err
 	}
-	var saved state
-	if err := json.Unmarshal(data, &saved); err != nil {
-		return fmt.Errorf("invalid budget file: %w", err)
+	if b.state.Limit != limit {
+		return fmt.Errorf("saved token cap is %d; refusing to change it to %d", b.state.Limit, limit)
 	}
-	b.state = saved
-	if b.state.Version != 1 || b.state.Limit <= 0 || b.state.Threads == nil {
-		return errors.New("invalid budget file schema")
+	if err := b.save(); err != nil {
+		return err
 	}
-	if b.state.Stopped != "" {
-		return fmt.Errorf("budget previously stopped with unknown accounting: %s", b.state.Stopped)
-	}
-	for thread, total := range b.state.Threads {
-		if thread == "" || total < 0 || total > math.MaxInt64-b.spent {
-			return errors.New("invalid saved token usage")
-		}
-		b.spent += total
-	}
-	return nil
+	b.checkLimit()
+	return b.Err()
 }
 
 // Observe counts cumulative totalTokens once per thread. A regression stops
@@ -104,8 +73,8 @@ func (b *Budget) Observe(thread string, total int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	previous := b.state.Threads[thread]
-	if thread == "" || total < 0 || total-previous > math.MaxInt64-b.spent {
-		b.failAccounting(errors.New("invalid token usage; stopping because accounting is unknown"))
+	if err := b.validateObservation(thread, total); err != nil {
+		b.failAccounting(err)
 		return
 	}
 	if total < previous {
@@ -122,6 +91,16 @@ func (b *Budget) Observe(thread string, total int64) {
 		return
 	}
 	b.checkLimit()
+}
+
+func (b *Budget) validateObservation(thread string, total int64) error {
+	if err := validateThreadUsage(thread, total); err != nil {
+		return fmt.Errorf("invalid token usage; stopping because accounting is unknown: %w", err)
+	}
+	if total-b.state.Threads[thread] > math.MaxInt64-b.spent {
+		return errors.New("token usage overflow; stopping because accounting is unknown")
+	}
+	return nil
 }
 
 func (b *Budget) checkLimit() {
@@ -166,34 +145,3 @@ func (b *Budget) Done() <-chan struct{} { return b.done }
 
 // Close releases ownership. Call only after the supervisor has stopped.
 func (b *Budget) Close() error { return b.lock.Close() }
-
-func (b *Budget) save() error {
-	data, err := json.MarshalIndent(b.state, "", "  ")
-	if err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(b.path), ".collab-budget-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	defer f.Close()
-	if _, err := f.Write(append(data, '\n')); err != nil {
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(f.Name(), b.path); err != nil {
-		return err
-	}
-	dir, err := os.Open(filepath.Dir(b.path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
-}

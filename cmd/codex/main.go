@@ -37,12 +37,13 @@ func main() {
 	if cap != nil {
 		defer cap.Close()
 	}
+	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap}
 	if *mcpSocket != "" {
 		err = relayMCP(ctx, *mcpSocket, operatorIO{input: os.Stdin, output: os.Stdout})
 	} else if *terminal {
-		err = runBudgetedTerminal(ctx, cfg, *binary, flag.Args(), cap)
+		err = launcher.runTerminal(ctx, flag.Args())
 	} else {
-		err = runBudgetedOperator(ctx, cfg, *binary, operatorIO{input: os.Stdin, output: os.Stdout}, cap)
+		err = launcher.runOperator(ctx, operatorIO{input: os.Stdin, output: os.Stdout})
 	}
 	if err != nil {
 		log.Print(err)
@@ -69,19 +70,36 @@ type operatorIO struct {
 	output io.WriteCloser
 }
 
-func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string, operator operatorIO) error {
-	return runBudgetedOperator(ctx, cfg, binary, operator, nil)
+// The terminal and its App Server share one launch configuration and budget.
+type codexLauncher struct {
+	client bridge.ClientConfig
+	binary string
+	budget *budget.Budget
 }
 
-func runBudgetedOperator(ctx context.Context, cfg bridge.ClientConfig, binary string, operator operatorIO, cap *budget.Budget) error {
+func (l codexLauncher) budgetResult(err error) error {
+	if l.budget == nil {
+		return err
+	}
+	if stopped := l.budget.Err(); stopped != nil {
+		return stopped
+	}
+	return err
+}
+
+func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string, operator operatorIO) error {
+	return (codexLauncher{client: cfg, binary: binary}).runOperator(ctx, operator)
+}
+
+func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	client, err := bridge.NewLazyClient(cfg)
+	client, err := bridge.NewLazyClient(l.client)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	cmd := appServerCommand(ctx, binary, "app-server", "--listen", "stdio://")
+	cmd := appServerCommand(ctx, l.binary, "app-server", "--listen", "stdio://")
 	cmd.Stderr = os.Stderr
 	input, err := cmd.StdinPipe()
 	if err != nil {
@@ -99,7 +117,7 @@ func runBudgetedOperator(ctx context.Context, cfg bridge.ClientConfig, binary st
 	}
 	defer func() { cancel(); input.Close(); output.Close(); stopAppServer(cmd) }()
 	p := host.NewProxy(host.NewWire(input), host.NewWire(operator.output))
-	p.Budget = cap
+	p.Budget = l.budget
 	p.Listener = bridge.NewListener(ctx, client, p)
 	defer p.Listener.Close()
 	return serveWithTools(ctx, p, operator.input, output)

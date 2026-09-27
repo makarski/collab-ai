@@ -52,17 +52,26 @@ func TestProcessGroupHelper(t *testing.T) {
 	}
 	signal.Ignore(syscall.SIGTERM)
 	if role == "wrapper" {
-		child := exec.Command(os.Args[0], "-test.run=^TestProcessGroupHelper$")
-		child.Env = append(os.Environ(), "COLLAB_GROUP_TEST=child")
-		child.Stdout = os.Stdout
-		if err := child.Start(); err != nil {
-			os.Exit(2)
-		}
-		time.Sleep(10 * time.Second) // bound leaks if the test fails
-		_ = child.Process.Kill()
-		_ = child.Wait()
-		os.Exit(0)
+		runUncooperativeWrapper()
+	} else {
+		runHeartbeatChild()
 	}
+	os.Exit(0)
+}
+
+func runUncooperativeWrapper() {
+	child := exec.Command(os.Args[0], "-test.run=^TestProcessGroupHelper$")
+	child.Env = append(os.Environ(), "COLLAB_GROUP_TEST=child")
+	child.Stdout = os.Stdout
+	if err := child.Start(); err != nil {
+		os.Exit(2)
+	}
+	time.Sleep(10 * time.Second) // bound leaks if the test fails
+	_ = child.Process.Kill()
+	_ = child.Wait()
+}
+
+func runHeartbeatChild() {
 	end := time.Now().Add(10 * time.Second)
 	for i := 0; time.Now().Before(end); i++ {
 		if err := os.WriteFile(os.Getenv("COLLAB_GROUP_HEARTBEAT"), []byte(strconv.Itoa(i)), 0600); err != nil {
@@ -73,5 +82,4 @@ func TestProcessGroupHelper(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	os.Exit(0)
 }

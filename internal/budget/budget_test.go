@@ -19,6 +19,39 @@ func openTest(t *testing.T, path string, limit int64) *Budget {
 	return b
 }
 
+func requireErrorContains(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected error containing %q", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+}
+
+func assertCannotOpen(t *testing.T, path string, limit int64) error {
+	t.Helper()
+	b, err := Open(path, limit)
+	if err == nil {
+		b.Close()
+		t.Fatal("budget unexpectedly reopened")
+	}
+	return err
+}
+
+func readSavedState(t *testing.T, path string) state {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved state
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	return saved
+}
+
 func TestUsageSurvivesRestartWithoutDuplicateCharges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "budget.json")
 	b := openTest(t, path, 100)
@@ -32,39 +65,22 @@ func TestUsageSurvivesRestartWithoutDuplicateCharges(t *testing.T) {
 		t.Fatal(b.Err())
 	}
 	b.Observe("b", 40)
-	if !strings.Contains(b.Err().Error(), "100 reported / 100 cap (0 overshoot)") {
-		t.Fatal(b.Err())
-	}
+	requireErrorContains(t, b.Err(), "100 reported / 100 cap (0 overshoot)")
 	b.Observe("a", 75) // continue recording reports during shutdown
-	if !strings.Contains(b.Err().Error(), "115 reported / 100 cap (15 overshoot)") {
-		t.Fatal(b.Err())
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var saved state
-	if err := json.Unmarshal(data, &saved); err != nil {
-		t.Fatal(err)
-	}
+	requireErrorContains(t, b.Err(), "115 reported / 100 cap (15 overshoot)")
+	saved := readSavedState(t, path)
 	if saved.Threads["a"] != 75 || saved.Threads["b"] != 40 {
 		t.Fatal(saved)
 	}
 	b.Close()
-	if next, err := Open(path, 100); err == nil {
-		next.Close()
-		t.Fatal("exhausted budget reopened")
-	}
+	requireErrorContains(t, assertCannotOpen(t, path, 100), "soft token cap reached")
 }
 
 func TestConcurrentObservationsAndExclusiveOwnership(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "budget.json")
 	b := openTest(t, path, 1000)
 	defer b.Close()
-	if next, err := Open(path, 1000); err == nil {
-		next.Close()
-		t.Fatal("concurrent launcher admitted")
-	}
+	requireErrorContains(t, assertCannotOpen(t, path, 1000), "already in use")
 	var wg sync.WaitGroup
 	for i := int64(1); i <= 100; i++ {
 		wg.Add(1)
@@ -75,35 +91,27 @@ func TestConcurrentObservationsAndExclusiveOwnership(t *testing.T) {
 		t.Fatal(b.spent)
 	}
 	b.Close()
-	if next, err := Open(path, 1001); err == nil {
-		next.Close()
-		t.Fatal("cap changed on restart")
-	}
+	requireErrorContains(t, assertCannotOpen(t, path, 1001), "refusing to change")
 }
 
-func TestRejectsInvalidSavedStateAndFlags(t *testing.T) {
+func TestRejectsInvalidSavedState(t *testing.T) {
 	for _, data := range []string{`{}`, `{"version":1,"limit":10}`, `{"version":1,"limit":10,"threads":{"a":-1}}`, `{"version":1,"limit":10,"threads":{"a":9223372036854775807,"b":1}}`, `not json`} {
 		t.Run(data, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "budget.json")
 			if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if b, err := Open(path, 10); err == nil {
-				b.Close()
-				t.Fatal("invalid state accepted")
-			}
+			assertCannotOpen(t, path, 10)
 		})
 	}
+}
+
+func TestInvalidFlagsIdentifyTheMissingSetting(t *testing.T) {
 	for _, limit := range []int64{-1, 0} {
-		if b, err := Open(filepath.Join(t.TempDir(), "budget"), limit); err == nil {
-			b.Close()
-			t.Fatal("invalid cap accepted")
-		}
+		err := assertCannotOpen(t, filepath.Join(t.TempDir(), "budget"), limit)
+		requireErrorContains(t, err, "--token-cap must be positive")
 	}
-	if b, err := Open("", 10); err == nil {
-		b.Close()
-		t.Fatal("missing path accepted")
-	}
+	requireErrorContains(t, assertCannotOpen(t, "", 10), "--budget-file is required")
 }
 
 func TestAccountingFailureStopsAndStaysStopped(t *testing.T) {
@@ -116,10 +124,7 @@ func TestAccountingFailureStopsAndStaysStopped(t *testing.T) {
 			t.Fatal("invalid accounting accepted")
 		}
 		b.Close()
-		if next, err := Open(path, math.MaxInt64); err == nil {
-			next.Close()
-			t.Fatal("unknown accounting reopened")
-		}
+		requireErrorContains(t, assertCannotOpen(t, path, math.MaxInt64), "unknown accounting")
 	}
 }
 
@@ -135,9 +140,7 @@ func TestPersistenceFailureStopsAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.Observe("a", 1)
-	if b.Err() == nil || !strings.Contains(b.Err().Error(), "persist") {
-		t.Fatal(b.Err())
-	}
+	requireErrorContains(t, b.Err(), "persist")
 	select {
 	case <-b.Done():
 	default:
@@ -150,15 +153,10 @@ func TestRegressingCounterCannotSilentlyResetUsage(t *testing.T) {
 	b := openTest(t, path, 100)
 	b.Observe("a", 60)
 	b.Observe("a", 40)
-	if b.Err() == nil || !strings.Contains(b.Err().Error(), "regressed") {
-		t.Fatal("counter regression accepted", b.Err())
-	}
+	requireErrorContains(t, b.Err(), "regressed")
 	if b.spent != 60 {
 		t.Fatal("refunded tokens", b.spent)
 	}
 	b.Close()
-	if next, err := Open(path, 100); err == nil {
-		next.Close()
-		t.Fatal("unknown accounting reopened")
-	}
+	requireErrorContains(t, assertCannotOpen(t, path, 100), "unknown accounting")
 }
