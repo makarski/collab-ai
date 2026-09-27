@@ -46,20 +46,24 @@ class Deployment:
 def check_configuration(deployment):
     instances = {item["name"]: item for item in json.loads(run(
         deployment.base + ["list", deployment.remote, "--format", "json"]))}
-    mappings = []
+    mappings = [instances[role]["expanded_config"]["volatile.idmap.current"]
+                for role in ("workspace", "secured")]
     for role in ("workspace", "secured"):
-        mappings.append(instances[role]["expanded_config"]["volatile.idmap.current"])
-        run(deployment.execute(role, "test", "!", "-S", "/var/lib/incus/unix.socket"))
-        run(deployment.execute(role, "test", "!", "-S", "/var/run/docker.sock"))
-        links = json.loads(run(deployment.execute(role, "ip", "-json", "link")))
-        if [link["ifname"] for link in links] != ["lo"]:
-            raise ValueError(f"{role} unexpectedly has networking")
+        check_offline(deployment, role)
     if mappings[0] == mappings[1]:
         raise ValueError("Dev and secured share an identity mapping")
     devices = instances["secured"]["expanded_devices"]
     if set(devices) != {"root", "secured-state", "budget-status"}:
         raise ValueError("Secured inherited unexpected devices")
     denied(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-broker"))
+
+
+def check_offline(deployment, role):
+    for path in ("/var/lib/incus/unix.socket", "/dev/incus/sock", "/var/run/docker.sock"):
+        run(deployment.execute(role, "test", "!", "-S", path))
+    links = json.loads(run(deployment.execute(role, "ip", "-json", "link")))
+    if [link["ifname"] for link in links] != ["lo"]:
+        raise ValueError(f"{role} unexpectedly has networking")
 
 
 def prepare_budget(deployment):
