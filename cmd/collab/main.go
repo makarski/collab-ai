@@ -70,7 +70,7 @@ type options struct {
 func parseOptions(args []string, stderr io.Writer) (options, int) {
 	var cfg options
 	if len(args) == 0 || args[0] != "status" {
-		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]\n       collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--json]")
+		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]\n       collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--socket PATH] [--json]")
 		return cfg, 2
 	}
 	socketDefault := defaultSocket()
