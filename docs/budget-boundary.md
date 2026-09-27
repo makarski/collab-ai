@@ -50,6 +50,8 @@ The native-client tests use deterministic loopback fake providers. The fake Clau
 key is a fixture string, not a credential; any displayed token costs are computed
 from synthetic responses. No provider requests or subscription spending occur.
 The tested versions are those pinned in `infra/image/tools.lock.json`.
+The probes use `codex exec` and `claude -p`; interactive terminals and resumed
+conversations are not exercised here.
 
 These are separate tests of tool routing and budget supervision. They **do not**
 establish a complete protected subscription workflow, shared Claude/Codex
