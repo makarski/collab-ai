@@ -133,10 +133,22 @@ def enable_secured(deployment, directory):
     variables = json.loads(path.read_text())
     variables["secured_runtime"] = True
     path.write_text(json.dumps(variables))
+    check_hot_upgrade_rejected(deployment)
+    run(deployment.base + ["stop", deployment.remote + "workspace"])
     run(deployment.tofu + ["apply", "-auto-approve", "-input=false"])
     run(deployment.tofu + ["plan", "-input=false", "-detailed-exitcode"])
     run(deployment.execute("workspace", "test", "-f", "/workspace/restart-check"))
     print("PASS: enabling secured runtime preserves dev data and produces an unchanged second plan.", flush=True)
+
+
+def check_hot_upgrade_rejected(deployment):
+    result = subprocess.run(deployment.tofu + ["apply", "-auto-approve", "-input=false"],
+                            capture_output=True, text=True, timeout=120)
+    if result.returncode == 0:
+        raise ValueError("Provisioning accepted a hot upgrade")
+    if "ValueError: Stop workspace before enabling" not in result.stderr:
+        raise ValueError(f"Upgrade failed for an unexpected reason: {result.stderr}")
+    run(deployment.execute("workspace", "test", "!", "-e", "/mnt/collab-status"))
 
 
 def verify(args, directory, project):

@@ -1,8 +1,21 @@
 # Separate dev and secured runtimes
 
-Add `secured_runtime = true` to `infra/incus/sandbox.auto.tfvars`, then follow the
-usual [plan and apply](sandbox.md#3-preview-and-apply). Use a workspace image built
-from this revision or later. Existing deployments keep their `workspace` container.
+Use a workspace image built from this revision or later. For an existing deployment,
+stop dev first (Linux: replace `colima-collab-ai:` with `local:`):
+
+```sh
+incus --project collab-ai stop colima-collab-ai:workspace
+```
+
+Then add `secured_runtime = true` to `infra/incus/sandbox.auto.tfvars` and follow
+[plan and apply](sandbox.md#3-preview-and-apply). The apply starts both containers
+when `running = true`; existing workspace data is preserved. Fresh installations
+can enable this option directly.
+
+An apply-time host preflight rejects enabling the layout while dev is running.
+Incus hot-added read-only mounts can be remounted writable by container root;
+the status mount must be present at boot to lock its read-only flag. Keep dev
+stopped if an apply fails, then retry. Do not manually hot-add or replace this mount.
 
 | Runtime | Purpose | Access |
 | --- | --- | --- |
@@ -75,8 +88,8 @@ volumes. It retains the host VM and shared storage pool.
 
 ## Validation
 
-CI tests both architectures with an offline fake client: single-runtime upgrade
-without losing dev data, unchanged second plan,
+CI tests both architectures with an offline fake client: rejection of unsafe hot upgrades,
+stopped-workspace upgrade without data loss, unchanged second plan,
 separate mappings, denied private-state access, denied status replacement/remount,
 real status reads over the shared UDS, persisted accounting after stop/start and
 secured replacement, and teardown. Dev host mounts are tested in the same deployment.

@@ -12,5 +12,5 @@ disk_gib     = 10
 running      = true
 
 # Optional second runtime with private state; both containers remain offline.
-# See docs/secured-runtime.md. Existing deployments are unchanged unless enabled.
+# Stop an existing workspace before enabling; see docs/secured-runtime.md.
 secured_runtime = false

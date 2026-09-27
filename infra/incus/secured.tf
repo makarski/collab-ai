@@ -5,6 +5,21 @@ variable "secured_runtime" {
   nullable    = false
 }
 
+# Run only when enabling the layout (or moving its host/project), before any
+# Incus changes. The operator must keep dev stopped through a failed/retried apply.
+resource "terraform_data" "secured_preflight" {
+  count            = var.secured_runtime ? 1 : 0
+  triggers_replace = [var.incus_socket, var.project_name]
+  provisioner "local-exec" {
+    interpreter = ["python3", "-c"]
+    command     = file("${path.module}/secured_preflight.py")
+    environment = {
+      COLLAB_INCUS_SOCKET  = var.incus_socket
+      COLLAB_INCUS_PROJECT = var.project_name
+    }
+  }
+}
+
 resource "incus_storage_volume" "secured_state" {
   count        = var.secured_runtime ? 1 : 0
   name         = "secured-state"

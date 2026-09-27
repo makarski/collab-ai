@@ -15,6 +15,8 @@ provider "incus" {
 }
 
 resource "incus_project" "sandbox" {
+  depends_on = [terraform_data.secured_preflight]
+
   name          = var.project_name
   description   = "collab-ai offline sandbox, managed by infra/incus"
   force_destroy = false

@@ -38,6 +38,7 @@ def prepare_state(directory, args, project):
     for source in (ROOT / "infra/incus").glob("*.tf"):
         shutil.copyfile(source, directory / source.name)
     shutil.copyfile(ROOT / "infra/incus/.terraform.lock.hcl", directory / ".terraform.lock.hcl")
+    shutil.copyfile(ROOT / "infra/incus/secured_preflight.py", directory / "secured_preflight.py")
     manifest = json.loads((args.image_dir / "manifest.json").read_text())
     variables = {
         "incus_socket": local_socket(args.remote), "project_name": project,
