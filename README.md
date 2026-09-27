@@ -50,6 +50,7 @@ colima stop collab-ai
 ```
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
+[Mount host directories](docs/sandbox-mounts.md) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
 [Incus web UI](docs/sandbox.md#incus-web-ui)
 

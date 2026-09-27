@@ -11,6 +11,8 @@ import tempfile
 import time
 import uuid
 
+import sandbox_mount_checks
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -112,16 +114,21 @@ def main():
     parser.add_argument("--remote", required=True)
     parser.add_argument("--image-dir", required=True, type=Path)
     parser.add_argument("--tofu", default="tofu", help="OpenTofu or Terraform executable")
+    parser.add_argument("--mount-check", action="store_true", help="also test disposable local Linux host mounts")
     args = parser.parse_args()
     project = "collab-smoke-" + uuid.uuid4().hex[:12]
     directory = Path(tempfile.mkdtemp(prefix="collab-smoke-"))
     manifest = prepare_state(directory, args, project)
+    if args.mount_check:
+        sandbox_mount_checks.prepare(directory, args.remote)
     tofu = [args.tofu, f"-chdir={directory}"]
     run(tofu + ["init", "-input=false", "-lockfile=readonly"])
     try:
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         run(tofu + ["plan", "-detailed-exitcode", "-input=false"])
         check_workspace(args, directory, project, manifest)
+        if args.mount_check:
+            sandbox_mount_checks.verify(args, directory, project)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     finally:
         destroy_deployment(tofu, directory, project)
