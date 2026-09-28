@@ -1,5 +1,12 @@
 # Host integration
 
+This is the ordinary host setup. For the proposed two-container layout, see the
+[sandbox architecture](../README.md#how-it-fits-together).
+
+![Host integration: human terminals for Codex and Claude, their collaboration adapters, and the local broker Unix socket.](assets/host-integration.svg)
+
+[Diagram source (PlantUML)](assets/host-integration.puml)
+
 For a first installation, follow the [step-by-step setup](quickstart.md).
 The [README](../README.md#run) keeps everyday launch, resume, fork, and status
 commands handy.

@@ -78,7 +78,7 @@ tofu -chdir=infra/incus plan -out=sandbox.tfplan
 ```
 
 Review the plan: it creates a project, cached image, profile, and container.
-With `secured_runtime = true`, it also adds a secured container/profile and three
+With `secured_runtime = true`, it also adds a secured container/profile and four
 managed volumes. Then:
 
 ```sh

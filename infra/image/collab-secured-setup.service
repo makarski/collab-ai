@@ -7,8 +7,8 @@ ConditionPathIsMountPoint=/mnt/collab-status
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/chown root:root /var/lib/collab-ai-secured /mnt/collab-status
-ExecStart=/usr/bin/chmod 0700 /var/lib/collab-ai-secured
+ExecStart=/usr/bin/chown root:root /mnt/collab-status
+ExecStart=/usr/local/bin/collab-broker-setup control
 ExecStart=/usr/bin/chmod 0755 /mnt/collab-status
 ExecStart=/usr/bin/install -d -m 0700 /var/lib/collab-ai-secured/codex
 ExecStart=/usr/bin/install -m 0600 /etc/collab-ai/secured-codex.toml /var/lib/collab-ai-secured/codex/config.toml

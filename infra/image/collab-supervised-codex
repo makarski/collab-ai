@@ -18,6 +18,7 @@ def command(name):
             "--property=TimeoutStopSec=3s", "--property=SendSIGKILL=yes", "--property=Restart=no",
             "--property=NoNewPrivileges=yes", "--property=ProtectControlGroups=yes",
             "--property=CapabilityBoundingSet=",
+            "--property=SupplementaryGroups=collab-clients",
             "--property=InaccessiblePaths=-/run/systemd/private -/run/dbus/system_bus_socket",
             "--working-directory=/workspace",
             "--setenv=PATH=/usr/local/bin:/usr/bin:/bin", "--setenv=HOME=" + root,

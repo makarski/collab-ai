@@ -15,6 +15,7 @@ RECIPE_PATHS = ["infra/image/" + name for name in (
     "collab-secured-setup.service", "collab-supervised-codex", "claude-mcp.json",
     "collab-secured-broker.service", "collab-dev-setup.service", "collab-dev-executor.socket",
     "collab-dev-executor@.service", "secured-codex.toml", "secured-environments.toml", "collab-executor-connect",
+    "collab-client-setup.service", "collab-broker-setup",
 )] + ["docs/skills/collab-ai/SKILL.md"]
 
 

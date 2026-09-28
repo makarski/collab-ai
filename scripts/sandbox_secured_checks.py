@@ -6,6 +6,7 @@ import subprocess
 import time
 
 import sandbox_installed_checks
+import sandbox_broker_checks
 from sandbox_boundary_checks import report, stop_relay
 
 
@@ -56,7 +57,7 @@ def check_configuration(deployment):
     if mappings[0] == mappings[1]:
         raise ValueError("Dev and secured share an identity mapping")
     devices = instances["secured"]["expanded_devices"]
-    if set(devices) != {"root", "secured-state", "budget-status", "dev-executor"}:
+    if set(devices) != {"root", "secured-state", "budget-status", "dev-executor", "broker-ipc"}:
         raise ValueError("Secured inherited unexpected devices")
     denied(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-broker"))
 
@@ -68,12 +69,13 @@ def await_permission_setup(deployment):
         if result.returncode == 0:
             return
         time.sleep(0.25)
-    raise ValueError("Secured volume permission setup did not complete")
+    diagnostic = run(deployment.execute("secured", "journalctl", "-b", "--no-pager", "-n", "80"))
+    raise ValueError(f"Secured volume permission setup did not complete: {diagnostic}")
 
 
 def check_volume_permissions(deployment):
     await_permission_setup(deployment)
-    for path, expected in ((STATE, "700 0 0"), ("/mnt/collab-status", "755 0 0")):
+    for path, expected in ((STATE, "710 0 1002"), ("/mnt/collab-status", "755 0 0")):
         actual = run(deployment.execute("secured", "stat", "-c", "%a %u %g", path)).strip()
         if actual != expected:
             raise ValueError(f"Unsafe secured volume permissions: {path}: {actual}")
@@ -127,6 +129,8 @@ def check_denials(deployment):
 
 
 def check_persistence(deployment):
+    sandbox_broker_checks.await_broker(deployment)
+    pending = sandbox_broker_checks.snapshot(deployment, "workspace")["durable_pending"]
     for running in (False, True):
         run(deployment.tofu + ["apply", "-auto-approve", "-input=false", f"-var=running={str(running).lower()}"])
         instances = json.loads(run(deployment.base + ["list", deployment.remote, "--format", "json"]))
@@ -137,6 +141,9 @@ def check_persistence(deployment):
     # Replacement destroys the secured root disk; the private custom volume survives.
     run(deployment.tofu + ["apply", "-auto-approve", "-input=false", "-replace=incus_instance.secured[0]"])
     check_saved_budget(deployment)
+    sandbox_broker_checks.await_broker(deployment)
+    if sandbox_broker_checks.snapshot(deployment, "workspace")["durable_pending"] != pending:
+        raise ValueError("Control replacement lost broker inbox state")
     run(deployment.tofu + ["plan", "-input=false", "-detailed-exitcode"])
 
 
@@ -175,6 +182,7 @@ def verify(args, directory, project):
     deployment = Deployment(args, directory, project)
     enable_secured(deployment, directory)
     check_configuration(deployment)
+    sandbox_broker_checks.verify(deployment)
     command = prepare_budget(deployment)
     # Inherit the test log; undrained output pipes could stall the launcher.
     process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
@@ -188,4 +196,5 @@ def verify(args, directory, project):
         run(deployment.base + ["restart", deployment.remote + "secured"])
     check_persistence(deployment)
     sandbox_installed_checks.verify(deployment)
-    print("PASS: isolated runtimes, root-only persistent state, read-only status, stop/start and secured replacement.")
+    sandbox_broker_checks.verify(deployment)
+    print("PASS: isolated runtimes, private persistent state, shared broker, read-only status, stop/start and secured replacement.")

@@ -1,4 +1,4 @@
-# Protected runtime setup (offline)
+# Control runtime setup (offline)
 
 Use a workspace image built from this revision or later. For an existing deployment,
 stop workspace and any existing secured container first (Linux: use `local:`):
@@ -17,25 +17,63 @@ image may replace the dev root disk, so export needed data before reviewing that
 
 An apply-time host preflight rejects enabling/upgrading the layout while either container is running.
 Incus hot-added read-only mounts can be remounted writable by container root;
-the status and executor mounts must be present at boot. Keep both containers
+the broker, status and executor mounts must be present at boot. Keep both containers
 stopped after a failed apply, then retry. Do not hot-add these mounts.
 
 | Runtime | Purpose | Access |
 | --- | --- | --- |
-| `workspace` (dev) | Repositories, builds and socket-activated executor running as `agent` | Unprivileged SSH; selected host mounts |
-| `secured` | Managed Codex configuration, private budgets, protected broker and supervisor | Human administration through host Incus |
+| `workspace` (dev) | Codex/Claude adapters, repositories and builds running as `agent` | Unprivileged SSH; selected host mounts |
+| `secured` (control) | One collaboration broker and SQLite database; operator dashboard | Human administration through host Incus |
 
 Both containers are offline, unprivileged and have separate UID mappings.
 Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, 1 GiB private state,
-and two 16 MiB IPC volumes. The image starts the protected broker and dev socket
-automatically; native clients start only through an explicit administrator launch.
+and three 16 MiB IPC volumes. Existing instance names are retained to avoid a
+destructive rename. With this mode enabled, the workspace's standalone broker
+does not start. Both dev adapters and the control dashboard use the same broker.
 
-**This is an experimental stdio setup.** Subscription login, interactive/resume
-support and Claude/shared accounting remain under [#34](https://github.com/makarski/collab-ai/issues/34).
-No credentials or external model access are provisioned. The managed provider
-points to an unused loopback fixture port (`18080`); normal model turns cannot run.
+**The sandbox remains offline.** No credentials or external model access are
+provisioned. The existing experimental protected Codex launcher is retained below;
+ordinary dev agents do not gain protected accounting by sharing its broker.
 
-## Create a budget and launch
+## Shared broker and dashboard
+
+After [SSH setup](sandbox.md#4-ssh-into-the-workspace), inspect the broker from dev:
+
+```sh
+ssh -F infra/incus/ssh/config workspace collab status
+```
+
+Open the operator dashboard in control (Linux: replace `colima-collab-ai:` with `local:`):
+
+```sh
+incus --project collab-ai exec colima-collab-ai:secured -t -- collab dashboard
+```
+
+The shared socket is `/mnt/collab-ipc/broker.sock`. Existing `/tmp/collab-ai.sock`
+defaults are root-owned aliases, so `collab-codex`, `collab-mcp`, and the installed
+Claude MCP configuration connect without overrides. `/run/collab-ai/broker.sock`
+also remains an alias in control for the experimental launcher.
+
+Control mounts the IPC volume read-write; dev mounts it read-only at boot.
+Directory `0750` and socket `0660` are owned by `broker:collab-clients`; `agent`
+belongs to the client group. Incus shifts the volume identities into each isolated
+container's mapping. Clients can send protocol requests, but cannot replace the
+socket or access the database. This does not authenticate agent IDs or isolate
+clients from other processes running as the same user.
+
+The only active collaboration database is
+`/var/lib/collab-ai-secured/broker/broker.db`. On upgrade, an existing control
+`broker.db` is copied consistently into that directory once; the original is retained.
+The old workspace database is left untouched and is **not merged** into control.
+Export any needed workspace history before replacing its root disk. The control
+database survives broker crashes and control-container replacement.
+
+## Experimental protected Codex launcher
+
+This separate path still takes JSON protocol input, not terminal prompts.
+Subscription login, protected terminal/resume support and Claude/shared accounting
+remain under [#34](https://github.com/makarski/collab-ai/issues/34). Its managed
+provider points to an unused loopback fixture port (`18080`).
 
 Run on your host. On Linux replace `colima-collab-ai:` with `local:`:
 
@@ -66,7 +104,7 @@ incus --project collab-ai exec colima-collab-ai:secured -- \
   systemctl stop collab-codex-my-task.service
 ```
 
-The budget directory lives on a root-only custom volume mounted only in secured.
+The budget directory remains root-only on the private volume mounted only in secured.
 Creation refuses to overwrite a cap or reset usage. There is no workload-facing
 administration endpoint. Incus administrators remain trusted: they can change
 containers and disks. Keep host control scripts, state, credentials and the Incus
@@ -90,8 +128,14 @@ API rejects mutations. Polling this endpoint is visibility, not admission contro
 
 - `collab-secured-setup` installs managed configuration on every secured boot,
   preserving budgets and usage. `/workspace` there is root-owned and contains no dev repository.
-- `collab-secured-broker` owns `/run/collab-ai/broker.sock`. The ordinary dev broker
-  remains separate; dev terminals do not automatically join protected conversations.
+- `collab-secured-broker` runs as `broker` and owns the shared IPC socket and private
+  database directory. The broker group can traverse the private volume root; budget
+  and native configuration directories stay root-only. Its startup helper removes
+  only a stale socket it owns, and refuses live endpoints, files or symlinks.
+- `collab-client-setup` connects default client paths to the shared socket. The dev
+  broker is disabled by its mount condition; a missing control broker never causes
+  fallback to a dev-local database. Without `secured_runtime`, the standalone
+  workspace broker still runs as before.
 - `collab-dev-executor.socket` owns a root-only socket on `/mnt/collab-executor`.
   Each accepted connection starts a native executor as `agent`, with no added privileges.
   Secured mounts the endpoint read-only. Agent commands cannot connect, unlink it,
@@ -134,6 +178,9 @@ secured replacement, and teardown. Dev host mounts are tested in the same deploy
 It also exercises the installed native configuration, broker and executor, endpoint
 replacement denials, restart and missing-executor refusal. No provider requests or
 subscription credentials are used.
+The shared-broker proof exchanges a correlated reply between the real dev MCP
+adapter and managed Codex proxy with a fake App Server, verifies both containers
+see the same broker, and checks client-group permissions and SIGKILL recovery.
 
 To repeat on the Linux Incus host (including inside the dedicated Colima VM):
 

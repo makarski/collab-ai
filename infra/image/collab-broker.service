@@ -1,8 +1,11 @@
 [Unit]
 Description=collab-ai local message broker
 After=local-fs.target
+Requires=collab-client-setup.service
+After=collab-client-setup.service
 # The secured runtime reserves its state for host-administered services.
 ConditionPathIsMountPoint=!/var/lib/collab-ai-secured
+ConditionPathIsMountPoint=!/mnt/collab-ipc
 
 [Service]
 User=agent

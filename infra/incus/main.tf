@@ -108,6 +108,20 @@ resource "incus_profile" "sandbox" {
   }
 
   dynamic "device" {
+    for_each = incus_storage_volume.broker_ipc
+    content {
+      name = "broker-ipc"
+      type = "disk"
+      properties = {
+        source   = device.value.name
+        pool     = var.storage_pool
+        path     = "/mnt/collab-ipc"
+        readonly = "true"
+      }
+    }
+  }
+
+  dynamic "device" {
     for_each = incus_storage_volume.budget_status
     content {
       name = "budget-status"
