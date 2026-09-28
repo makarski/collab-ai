@@ -1,44 +1,85 @@
 # Mount a host project
 
-Share selected directories with the sandbox's `agent` user. Mounts are **read-only
-by default**; `readonly: false` lets agents edit real host files. Nothing is shared
-until you opt in. Networking and SSH-agent forwarding stay disabled.
+Host sharing is opt-in and **read-only by default**. macOS supports read-only
+sharing; edit inside the persistent `/workspace` volume. On native Linux, writable
+sharing requires a dedicated account with access to the selected directory.
+The sandbox never maps your operator account through this helper.
 
 ## Choose directories
 
-Create a local `mounts.json` outside the repository, using existing absolute paths:
+Create `mounts.json` outside the repository, using existing absolute paths:
 
 ```json
 {
   "project": {
     "source": "/absolute/path/to/your/project",
-    "path": "/workspace/project",
-    "readonly": false
+    "path": "/workspace/project"
   },
   "reference": {
     "source": "/absolute/path/to/reference",
-    "path": "/workspace/reference"
+    "path": "/workspace/reference",
+    "readonly": true
   }
 }
 ```
 
-Destinations must be directly under `/workspace`. Sources cannot overlap; choose
-individual project directories rather than `/` or your whole home. The helper
-resolves symlinks and displays the actual shared paths before writing configuration.
+Omitting `readonly` means `true`. Destinations must be directly under `/workspace`.
+Sources cannot overlap; choose individual directories, not `/` or your whole home.
+The helper resolves symlinks and previews the actual paths without applying changes:
 
 ```sh
 python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json
 ```
 
-The generated UID/GID mapping gives `agent` (1001:1001 in our images) your access
-to the selected files, without changing their ownership. Run the helper as your
-normal user. Override `--uid` and `--gid` only when the directory's Incus-host
-identity differs; host root cannot be mapped. Existing file permissions still apply.
-Mounted files use host storage and are outside the container's root-disk quota.
+Host files keep their ownership and permissions. Without an explicit sharing
+identity, the sandbox needs existing read/traverse permission; private host files
+stay private. Mounted data uses host storage and is outside the workspace quota.
+
+## Linux writable sharing
+
+For a mount you want to edit, set `"readonly": false`. Create a dedicated account
+once (Ubuntu/Debian example):
+
+```sh
+sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin collab-share
+```
+
+It must have a unique UID, a private same-name group, no supplementary groups,
+and no login shell. Do not grant it sudo or other administrative privileges.
+The helper checks account/group membership; it does not audit sudoers or host services.
+
+Grant access only to your selected directory, using ACLs instead of changing ownership:
+
+```sh
+share_dir=/absolute/path/to/your/project
+sudo setfacl -R -m u:collab-share:rwX "$share_dir"
+# Inherit access for the sharing account and your operator on new files/directories.
+sudo find "$share_dir" -type d -exec setfacl -m "d:u:collab-share:rwx,d:u:$(id -u):rwx" {} +
+
+# Allow Incus to map only this dedicated UID/GID (skip IDs already allocated).
+share_uid=$(id -u collab-share)
+share_gid=$(id -g collab-share)
+sudo usermod --add-subuids "$share_uid-$share_uid" --add-subgids "$share_gid-$share_gid" root
+
+python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json --share-user collab-share
+```
+
+Install your distribution's `acl` package if `setfacl` is unavailable. Private parent
+directories may also need traverse-only permission for `collab-share`; grant it only
+on the required ancestors. Keep the existing `/etc/subuid` and `/etc/subgid` ranges.
+See [Incus ID mappings](https://linuxcontainers.org/incus/docs/main/userns-idmap/).
+The selected account maps to dev's `agent` (1001:1001); other container IDs stay isolated.
+
+**Mounts do not prevent execution.** Incus did not preserve `noexec` when tested
+with its bind mounts, so this setup does not claim that protection. Even `noexec`
+would not stop an interpreter reading a script or later execution on the host.
+Writable sharing allows changes to host files, including scripts and build
+configuration. Use sandbox-owned storage when you do not want that exposure.
+[Execution restrictions are tracked in #51](https://github.com/makarski/collab-ai/issues/51).
 
 ## Apply
 
-On **macOS**, stop the dedicated VM before changing its mounts:
+On **macOS**, stop the dedicated VM before changing its read-only mounts:
 
 ```sh
 colima stop collab-ai
@@ -46,64 +87,54 @@ python3 scripts/sandbox-host.py mounts-apply --mounts-file /path/to/mounts.json
 python3 scripts/sandbox-host.py apply
 ```
 
-This configures both Mac → Colima and Colima → Incus sharing. It only changes the
-managed `collab-ai` profile; it does not restart a VM automatically. Keep the mount
-manifest for future changes. Ordinary host starts preserve the configured mounts.
+This configures Mac → Colima and Colima → Incus sharing. It only changes the
+managed `collab-ai` profile. Ordinary starts preserve configured mounts.
+Writable mounts and `--share-user` are rejected on macOS.
 
 On **Linux**, generate the Incus variables directly:
 
 ```sh
+# Read-only; add --share-user collab-share if access needs the dedicated identity.
 python3 scripts/sandbox-host.py mounts-apply --mounts-file /path/to/mounts.json
+
+# For a writable manifest, use the prepared dedicated account instead:
+# python3 scripts/sandbox-host.py mounts-apply --mounts-file /path/to/mounts.json --share-user collab-share
 ```
-
-On Linux hosts using `/etc/subuid` and `/etc/subgid` (including Ubuntu), an
-administrator must also allow Incus to map the selected host IDs. From your normal
-user's shell, grant **only your UID and GID** once, keeping the existing ranges:
-
-```sh
-sudo usermod --add-subuids "$(id -u)-$(id -u)" --add-subgids "$(id -g)-$(id -g)" root
-```
-
-If you supplied `--uid`/`--gid`, substitute those IDs instead. Check the existing
-`root` allocations first and omit IDs already covered. This is separate from the
-project's allowlist; without it, startup can fail with `newuidmap ... not allowed`.
-See [Incus ID mappings](https://linuxcontainers.org/incus/docs/main/userns-idmap/).
 
 On **both platforms**, apply the generated `infra/incus/mounts.auto.tfvars.json`
-with your existing workspace configuration:
+from the same directory as your existing deployment state:
 
 ```sh
 tofu -chdir=infra/incus plan -out=sandbox.tfplan
 tofu -chdir=infra/incus apply sandbox.tfplan
 ```
 
-An existing workspace may need a stop/start for a changed UID mapping. Open your
-[SSH terminal](sandbox.md#4-ssh-into-the-workspace) and `cd /workspace/project`.
+Use `--output /path/to/deployment/mounts.auto.tfvars.json` if your state lives
+elsewhere, and adjust `-chdir`. An existing workspace needs a stop/start when its
+UID mapping changes. Then [SSH into dev](sandbox.md#4-ssh-into-the-workspace)
+and `cd /workspace/project`.
 
 ## Change or remove a mount
 
-Incus checks existing profiles when restricting allowed paths. **Before removing
-or replacing a source**, stop the workspace and detach that device from the
-profile. For the `project` entry above (Linux: replace `colima-collab-ai:` with `local:`):
+Incus validates existing profiles before restricting allowed paths. Before
+removing or replacing a source, stop dev and detach that device. For `project`
+above (Linux: replace `colima-collab-ai:` with `local:`):
 
 ```sh
 incus --project collab-ai stop colima-collab-ai:workspace
 incus --project collab-ai profile device remove colima-collab-ai:offline host-project
 ```
 
-When removing the last mount or changing UID/GID, also clear the old mapping;
+When removing the last mount or changing identity, clear the old mapping too;
 for an identity change, detach all host devices first:
 
 ```sh
 incus --project collab-ai profile unset colima-collab-ai:offline raw.idmap
 ```
 
-Edit the manifest and repeat **Apply** above. Use `{}` to remove every mount.
-OpenTofu refreshes the profile changes before applying the new policy. Removal
-does not delete host data. Keep the empty generated variables file so a subsequent
-plan explicitly restores the no-mount policy.
+Edit the manifest and repeat **Apply**. Use `{}` to remove all mounts. Keep the
+empty generated variables file so the next plan explicitly selects no mounts.
+Removal does not delete host data or revoke host ACLs you granted separately.
 
-If reads or writes fail, check `id` inside the sandbox, source permissions, and the
-UID/GID seen by the Incus server. Do not use recursive `chown` on your host project.
-The project allows only the selected disk sources and mapped host IDs; the
-container remains unprivileged with isolated mappings for its other IDs.
+If access fails, check `id` inside dev, host permissions, and the UID/GID seen by
+the Incus server. Do not use recursive `chown` on your host project.

@@ -23,8 +23,9 @@ These diagrams show the currently provisioned layout.
 | [PlantUML source](docs/assets/sandbox-macos.puml) | [PlantUML source](docs/assets/sandbox-linux.puml) |
 
 **Included in the workspace image:** collab-ai, Codex, Claude Code, Go, Git and tmux.
-The broker starts automatically; you open agent terminals over SSH. The workspace
-stays offline; network access and subscription login are not provisioned yet.
+The broker starts automatically; you open agent terminals over SSH. Dev has network
+access by default; set `dev_network_enabled = false` for an offline workspace.
+You sign in to each agent yourself; credentials are never baked into the image.
 With `secured_runtime = true`, **secured** hosts one broker and database; Codex and
 Claude adapters in **workspace** share its socket. The control dashboard sees the same inboxes.
 
@@ -40,23 +41,48 @@ directly; Colima is unnecessary. **Starting the host does not create the workspa
 Follow the [sandbox guide](docs/sandbox.md) to download a released image and provision it.
 [Development builds](docs/sandbox-image.md#development-builds) let you choose app and tool versions.
 
-Once provisioned, configure SSH once and open a terminal (Linux: use `--remote local`):
+**After provisioning: start, check, connect and stop.** Containers do not start
+automatically with the VM. Run from the repository root. On Linux, skip Colima
+commands and use `local:` / `--remote local`. For optional host mounts, use the
+[`mounts.json` example](docs/sandbox-mounts.md#choose-directories).
 
 ```sh
+# Start the Mac VM, then the containers
+python3 scripts/sandbox-host.py apply
+incus --project collab-ai start colima-collab-ai:secured   # if secured_runtime = true
+incus --project collab-ai start colima-collab-ai:workspace
+
+# Check: expect workspace and secured to show RUNNING
+incus --project collab-ai list colima-collab-ai:
+
+# Optional: preview selected host-directory mounts (does not apply changes)
+python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json
+
+# Configure SSH once, check the broker, then enter dev
 python3 scripts/sandbox-ssh.py --remote colima-collab-ai
+ssh -F infra/incus/ssh/config workspace collab status
 ssh -F infra/incus/ssh/config workspace
+
+# When finished: uncomment to stop, keeping data
+# incus --project collab-ai stop colima-collab-ai:workspace
+# incus --project collab-ai stop colima-collab-ai:secured   # if secured_runtime = true
+# colima stop collab-ai
 ```
 
-Stop the dedicated Mac VM, keeping its data:
-
-```sh
-colima stop collab-ai
-```
+Dev should have an IP; control's IP columns stay blank. `collab status` should
+report `Broker: ready`; zero agent sessions is normal before launch.
+[Sign in inside dev](docs/sandbox.md#sign-in-and-network-access), then run **`codex`** or **`claude`** in
+separate dev terminals. Interactive aliases select the managed Codex launcher and
+Claude's preconfigured collaboration channel. [Launch details](docs/sandbox.md#4-ssh-into-the-workspace).
+Use **`dashboard`** inside the sandbox to open the shared broker dashboard.
+Dev uses general network access through the selected Incus bridge, including
+reachable LAN services. It is not a provider-only allowlist; control has no NIC.
+For how to apply the mount file, see [host-directory mounts](docs/sandbox-mounts.md#apply).
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
 [Persistent data and backups](docs/sandbox-storage.md) ·
 [Mount host directories](docs/sandbox-mounts.md) ·
-[Shared control runtime (offline)](docs/secured-runtime.md) ·
+[Shared control runtime](docs/secured-runtime.md) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
 [Incus web UI](docs/sandbox.md#incus-web-ui)
 
@@ -172,12 +198,12 @@ Clients can send requests without replacing the socket; SQLite stays private.
 
 | Dev storage | Behavior |
 | --- | --- |
-| `/workspace` | Persistent project volume. Selected host directories remain opt-in and read-only unless explicitly made writable. |
+| `/workspace` | Persistent project volume. Optional host mounts: read-only on Mac; Linux writes require a dedicated sharing account. |
 | `/home/agent` | Persistent settings, skills, memory and session files; private to the shared agent account. |
 
-Host-state import and dedicated host-sharing identities remain follow-ups. Retaining
-session files does not yet prove native conversation resume. Writable host sharing
-can affect later host execution; UID/GID separation and `noexec` cannot prevent that.
+Host-state import remains a follow-up. Retaining session files does not yet prove
+native conversation resume. Host mounts do not prevent execution; writable sharing
+can affect later host execution. [Mount permissions and limits](docs/sandbox-mounts.md).
 
 For agents running directly on your machine, see [host integration](docs/host-integration.md).
 

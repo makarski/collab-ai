@@ -12,6 +12,7 @@ describes development builds and CI releases.
 | Go 1.25.14 | Official archive, checksum verified; available for workspace development |
 | Git, ripgrep, tmux, OpenSSH, Python | Ubuntu 24.04 packages |
 | Claude collaboration config | `/etc/collab-ai/claude-mcp.json` |
+| Interactive shell aliases | `/etc/profile.d/collab-agent-aliases.sh`; `codex`, `claude` and `dashboard` |
 | Collaboration skill and build manifests | `/usr/local/share/collab-ai/` |
 
 In standalone mode, the `agent` account owns `/workspace` and the broker's database at
@@ -84,6 +85,8 @@ native images on separate AMD64 and ARM64 GitHub-hosted Ubuntu runners. Each ima
 is downloaded through the same installer and tested in an offline Incus workspace:
 boot, unchanged plan, SSH as `agent`, tool versions, broker readiness and restart
 persistence, dev replacement with retained data, SSH re-pinning and deletion protection. No credentials or model requests are involved.
+The smoke test also enables dev networking, checks DHCP and access to the bridge's
+DNS service, then removes the NIC with the offline opt-out. Control stays offline.
 
 PRs and main builds produce Actions artifacts retained for seven days. Once this
 workflow is on main, **Run workflow** also accepts an app ref and exact tool versions.

@@ -172,7 +172,7 @@ def configure_mounts(args):
     if args.mounts_file is None:
         raise ValueError("--mounts-file is required for mount configuration")
     mounts = read_mounts(args.mounts_file)
-    variables = mount_variables(mounts, args.uid, args.gid)
+    variables = mount_variables(mounts, args.share_user, platform.system())
     print(json.dumps(variables, indent=2))
     if args.action == "mounts-plan":
         print("Preview only. macOS also shares exactly these paths through Colima.")
@@ -188,8 +188,7 @@ def parse_args():
     parser.add_argument("action", choices=["plan", "apply", "mounts-plan", "mounts-apply"])
     parser.add_argument("--mounts-file", type=Path, help="JSON map of selected source/path/readonly entries")
     parser.add_argument("--output", type=Path, default=CONFIG.parent / "mounts.auto.tfvars.json")
-    parser.add_argument("--uid", type=int, help="Incus-host UID mapped to agent; defaults to your UID")
-    parser.add_argument("--gid", type=int, help="Incus-host GID mapped to agent; defaults to your GID")
+    parser.add_argument("--share-user", help="Dedicated local Linux sharing account; required for writable mounts")
     return parser.parse_args()
 
 

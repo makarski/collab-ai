@@ -25,14 +25,16 @@ stopped after a failed apply, then retry. Do not hot-add these mounts.
 | `workspace` (dev) | Codex/Claude adapters, repositories and builds running as `agent` | Unprivileged SSH; selected host mounts |
 | `secured` (control) | One collaboration broker and SQLite database; operator dashboard | Human administration through host Incus |
 
-Both containers are offline, unprivileged and have separate UID mappings.
+Both containers are unprivileged and have separate UID mappings. Control is
+offline; dev has network access unless `dev_network_enabled = false`.
 Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, 1 GiB private state,
 and three 16 MiB IPC volumes. Existing instance names are retained to avoid a
 destructive rename. With this mode enabled, the workspace's standalone broker
 does not start. Both dev adapters and the control dashboard use the same broker.
 
-**The sandbox remains offline.** No credentials or external model access are
-provisioned. The existing experimental protected Codex launcher is retained below;
+**Control remains offline.** No credentials are provisioned. Sign in from dev
+using the [subscription login guide](sandbox.md#sign-in-and-network-access).
+The existing experimental protected Codex launcher is retained below;
 ordinary dev agents do not gain protected accounting by sharing its broker.
 
 ## Shared broker and dashboard

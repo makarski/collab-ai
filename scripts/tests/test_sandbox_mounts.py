@@ -32,9 +32,9 @@ class MountTests(unittest.TestCase):
         self.manifest.write_text(json.dumps({"project": spec}))
         return self.manifest
 
-    def invoke(self, action):
+    def invoke(self, action, *options):
         argv = ["sandbox-host.py", action, "--mounts-file", str(self.manifest),
-                "--output", str(self.output), "--uid", "501", "--gid", "20"]
+                "--output", str(self.output), *options]
         with patch.object(host.sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
             host.main()
 
@@ -44,7 +44,9 @@ class MountTests(unittest.TestCase):
         self.assertFalse(mounts.colima_mounts(spec)[0]["writable"])
         spec = mounts.read_mounts(self.manifest_with(readonly=False))
         self.assertTrue(mounts.colima_mounts(spec)[0]["writable"])
-        self.assertEqual(mounts.mount_variables(spec, 501, 20)["mount_owner"], {"uid": 501, "gid": 20})
+        with patch.object(mounts, "sharing_identity", return_value={"uid": 60000, "gid": 60000}):
+            self.assertEqual(mounts.mount_variables(spec, "collab-share")["share_identity"],
+                             {"uid": 60000, "gid": 60000})
 
     def test_rejects_bad_sources_destinations_and_types(self):
         cases = [{"source": "relative"}, {"source": "/"}, {"source": str(self.root / "missing")},
@@ -78,20 +80,20 @@ class MountTests(unittest.TestCase):
             self.assertFalse(self.output.exists())
             self.invoke("mounts-apply")
         run.assert_not_called()
-        self.assertEqual(json.loads(self.output.read_text())["mount_owner"]["uid"], 501)
+        self.assertIsNone(json.loads(self.output.read_text())["share_identity"])
 
     def test_overlap_is_rejected_when_sibling_sorts_between_parent_and_child(self):
         with self.assertRaisesRegex(ValueError, "overlap"):
             mounts.validate_sources(["/project", "/project-other", "/project/child"])
 
     def test_empty_manifest_clears_mounts_without_owner_mapping(self):
-        self.assertEqual(mounts.mount_variables({}, 0, 0), {"host_mounts": {}, "mount_owner": None})
+        self.assertEqual(mounts.mount_variables({}), {"host_mounts": {}, "share_identity": None})
         self.assertIsNone(mounts.colima_mounts({}))
-        with self.assertRaisesRegex(ValueError, "non-root"):
-            mounts.mount_variables({"project": {}}, 0, 20)
+        with self.assertRaisesRegex(ValueError, "--share-user"):
+            mounts.mount_variables({"project": {"readonly": False}})
 
     def test_mac_changes_require_stop_and_preserve_other_settings(self):
-        self.manifest_with(readonly=False)
+        self.manifest_with()
         profile = self.root / ".colima/collab-ai"
         stopped = subprocess.CompletedProcess([], 0, '{"name":"collab-ai","status":"Stopped"}\n')
         running = subprocess.CompletedProcess([], 0, '{"name":"collab-ai","status":"Running"}\n')
@@ -106,11 +108,29 @@ class MountTests(unittest.TestCase):
             with patch.object(host.subprocess, "run", return_value=stopped):
                 self.invoke("mounts-apply")
             configured = host.profile_config(profile)
-            self.assertTrue(configured["mounts"][0]["writable"])
+            self.assertFalse(configured["mounts"][0]["writable"])
             self.assertEqual({**configured, "mounts": None}, host.desired_config())
             with patch.object(host.subprocess, "run") as run:
                 self.invoke("mounts-apply")
             run.assert_not_called()  # unchanged configuration works while running
+
+    def test_mac_rejects_writes_and_identity_mapping_before_any_mutation(self):
+        for readonly, options in [(False, []), (True, ["--share-user", "collab-share"])]:
+            self.manifest_with(readonly=readonly)
+            with self.subTest(readonly=readonly), \
+                    patch.object(host.platform, "system", return_value="Darwin"), \
+                    patch.object(host, "configure_profile_mounts") as configure, \
+                    self.assertRaisesRegex(ValueError, "macOS host sharing is read-only"):
+                self.invoke("mounts-apply", *options)
+            configure.assert_not_called()
+            self.assertFalse(self.output.exists())
+
+    def test_linux_write_requires_identity_before_writing_variables(self):
+        self.manifest_with(readonly=False)
+        with patch.object(host.platform, "system", return_value="Linux"), \
+                self.assertRaisesRegex(ValueError, "--share-user"):
+            self.invoke("mounts-apply")
+        self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":

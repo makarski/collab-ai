@@ -18,27 +18,31 @@ resource "incus_project" "sandbox" {
   depends_on = [terraform_data.secured_preflight]
 
   name          = var.project_name
-  description   = "collab-ai offline sandbox, managed by infra/incus"
+  description   = "collab-ai dev/control sandbox, managed by infra/incus"
   force_destroy = false
 
   config = merge({
     "features.images"                 = "true"
     "features.profiles"               = "true"
+    "features.networks"               = "false"
     "features.storage.volumes"        = "true"
     "restricted"                      = "true"
     "restricted.containers.privilege" = "isolated"
     "restricted.containers.nesting"   = "block"
     "restricted.devices.disk"         = length(var.host_mounts) > 0 ? "allow" : "managed"
-    "restricted.devices.nic"          = "block"
-    "restricted.devices.proxy"        = "block"
-    "limits.containers"               = var.secured_runtime ? "2" : "1"
-    "limits.virtual-machines"         = "0"
+    # Keep this allowlist stable when removing the dev NIC, so Incus can validate
+    # the existing profile while Terraform applies the offline opt-out.
+    "restricted.devices.nic"     = "managed"
+    "restricted.networks.access" = var.dev_network
+    "restricted.devices.proxy"   = "block"
+    "limits.containers"          = var.secured_runtime ? "2" : "1"
+    "limits.virtual-machines"    = "0"
   }, local.mount_project_config)
 
   lifecycle {
     precondition {
-      condition     = length(var.host_mounts) == 0 || var.mount_owner != null
-      error_message = "Host mounts require mount_owner; use sandbox-host.py mounts-apply to generate it."
+      condition     = alltrue([for mount in var.host_mounts : mount.readonly]) || var.share_identity != null
+      error_message = "Writable host mounts require a dedicated share_identity; generate it with sandbox-host.py --share-user."
     }
   }
 }
@@ -96,7 +100,19 @@ resource "incus_profile" "sandbox" {
     "limits.processes"        = "512"
   }, local.mount_profile_config)
 
-  # Deliberately no NIC, proxy or inherited default profile. Host mounts opt in.
+  # No proxy or inherited default profile. Control never receives this dev NIC.
+  dynamic "device" {
+    for_each = var.dev_network_enabled ? [var.dev_network] : []
+    content {
+      name = "eth0"
+      type = "nic"
+      properties = {
+        name    = "eth0"
+        network = device.value
+      }
+    }
+  }
+
   device {
     name = "root"
     type = "disk"

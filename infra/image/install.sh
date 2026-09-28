@@ -48,6 +48,9 @@ install -m 0755 infra/image/collab-workspace-setup /usr/local/bin/collab-workspa
 printf 'd /run/sshd 0755 root root -\n' >/etc/tmpfiles.d/collab-ssh.conf
 printf 'DISABLE_UPDATES=1\nDISABLE_AUTOUPDATER=1\n' >>/etc/environment
 printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/profile.d/collab-ai.sh
+install -m 0644 infra/image/collab-agent-aliases.sh /etc/profile.d/collab-agent-aliases.sh
+# Login shells read profile.d; non-login Bash shells (including tmux) read bash.bashrc.
+printf '\n. /etc/profile.d/collab-agent-aliases.sh\n' >>/etc/bash.bashrc
 systemctl disable ssh.service ssh.socket || true
 systemctl mask ssh.service ssh.socket
 systemctl enable collab-broker.service collab-secured-setup.service

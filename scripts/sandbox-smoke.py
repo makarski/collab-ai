@@ -12,6 +12,7 @@ import time
 import uuid
 
 import sandbox_mount_checks
+import sandbox_network_checks
 import sandbox_secured_checks
 import sandbox_storage_checks
 
@@ -45,7 +46,10 @@ def prepare_state(directory, args, project):
         "incus_socket": local_socket(args.remote), "project_name": project,
         "image_file": str((args.image_dir / "workspace.tar.gz").resolve()),
         "image_fingerprint": manifest["image_fingerprint"],
+        "dev_network_enabled": False,
     }
+    if getattr(args, "network_check", False):
+        variables["dev_network"] = sandbox_network_checks.prepare(directory, project)
     (directory / "sandbox.auto.tfvars.json").write_text(json.dumps(variables))
     return manifest
 
@@ -81,6 +85,17 @@ def check_offline_image(execute):
         raise ValueError("Image shipped SSH host keys")
 
 
+def check_agent_aliases(ssh, lock):
+    # Exercise installed login and non-login shell startup, without model requests.
+    for flags in ("-ic", "-lic"):
+        command = ('test "$(type -t codex)" = alias && test "$(type -t claude)" = alias && '
+                   'test "$(type -t dashboard)" = alias && codex --version && claude --version')
+        result = run(ssh + ["bash", flags, "'" + command + "'"], capture_output=True, text=True)
+        if f"codex-cli {lock['codex_version']}" not in result.stdout or \
+                f"{lock['claude_version']} (Claude Code)" not in result.stdout:
+            raise ValueError("Interactive agent aliases did not reach the installed native tools")
+
+
 def check_workspace(args, directory, project, manifest):
     target = f"{args.remote}:workspace"
     execute = ["incus", "--project", project, "exec", target, "-T", "--"]
@@ -96,6 +111,7 @@ def check_workspace(args, directory, project, manifest):
     run(["ssh", "-tt", "-F", str(ssh_dir / "config"), "workspace", "test -t 0 && test -t 1"],
         stdin=subprocess.DEVNULL)
     wait_for_broker(ssh)
+    check_agent_aliases(ssh, manifest["tools"])
     run(ssh + ["touch /workspace/restart-check"])
     run(["incus", "--project", project, "stop", target])
     run(["incus", "--project", project, "start", target])
@@ -119,6 +135,7 @@ def main():
     parser.add_argument("--image-dir", required=True, type=Path)
     parser.add_argument("--tofu", default="tofu", help="OpenTofu or Terraform executable")
     parser.add_argument("--mount-check", action="store_true", help="also test disposable local Linux host mounts")
+    parser.add_argument("--network-check", action="store_true", help="also test dev network enable/disable using only the bridge DNS service")
     parser.add_argument("--secured-check", action="store_true", help="also test persistent secured state and read-only status IPC")
     args = parser.parse_args()
     project = "collab-smoke-" + uuid.uuid4().hex[:12]
@@ -138,6 +155,8 @@ def main():
         if args.mount_check:
             sandbox_mount_checks.verify(args, directory, project)
         sandbox_storage_checks.verify(args, directory, project)
+        if args.network_check:
+            sandbox_network_checks.verify(args, directory, project)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     except Exception:
         subprocess.run(["incus", "--project", project, "info", f"{args.remote}:workspace", "--show-log"],

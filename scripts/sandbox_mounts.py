@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import tempfile
 
+from sandbox_share_identity import sharing_identity
+
 
 def validate_source_path(value):
     if not isinstance(value, str) or not value.startswith("/"):
@@ -76,17 +78,18 @@ def validate_sources(sources):
         seen.add(path)
 
 
-def mount_variables(mounts, uid=None, gid=None):
+def mount_variables(mounts, share_user=None, system="Linux"):
     if not mounts:
-        return {"host_mounts": {}, "mount_owner": None}
-    return {"host_mounts": mounts, "mount_owner": validated_owner(uid, gid)}
-
-
-def validated_owner(uid, gid):
-    owner = {"uid": os.getuid() if uid is None else uid, "gid": os.getgid() if gid is None else gid}
-    if any(value <= 0 or value >= 2147483647 for value in owner.values()):
-        raise ValueError("Use non-root host IDs with --uid and --gid (id -u / id -g)")
-    return owner
+        return {"host_mounts": {}, "share_identity": None}
+    writable = any(not entry["readonly"] for entry in mounts.values())
+    if system == "Darwin" and (writable or share_user):
+        raise ValueError("macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace")
+    if system not in ("Linux", "Darwin"):
+        raise ValueError("Host sharing supports Linux and macOS only")
+    if writable and not share_user:
+        raise ValueError("Writable mounts require --share-user with a dedicated Linux account")
+    identity = sharing_identity(share_user) if share_user else None
+    return {"host_mounts": mounts, "share_identity": identity}
 
 
 def colima_mounts(mounts):

@@ -34,25 +34,26 @@ variable "host_mounts" {
   }
 }
 
-variable "mount_owner" {
-  description = "Incus-host UID/GID mapped to agent (1001:1001), only when sharing directories. Never map host root."
+variable "share_identity" {
+  description = "Dedicated Linux sharing account IDs, resolved by sandbox-host.py --share-user. Never use operator/admin IDs."
   type        = object({ uid = number, gid = number })
   default     = null
   validation {
-    condition = var.mount_owner == null ? true : alltrue([
-      for id in [var.mount_owner.uid, var.mount_owner.gid] : id > 0 && id < 2147483647 && floor(id) == id
+    condition = var.share_identity == null ? true : alltrue([
+      for id in [var.share_identity.uid, var.share_identity.gid] : id > 0 && id < 2147483647 && floor(id) == id
     ])
-    error_message = "Mount ownership requires positive integer host UID/GID values."
+    error_message = "The dedicated sharing account requires positive integer host UID/GID values."
   }
 }
 
 locals {
-  mount_project_config = length(var.host_mounts) == 0 || var.mount_owner == null ? {} : {
+  mount_project_config = length(var.host_mounts) == 0 ? {} : merge({
     "restricted.devices.disk.paths" = join(",", sort(distinct([for mount in var.host_mounts : mount.source])))
-    "restricted.idmap.uid"          = tostring(var.mount_owner.uid)
-    "restricted.idmap.gid"          = tostring(var.mount_owner.gid)
-  }
-  mount_profile_config = length(var.host_mounts) == 0 || var.mount_owner == null ? {} : {
-    "raw.idmap" = "uid ${var.mount_owner.uid} 1001\ngid ${var.mount_owner.gid} 1001"
+    }, var.share_identity == null ? {} : {
+    "restricted.idmap.uid" = tostring(var.share_identity.uid)
+    "restricted.idmap.gid" = tostring(var.share_identity.gid)
+  })
+  mount_profile_config = length(var.host_mounts) == 0 || var.share_identity == null ? {} : {
+    "raw.idmap" = "uid ${var.share_identity.uid} 1001\ngid ${var.share_identity.gid} 1001"
   }
 }
