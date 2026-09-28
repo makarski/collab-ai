@@ -27,7 +27,13 @@ func main() {
 	budgetFile := flag.String("budget-file", "", "persistent token budget file (one launcher at a time)")
 	budgetName := flag.String("budget", "", "named budget created by collab budget create; cannot combine with inline cap flags")
 	statusSocket := flag.String("budget-status-socket", "", "publish read-only named-budget status at this absolute Unix socket path")
+	restricted := flag.Bool("restricted-operator", false, "experimental text-only stdio ingress; requires --budget; blocks configuration, resume and terminal mode")
 	flag.Parse()
+	mode := restrictedMode{enabled: *restricted, budgetName: *budgetName}
+	if err := mode.validate(*terminal, *mcpSocket, flag.Args()); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cfg := bridge.ClientConfig{SocketPath: *socket, AgentID: *agent, Harness: "codex-app-server"}
@@ -46,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer closeStatus()
-	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap}
+	launcher := codexLauncher{client: cfg, binary: *binary, budget: cap, restricted: *restricted}
 	err = launcher.runMode(ctx, *mcpSocket, *terminal, flag.Args())
 	if err != nil {
 		closeStatus()
@@ -114,9 +120,10 @@ type operatorIO struct {
 
 // The terminal and its App Server share one launch configuration and budget.
 type codexLauncher struct {
-	client bridge.ClientConfig
-	binary string
-	budget *budget.Budget
+	client     bridge.ClientConfig
+	binary     string
+	budget     *budget.Budget
+	restricted bool
 }
 
 func (l codexLauncher) budgetResult(err error) error {
@@ -134,6 +141,9 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 }
 
 func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) error {
+	if l.restricted && l.budget == nil {
+		return errors.New("restricted operator requires a budget")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	client, err := bridge.NewLazyClient(l.client)
@@ -160,6 +170,7 @@ func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) err
 	defer func() { cancel(); input.Close(); output.Close(); stopAppServer(cmd) }()
 	p := host.NewProxy(host.NewWire(input), host.NewWire(operator.output))
 	p.Budget = l.budget
+	p.RestrictedOperator = l.restricted
 	p.Listener = bridge.NewListener(ctx, client, p)
 	defer p.Listener.Close()
 	return serveWithTools(ctx, p, operator.input, output)
@@ -172,6 +183,11 @@ func serveWithTools(ctx context.Context, p *host.Proxy, operatorIn, output io.Re
 	}
 	p.Tools = tools
 	defer tools.Close()
+	if p.RestrictedOperator {
+		// The secured client has no local execution environment. Fresh threads
+		// can use App Server dynamic tools without spawning a local MCP relay.
+		return serve(ctx, p, operatorIn, output)
+	}
 	endpoint, err := newRuntimeMCP(ctx, p.Listener, func() bool { return p.ThreadID() != "" })
 	if err != nil {
 		return err

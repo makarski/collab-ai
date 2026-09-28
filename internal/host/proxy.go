@@ -18,19 +18,20 @@ import (
 // to one started, resumed, or forked thread. All approval requests and responses stay on the
 // operator connection; peer messages only become external tool output.
 type Proxy struct {
-	Upstream     *Wire
-	Operator     *Wire
-	Calls        *Calls
-	Tools        *ToolSession
-	Listener     *bridge.Listener
-	RuntimeMCP   map[string]any
-	Budget       *budget.Budget
-	mu           sync.Mutex
-	startID      string
-	threadID     string
-	budgetThread string
-	budgetTurn   string
-	toolCalls    chan Frame
+	Upstream           *Wire
+	Operator           *Wire
+	Calls              *Calls
+	Tools              *ToolSession
+	Listener           *bridge.Listener
+	RuntimeMCP         map[string]any
+	Budget             *budget.Budget
+	RestrictedOperator bool
+	mu                 sync.Mutex
+	startID            string
+	threadID           string
+	budgetThread       string
+	budgetTurn         string
+	toolCalls          chan Frame
 }
 
 func NewProxy(upstream, operator *Wire) *Proxy {
@@ -61,6 +62,9 @@ func (p *Proxy) ThreadID() string {
 }
 
 func (p *Proxy) FromOperator(ctx context.Context, frame Frame) error {
+	if err := p.restrictOperator(&frame); err != nil {
+		return p.rejectOperator(ctx, frame, err)
+	}
 	if err := p.operatorBudgetError(frame); err != nil {
 		return p.rejectOperator(ctx, frame, err)
 	}
@@ -155,6 +159,9 @@ func (p *Proxy) FromHost(ctx context.Context, frame Frame) error {
 		default:
 			return errors.New("host tool queue overflow; connection must restart")
 		}
+	}
+	if err := p.restrictedHostRequest(frame); err != nil {
+		return err
 	}
 	if err := p.Operator.Write(ctx, frame); err != nil {
 		return err
