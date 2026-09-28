@@ -35,20 +35,18 @@ def budget(*args):
 
 
 def run_session(name, missing):
+    if missing:
+        require_missing_executor(name)
+        return
     with (ROOT / "installed-proof.log").open("w+") as log:
         process = subprocess.Popen(["collab-supervised-codex", name], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=log, text=True)
         try:
             operator = Operator(process)
-            if missing:
-                require_missing_executor(operator)
-                process.stdin.close()
-                process.wait(timeout=15)
-            else:
-                exercise(operator)
-                await_session(operator, False)
-                log.seek(0)
-                check_exit(process, log.read(), False)
+            exercise(operator)
+            await_session(operator, False)
+            log.seek(0)
+            check_exit(process, log.read(), False)
         except Exception:
             log.seek(0)
             print(log.read(), flush=True)
@@ -57,19 +55,11 @@ def run_session(name, missing):
             stop_client(process)
 
 
-def require_missing_executor(operator):
-    operator.call("initialize", {})
-    operator.send({"method": "initialized"})
-    result = operator.call("thread/start", {})
-    if "error" in result:
-        return
-    result = operator.call("turn/start", {"threadId": result["result"]["thread"]["id"],
-                           "input": [{"type": "text", "text": "Execute the offline fixture."}]})
-    if "error" in result:
-        return
-    completed = operator.until(lambda frame: frame.get("method") == "turn/completed")
-    if completed["params"]["turn"]["status"] != "failed":
-        raise ValueError(f"Missing dev executor did not fail the turn: {operator.transcript}")
+def require_missing_executor(name):
+    result = subprocess.run(["collab-supervised-codex", name], input="", capture_output=True,
+                            text=True, timeout=15)
+    if result.returncode == 0 or "Dev executor unavailable" not in result.stderr:
+        raise ValueError(f"Missing dev executor did not prevent launch: {result.stderr}")
 
 
 def main(name, missing):
@@ -92,14 +82,21 @@ def main(name, missing):
 
 def verify_observations(server, name, missing):
     if missing:
-        if server.observed:
-            raise ValueError("Missing executor reached the model fixture")
+        verify_unstarted(server, name)
         return
     verify_collaboration(server)
     require_tool_output(server.observed[-1], "protected-cap-100")
     saved = json.loads(budget("status", name, "--json"))
     if saved["reported_tokens"] != 60 or saved["state"] != "ready":
         raise ValueError(f"Installed session lost its accounting: {saved}")
+
+
+def verify_unstarted(server, name):
+    if server.observed:
+        raise ValueError("Missing executor reached the model fixture")
+    saved = json.loads(budget("status", name, "--json"))
+    if saved["reported_tokens"] != 0 or saved["state"] != "ready":
+        raise ValueError("Executor preflight started the budget session")
 
 
 if __name__ == "__main__":

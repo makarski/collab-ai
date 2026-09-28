@@ -38,9 +38,11 @@ def send_input(connection):
             connection.shutdown(socket.SHUT_RDWR)
 
 
-def relay(path):
+def relay(path, check=False):
     with socket.socket(socket.AF_UNIX) as connection:
         connection.connect(path)
+        if check:
+            return
         threading.Thread(target=send_input, args=(connection,), daemon=True).start()
         while data := connection.recv(65536):
             remaining = memoryview(data)
@@ -50,8 +52,8 @@ def relay(path):
 
 if __name__ == "__main__":
     try:
-        if os.geteuid() != 0 or len(sys.argv) != 1:
+        if os.geteuid() != 0 or sys.argv[1:] not in ([], ["--check"]):
             raise ValueError("Executor connection is for the secured supervisor only")
-        relay(endpoint(DIRECTORY))
+        relay(endpoint(DIRECTORY), check=bool(sys.argv[1:]))
     except (OSError, ValueError) as error:
         sys.exit(str(error))

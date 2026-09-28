@@ -3,6 +3,7 @@
 
 import os
 import re
+import subprocess
 import sys
 
 
@@ -28,11 +29,22 @@ def command(name):
             "--agent-id", "secured-" + name]
 
 
+def require_executor():
+    try:
+        check = subprocess.run(["/usr/local/bin/collab-executor-connect", "--check"],
+                               env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ValueError("Dev executor unavailable: " + str(error)) from error
+    if check.returncode:
+        raise ValueError("Dev executor unavailable: " + check.stderr.strip())
+
+
 if __name__ == "__main__":
     if os.geteuid() != 0 or len(sys.argv) != 2:
         sys.exit("Usage (secured administrator only): collab-supervised-codex BUDGET")
     try:
         args = command(sys.argv[1])
+        require_executor()
     except ValueError as error:
         sys.exit(str(error))
     os.execve(args[0], args, {"PATH": "/usr/bin:/bin"})
