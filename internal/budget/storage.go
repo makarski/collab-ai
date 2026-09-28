@@ -46,6 +46,9 @@ func readState(path string) (state, error) {
 }
 
 func (b *Budget) restore(saved state) error {
+	if saved.SessionActive {
+		return errors.New("budget has an unfinished supervised session; accounting must be reconciled before reuse")
+	}
 	if saved.Stopped != "" {
 		return fmt.Errorf("budget previously stopped with unknown accounting: %s", saved.Stopped)
 	}
@@ -58,8 +61,14 @@ func (b *Budget) restore(saved state) error {
 }
 
 func (s state) validate() error {
-	if s.Version != 1 || s.Limit <= 0 {
+	if s.Version != 1 && s.Version != 2 {
+		return errors.New("invalid budget version")
+	}
+	if s.Limit <= 0 {
 		return errors.New("invalid budget version or cap")
+	}
+	if s.SessionActive && s.Version != 2 {
+		return errors.New("supervised budget requires version 2")
 	}
 	if s.Threads == nil {
 		return errors.New("missing saved thread usage")

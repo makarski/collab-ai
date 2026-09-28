@@ -46,6 +46,10 @@ both native Linux architectures.
 - Native Codex also runs through `collab-codex --restricted-operator` with a
   named budget. The proof exercises denied operator requests, native tool
   routing, persisted usage, and exhaustion with operator stdin still open.
+- Killing the systemd service's supervisor with `SIGKILL` while native Codex
+  waits for the fake provider stops its control group and blocks budget reuse,
+  including after a container restart. A separate fixture proves cleanup of a
+  descendant that calls `setsid` and ignores SIGTERM.
 - Native Claude uses `--restricted --tools "" --strict-mcp-config` and one
   approved MCP tool in dev. A model response requesting local Bash is rejected.
 
@@ -91,8 +95,40 @@ failure rather than waiting for an unsupported approval flow.
 
 This is an offline integration building block, not a production launch recipe.
 Use the proof above to exercise it. Trusted native configuration and executor
-provisioning, interactive/resume binding, supervisor-death containment and native
+provisioning, interactive/resume binding and native
 subscription authentication still need integration under [#34](https://github.com/makarski/collab-ai/issues/34).
+
+## Supervisor failure
+
+Restricted sessions persist an unfinished marker **before** starting the native
+client. A crash leaves that marker on disk; both named and inline launchers refuse
+to reopen the budget. Status reports `supervised_unfinished` and
+`session_unfinished: true`. That describes an unclosed session, not proof that its
+owner is still alive. Existing reported usage is retained.
+
+A normal shutdown clears the marker only after stopping the child, with no
+unanswered work admissions and with completion plus usage observed for every
+turn. Disconnecting during work, failed/interrupted turns, missing usage and
+unexpected native-client exit require reconciliation. Exhaustion remains exhausted.
+There is no automatic recovery/reset command; do not delete state or create a new
+budget to hide uncertain spend. Restricted budgets use file version 2 so older
+launchers reject them. Ordinary version-1 budgets continue to work.
+
+The image includes the experimental administrator-only wrapper
+`collab-supervised-codex BUDGET`. It launches the restricted stdio proxy as
+`collab-codex-BUDGET.service` with systemd `KillMode=control-group`, a three-second
+stop timeout, final SIGKILL and no automatic restart. The service fixes its budget
+directory and Codex home under `/var/lib/collab-ai-secured`, uses `/workspace` as
+its working directory and `/run/collab-ai/broker.sock` for the broker. It accepts no
+arbitrary command or environment overrides. Run it only inside secured after
+trusted native configuration, executor and broker setup; this PR does not install
+those services or enable authenticated access.
+
+Unlike process-group cleanup inside the proxy, systemd remains available when
+the proxy itself is killed. Direct `collab-codex --restricted-operator` still
+requires an external process-lifetime boundary for crash containment. Neither
+local process termination nor the marker proves cancellation of provider work
+already in flight. The shipped offline test makes no real provider requests.
 
 Source references: [Codex's pinned environment configuration](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/exec-server/src/environment_toml.rs)
 and [Claude's tool restrictions](https://code.claude.com/docs/en/cli-reference).

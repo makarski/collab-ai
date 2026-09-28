@@ -34,6 +34,9 @@ def install_overlay(host, role):
     for name in ("collab", "collab-codex"):
         host.push(role, host.args.bin_dir / name, "/usr/local/bin/" + name)
         host.exe(role, "chmod", "755", "/usr/local/bin/" + name)
+    wrapper = Path(__file__).resolve().parents[1] / "infra/image/collab-supervised-codex"
+    host.push(role, wrapper, "/usr/local/bin/collab-supervised-codex")
+    host.exe(role, "chmod", "755", "/usr/local/bin/collab-supervised-codex")
 
 
 def dev_command(host, *command):
@@ -128,12 +131,38 @@ def check_native(host, kind):
         wait_for_executor(host, transport)
         print(host.exe("secured", "python3", "/opt/proof/native.py", kind), end="", flush=True)
         if kind == "codex":
-            print(host.exe("secured", "python3", "/opt/proof/restricted.py"), end="", flush=True)
+            check_restricted_native(host)
         marker, expected = ("proof-native", "remote") if kind == "codex" else ("proof-claude", "claude-remote")
         if host.exe("dev", "cat", "/workspace/" + marker) != expected:
             raise ValueError("Native tool did not write the dev container")
     finally:
         stop_relay(process)
+
+
+def check_restricted_native(host):
+    print(host.exe("secured", "python3", "/opt/proof/restricted.py"), end="", flush=True)
+    print(host.exe("secured", "python3", "/opt/proof/crash.py"), end="", flush=True)
+    run(host.base + ["restart", host.remote + "secured"])
+    wait_for_service_manager(host)
+    saved = json.loads(host.exe("secured", "env", "COLLAB_BUDGET_DIR=/var/lib/collab-ai-secured/budgets",
+                                CLI, "budget", "status", "crash-proof", "--json"))
+    if not saved.get("session_unfinished"):
+        raise ValueError("Container restart lost interrupted-session accounting")
+    retry = subprocess.run(host.execute("secured", "collab-supervised-codex", "crash-proof"),
+                           input="", capture_output=True, text=True, timeout=15)
+    if retry.returncode == 0 or "unfinished supervised session" not in retry.stderr:
+        raise ValueError(f"Unexpected restart refusal (exit {retry.returncode}): {retry.stdout}\n{retry.stderr}")
+    print("PASS: container restart preserves unfinished accounting and refuses relaunch.", flush=True)
+
+
+def wait_for_service_manager(host):
+    for _ in range(50):
+        ready = subprocess.run(host.execute("secured", "systemctl", "is-system-running"),
+                               capture_output=True, text=True, timeout=10)
+        if ready.stdout.strip() in ("running", "degraded"):
+            return
+        time.sleep(0.2)
+    raise ValueError("Restarted service manager did not finish booting")
 
 
 def wait_for_executor(host, kind):

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PATHS = ["go.mod", "go.sum", "cmd", "internal"]
 RECIPE_PATHS = ["infra/image/" + name for name in (
     "install.sh", "install-tools.py", "sshd_config", "collab-broker.service",
-    "collab-secured-setup.service", "claude-mcp.json",
+    "collab-secured-setup.service", "collab-supervised-codex", "claude-mcp.json",
 )] + ["docs/skills/collab-ai/SKILL.md"]
 
 
