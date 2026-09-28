@@ -2,10 +2,24 @@ package main
 
 import (
 	"context"
+	"io"
 	"os/exec"
 	"syscall"
 	"time"
 )
+
+func appServerPipes(cmd *exec.Cmd) (io.WriteCloser, io.ReadCloser, error) {
+	input, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	output, err := cmd.StdoutPipe()
+	if err != nil {
+		input.Close()
+		return nil, nil, err
+	}
+	return input, output, nil
+}
 
 func codexCommand(ctx context.Context, binary string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, binary, args...)

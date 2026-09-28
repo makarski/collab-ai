@@ -12,11 +12,12 @@ import (
 )
 
 type state struct {
-	Version    int              `json:"version"`
-	Limit      int64            `json:"limit"`
-	Threads    map[string]int64 `json:"threads"`
-	Stopped    string           `json:"stopped,omitempty"`
-	ReportedAt *time.Time       `json:"reported_at,omitempty"`
+	Version       int              `json:"version"`
+	Limit         int64            `json:"limit"`
+	Threads       map[string]int64 `json:"threads"`
+	Stopped       string           `json:"stopped,omitempty"`
+	ReportedAt    *time.Time       `json:"reported_at,omitempty"`
+	SessionActive bool             `json:"session_active,omitempty"`
 }
 
 var errLimit = errors.New("soft token cap reached")

@@ -140,10 +140,7 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 	return (codexLauncher{client: cfg, binary: binary}).runOperator(ctx, operator)
 }
 
-func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) error {
-	if l.restricted && l.budget == nil {
-		return errors.New("restricted operator requires a budget")
-	}
+func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) (result error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	client, err := bridge.NewLazyClient(l.client)
@@ -153,27 +150,39 @@ func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) err
 	defer client.Close()
 	cmd := appServerCommand(ctx, l.binary, "app-server", "--listen", "stdio://")
 	cmd.Stderr = os.Stderr
-	input, err := cmd.StdinPipe()
+	input, output, err := appServerPipes(cmd)
 	if err != nil {
 		return err
 	}
-	output, err := cmd.StdoutPipe()
+	finish, err := l.beginSession()
 	if err != nil {
 		input.Close()
+		output.Close()
 		return err
 	}
+	settled := true // No child exists yet; a failed exec cannot have spent tokens.
+	defer func() {
+		if err := finish(settled); err != nil {
+			result = errors.Join(result, err)
+		}
+	}()
 	if err := cmd.Start(); err != nil {
 		input.Close()
 		output.Close()
 		return err
 	}
+	settled = false
 	defer func() { cancel(); input.Close(); output.Close(); stopAppServer(cmd) }()
 	p := host.NewProxy(host.NewWire(input), host.NewWire(operator.output))
 	p.Budget = l.budget
 	p.RestrictedOperator = l.restricted
 	p.Listener = bridge.NewListener(ctx, client, p)
-	defer p.Listener.Close()
-	return serveWithTools(ctx, p, operator.input, output)
+	defer func() {
+		p.Listener.Close() // Join peer delivery before deciding that admissions are settled.
+		settled = result == nil && p.SessionSettled()
+	}()
+	result = serveWithTools(ctx, p, operator.input, output)
+	return result
 }
 
 func serveWithTools(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser) error {
@@ -207,7 +216,7 @@ func serve(ctx context.Context, p *host.Proxy, operatorIn, output io.ReadCloser)
 	group.Go(func() error {
 		return readOperatorFrames(ctx, operatorIn, func(f host.Frame) error { return p.FromOperator(ctx, f) })
 	})
-	group.Go(func() error { return host.ReadFrames(output, func(f host.Frame) error { return p.FromHost(ctx, f) }) })
+	group.Go(func() error { return readHostFrames(ctx, p, output) })
 	group.Go(func() error { return p.ServeTools(ctx) })
 	group.Go(func() error { return p.ServeBudget(ctx) })
 	err := group.Wait()

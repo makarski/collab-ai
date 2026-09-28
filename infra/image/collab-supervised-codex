@@ -1,0 +1,36 @@
+#!/usr/bin/python3
+"""Host-administered, experimental restricted Codex service inside secured Incus."""
+
+import os
+import re
+import sys
+
+
+def command(name):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
+        raise ValueError("Use a valid existing budget name")
+    root = "/var/lib/collab-ai-secured"
+    return ["/usr/bin/systemd-run", "--quiet", "--wait", "--pipe", "--collect",
+            "--service-type=exec", "--unit=collab-codex-" + name,
+            "--property=ExitType=main", "--property=KillMode=control-group",
+            "--property=TimeoutStopSec=3s", "--property=SendSIGKILL=yes", "--property=Restart=no",
+            "--property=NoNewPrivileges=yes", "--property=ProtectControlGroups=yes",
+            "--property=CapabilityBoundingSet=",
+            "--property=InaccessiblePaths=-/run/systemd/private -/run/dbus/system_bus_socket",
+            "--working-directory=/workspace",
+            "--setenv=PATH=/usr/local/bin:/usr/bin:/bin", "--setenv=HOME=" + root,
+            "--setenv=CODEX_HOME=" + root + "/codex",
+            "--setenv=COLLAB_BUDGET_DIR=" + root + "/budgets",
+            "/usr/local/bin/collab-codex", "--restricted-operator", "--budget", name,
+            "--socket", "/run/collab-ai/broker.sock",
+            "--agent-id", "secured-" + name]
+
+
+if __name__ == "__main__":
+    if os.geteuid() != 0 or len(sys.argv) != 2:
+        sys.exit("Usage (secured administrator only): collab-supervised-codex BUDGET")
+    try:
+        args = command(sys.argv[1])
+    except ValueError as error:
+        sys.exit(str(error))
+    os.execve(args[0], args, {"PATH": "/usr/bin:/bin"})

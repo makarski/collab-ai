@@ -33,6 +33,7 @@ cp docs/skills/collab-ai/SKILL.md /usr/local/share/collab-ai/SKILL.md
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
 cp infra/image/sshd_config /etc/ssh/sshd_config.collab-ai
 cp infra/image/collab-broker.service infra/image/collab-secured-setup.service /etc/systemd/system/
+install -m 0755 infra/image/collab-supervised-codex /usr/local/bin/collab-supervised-codex
 printf 'd /run/sshd 0755 root root -\n' >/etc/tmpfiles.d/collab-ssh.conf
 printf 'DISABLE_UPDATES=1\nDISABLE_AUTOUPDATER=1\n' >>/etc/environment
 printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/profile.d/collab-ai.sh
