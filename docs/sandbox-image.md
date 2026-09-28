@@ -14,12 +14,16 @@ describes development builds and CI releases.
 | Claude collaboration config | `/etc/collab-ai/claude-mcp.json` |
 | Collaboration skill and build manifests | `/usr/local/share/collab-ai/` |
 
-The `agent` account owns `/workspace` and the broker's persistent database at
+In standalone mode, the `agent` account owns `/workspace` and the broker's database at
 `/var/lib/collab-ai/inboxes.db`. The broker starts at boot and uses
 `/tmp/collab-ai.sock`. SSH host keys are generated per workspace during SSH setup,
 never baked into the image. The SSH server runs only through Incus, per connection.
 Agent credentials, host files and private SSH keys are never copied into the build.
 Claude updates are disabled so its installed version stays fixed.
+
+With [control mode](secured-runtime.md) enabled, the local workspace broker is
+disabled. A dedicated `broker` user in control owns the database and shared socket;
+`agent` joins `collab-clients` to connect through the read-only IPC mount.
 
 ## Development builds
 

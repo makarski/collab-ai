@@ -2,7 +2,7 @@
 ' Render from the repository root:
 ' plantuml -tsvg -nometadata docs/assets/architecture.puml
 
-title collab-ai · Two-container architecture (draft)
+title collab-ai · Shared broker and dev workspace
 
 <style>
 title {
@@ -51,15 +51,15 @@ skinparam {
 
 actor "You · host terminals" as Human
 
-rectangle "dev container" as Dev {
+rectangle "workspace · dev container" as Dev {
     component "=Codex\nTerminal + collab-codex\nManaged proxy / listener" as Codex <<Dev>>
     component "=Claude Code\nTerminal + collab-mcp\nMCP over stdin / stdout" as Claude <<Dev>>
-    component "=Project workspace · /workspace/<project>\nDefault: persistent Incus workspace volume\nOptional: selected host directory\nHost mount: read-only unless opted into writes\n--\nDedicated sandbox UID/GID; no personal host identity\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
-    file "=Persistent agent home · /home/agent\nSeparate Incus volume; survives container replacement\nCodex + Claude settings, skills, memory and sessions\n--\nImport selected host config / memory once\nAgents update sandbox-owned state\nExplicit backup / export; no live host-home sync" as AgentHome <<Storage>>
-    file "=broker.sock · Unix socket\n/run/collab-ipc/broker.sock\nDirectory mounted READ-ONLY in dev\nOwner: broker · group: collab-clients\nSocket mode: 0660\n--\nClients may connect and send requests\nCannot replace or remove the socket" as Socket <<Socket>>
+    component "=Workspace storage · proposed\nDefault: persistent Incus workspace volume\nOptional: selected host directory\nHost mount: read-only unless opted into writes\n--\nDedicated sandbox UID/GID; no personal host identity\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
+    file "=Persistent agent home · proposed\n/home/agent on a separate Incus volume\nSurvives container replacement\nCodex + Claude settings, skills, memory and sessions\n--\nImport selected host config / memory once\nAgents update sandbox-owned state\nExplicit backup / export; no live host-home sync" as AgentHome <<Storage>>
+    file "=broker.sock · Unix socket\n/mnt/collab-ipc/broker.sock\nDirectory mounted READ-ONLY in dev\nOwner: broker · group: collab-clients\nSocket mode: 0660\n--\nClients may connect and send requests\nCannot replace or remove the socket" as Socket <<Socket>>
 }
 
-rectangle "control container" as Control {
+rectangle "secured · control container" as Control {
     component "=Human controls\ncollab dashboard · collab status\nOperator settings stay here" as Dashboard <<HumanControl>>
     component "=One collab-ai broker\nCreates / listens on broker.sock\nOnly process accessing SQLite" as Broker <<Control>>
     database "=One collaboration SQLite database\nPrivate persistent volume\nNever mounted in dev" as DB <<Control>>
@@ -75,18 +75,18 @@ Socket -[hidden]down-> Project
 Project -[hidden]down-> AgentHome
 
 Dashboard -down-> Broker : Queries via the same local UDS
-Broker <-left-> Socket : Same shared Incus volume\n/run/collab-ipc\nREAD-WRITE mount in control
+Broker <-left-> Socket : Same shared Incus volume\n/mnt/collab-ipc\nREAD-WRITE mount in control
 Broker -down-> DB : Read / write
 
 legend bottom
     <back:#e7f5eb> Agents in dev </back>   <back:#e3efff> Services in control </back>   <back:#fce4f0> One shared Unix socket </back>   <back:#fff3b0> Human controls </back>
     Directory: broker:collab-clients, 0750. Socket: broker:collab-clients, 0660.
-    Map the broker UID and client GID explicitly across Incus containers; mount the directory at boot.
+    Broker UID 1002 / client GID 1003 are mapped by the shifted IPC volume; directory mounted at boot.
     Read-only mount protects the socket path. It does not prevent sending socket requests.
     Dev clients share access; this does not isolate Codex from Claude or other code running as their user.
-    Workspace and agent-home volumes outlive container replacement; removal is explicit, with backups.
+    Proposed workspace / agent-home volumes would survive replacement; current dev data stays on its root disk.
     Writable host sharing changes host files. UID/GID isolation and noexec cannot prevent later host interpretation.
-    DRAFT: proposed layout and permissions, not installed provisioning.
+    Shared broker is implemented. Independent workspace storage and agent-home migration remain proposed.
 endlegend
 
 @enduml

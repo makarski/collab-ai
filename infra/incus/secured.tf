@@ -1,5 +1,5 @@
 variable "secured_runtime" {
-  description = "Add offline protected configuration, broker, dev executor, private budgets and read-only status IPC."
+  description = "Add offline control services with one shared broker, private state, dev executor and status IPC."
   type        = bool
   default     = false
   nullable    = false
@@ -9,7 +9,7 @@ variable "secured_runtime" {
 # Keep both stopped through a failed/retried apply to avoid hot-added read-only mounts.
 resource "terraform_data" "secured_preflight" {
   count            = var.secured_runtime ? 1 : 0
-  triggers_replace = [var.incus_socket, var.project_name, "executor-v1"]
+  triggers_replace = [var.incus_socket, var.project_name, "broker-ipc-v1"]
   provisioner "local-exec" {
     interpreter = ["python3", "-c"]
     command     = file("${path.module}/secured_preflight.py")
@@ -81,6 +81,15 @@ resource "incus_profile" "secured" {
     }
   }
   device {
+    name = "broker-ipc"
+    type = "disk"
+    properties = {
+      source = incus_storage_volume.broker_ipc[0].name
+      pool   = var.storage_pool
+      path   = "/mnt/collab-ipc"
+    }
+  }
+  device {
     name = "dev-executor"
     type = "disk"
     properties = {
@@ -127,5 +136,8 @@ output "secured" {
     state_volume    = incus_storage_volume.secured_state[0].name
     status_volume   = incus_storage_volume.budget_status[0].name
     executor_volume = incus_storage_volume.dev_executor[0].name
+    broker_socket   = "/mnt/collab-ipc/broker.sock"
+    broker_volume   = incus_storage_volume.broker_ipc[0].name
+    broker_database = "/var/lib/collab-ai-secured/broker/broker.db"
   } : null
 }

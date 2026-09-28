@@ -1,0 +1,12 @@
+[Unit]
+Description=Connect default agent tools to the shared control broker
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/collab-broker-setup clients
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

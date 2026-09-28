@@ -19,14 +19,14 @@ These diagrams show the currently provisioned layout.
 
 | macOS | Linux |
 | --- | --- |
-| ![macOS: Colima hosts Incus, with a dev workspace and optional secured supervisor that owns budgets and sends commands over a Unix socket.](docs/assets/sandbox-macos.svg) | ![Linux: Incus runs directly on the host, with a dev workspace and optional secured supervisor that owns budgets and sends commands over a Unix socket.](docs/assets/sandbox-linux.svg) |
+| ![macOS: Colima hosts Incus, with a dev workspace and optional control container sharing one broker socket.](docs/assets/sandbox-macos.svg) | ![Linux: Incus runs directly on the host, with a dev workspace and optional control container sharing one broker socket.](docs/assets/sandbox-linux.svg) |
 | [PlantUML source](docs/assets/sandbox-macos.puml) | [PlantUML source](docs/assets/sandbox-linux.puml) |
 
 **Included in the workspace image:** collab-ai, Codex, Claude Code, Go, Git and tmux.
 The broker starts automatically; you open agent terminals over SSH. The workspace
 stays offline; network access and subscription login are not provisioned yet.
-The optional **secured** container owns protected caps and supervises Codex;
-project commands run in **workspace**. Its protected path is currently offline and protocol-only.
+With `secured_runtime = true`, **secured** hosts one broker and database; Codex and
+Claude adapters in **workspace** share its socket. The control dashboard sees the same inboxes.
 
 On **macOS**, install the tools and start the dedicated host from this repository:
 
@@ -55,7 +55,7 @@ colima stop collab-ai
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
 [Mount host directories](docs/sandbox-mounts.md) ·
-[Protected runtime setup (offline)](docs/secured-runtime.md) ·
+[Shared control runtime (offline)](docs/secured-runtime.md) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
 [Incus web UI](docs/sandbox.md#incus-web-ui)
 
@@ -156,15 +156,16 @@ Codex prompts and approvals stay in its terminal. [Dashboard controls](docs/dash
 
 ## How it fits together
 
-**Architecture draft:** Codex and Claude run in **dev**; one broker, one SQLite
-database and the dashboard live in **control**. This proposed layout is not yet
-provisioned; see [current runtime setup](docs/secured-runtime.md) for what is installed.
+**Shared broker:** with `secured_runtime = true`, Codex and Claude adapters run in
+**workspace (dev)**; one broker, one collaboration SQLite database and the operator
+dashboard live in **secured (control)**. [Setup and access](docs/secured-runtime.md).
+The independent workspace and agent-home storage shown below is still proposed.
 
-![Draft architecture: Codex and Claude in dev share a mounted broker socket with control, which owns the dashboard and collaboration SQLite. Project storage supports an Incus volume or opt-in host mount; a separate persistent agent home preserves memory and sessions.](docs/assets/architecture.svg)
+![Architecture: Codex and Claude in dev share a mounted broker socket with control, which owns the dashboard and collaboration SQLite. Independent workspace and agent-home volumes are proposed.](docs/assets/architecture.svg)
 
 [Diagram source (PlantUML)](docs/assets/architecture.puml)
 
-Between dev and control, only the socket directory is shared: read-write in control, read-only in dev.
+For broker traffic, the socket directory is shared: read-write in control, read-only in dev.
 Clients can send requests without replacing the socket; SQLite stays private.
 
 | Dev storage | Proposed behavior |

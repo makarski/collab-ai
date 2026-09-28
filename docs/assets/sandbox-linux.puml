@@ -37,24 +37,24 @@ skinparam {
 rectangle "Your Linux machine\nYou administer Incus and open workspace SSH here" as Host {
 rectangle "Incus project: collab-ai" as Project {
     component Secured <<Secured>> [
-        =secured · optional
-        Codex supervisor + broker
-        Private budgets and configuration
+        =secured · control (optional)
+        One broker + SQLite database
+        Operator dashboard
         --
-        Agents cannot edit caps
+        Private persistent state
     ]
     component Workspace <<Workspace>> [
         =workspace · dev
         Your repository, builds and tests
         Commands run as unprivileged agent
         --
-        collab-ai · Codex · Claude installed
+        Codex + Claude adapters
         Selected host mounts optional
     ]
 }
-Secured -down-> Workspace : Commands via Unix socket (UDS)\nResults return to supervisor
+Secured -down-> Workspace : Shared broker socket (UDS)\nRead-only mount in workspace
 }
 
-caption Both containers are offline. Protected login and interactive sessions are not connected yet.
+caption Both containers are offline. Subscription login is not provisioned yet.
 
 @enduml
