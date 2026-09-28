@@ -33,7 +33,7 @@ resource "incus_storage_volume" "dev_data" {
   type         = "custom"
   content_type = "filesystem"
   config = {
-    "size"             = "${each.value.size}GiB"
+    "size" = "${each.value.size}GiB"
     # Private to one dev instance. Incus remaps ownership on replacement.
     # Dynamic shared-volume mounts can hide ordinary nested host mounts.
     "security.shifted" = "false"
