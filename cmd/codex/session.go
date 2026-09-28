@@ -11,6 +11,9 @@ func (l codexLauncher) beginSession() (func(bool) error, error) {
 	if !l.restricted {
 		return func(bool) error { return nil }, nil
 	}
+	if l.budget == nil {
+		return nil, errors.New("restricted operator requires a budget")
+	}
 	if err := l.budget.BeginSession(); err != nil {
 		return nil, err
 	}

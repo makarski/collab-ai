@@ -141,9 +141,6 @@ func runWithOperator(ctx context.Context, cfg bridge.ClientConfig, binary string
 }
 
 func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) (result error) {
-	if l.restricted && l.budget == nil {
-		return errors.New("restricted operator requires a budget")
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	client, err := bridge.NewLazyClient(l.client)
