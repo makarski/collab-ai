@@ -234,7 +234,7 @@ run "secured_runtime" {
       one([for device in incus_profile.sandbox.device : device if device.name == "broker-ipc"]).properties.readonly == "true" &&
       one([for device in incus_profile.secured[0].device : device if device.name == "broker-ipc"]).properties.source == incus_storage_volume.broker_ipc[0].name
     )
-    error_message = "Secured must have only managed volumes; dev must receive only read-only status, never private state."
+    error_message = "Secured must have only managed volumes; dev must receive read-only status and broker IPC, never private state; the control executor mount must be read-only."
   }
   assert {
     condition = (

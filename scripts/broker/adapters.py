@@ -52,7 +52,10 @@ class Peer:
     def until(self, predicate):
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
-            frame = self.frames.get(timeout=max(0.01, deadline - time.monotonic()))
+            try:
+                frame = self.frames.get(timeout=max(0.01, deadline - time.monotonic()))
+            except queue.Empty:
+                continue
             if frame is None:
                 raise ValueError("Adapter exited before expected response")
             if predicate(frame):
@@ -83,9 +86,13 @@ class Peer:
 
 def await_registration(identity):
     for _ in range(30):
-        result = subprocess.run(["collab", "status", "--json"], check=True, capture_output=True, text=True)
-        if any(item["agent_id"] == identity and item["state"] == "transport_connected"
-               for item in json.loads(result.stdout)["sessions"]):
+        try:
+            result = subprocess.run(["collab", "status", "--json"], capture_output=True, text=True, timeout=1)
+        except subprocess.TimeoutExpired:
+            continue
+        if result.returncode == 0 and any(
+                item["agent_id"] == identity and item["state"] == "transport_connected"
+                for item in json.loads(result.stdout)["sessions"]):
             return
         time.sleep(0.1)
     raise ValueError("Codex listener did not register with the shared broker")
