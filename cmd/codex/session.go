@@ -22,6 +22,9 @@ func (l codexLauncher) beginSession() (func(bool) error, error) {
 
 func readHostFrames(ctx context.Context, p *host.Proxy, output io.Reader) error {
 	err := host.ReadFrames(output, func(f host.Frame) error { return p.FromHost(ctx, f) })
+	if err != io.EOF {
+		return err
+	}
 	if p.RestrictedOperator && ctx.Err() == nil {
 		return errors.New("restricted native client disconnected unexpectedly; accounting is unconfirmed")
 	}

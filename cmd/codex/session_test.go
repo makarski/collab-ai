@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,6 +14,15 @@ import (
 	"collab-ai/internal/budget"
 	"collab-ai/internal/host"
 )
+
+func TestRestrictedMalformedHostOutputPreservesParseError(t *testing.T) {
+	p := &host.Proxy{RestrictedOperator: true}
+	err := readHostFrames(context.Background(), p, strings.NewReader("not-json\n"))
+	var syntax *json.SyntaxError
+	if !errors.As(err, &syntax) {
+		t.Fatalf("parse error hidden by disconnect handling: %v", err)
+	}
+}
 
 func TestRestrictedUnexpectedHostDisconnectPoisonsAccounting(t *testing.T) {
 	output, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)

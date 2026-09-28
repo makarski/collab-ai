@@ -57,7 +57,9 @@ func (s *sessionAccounting) reply(id string, result json.RawMessage, failed bool
 		s.unknown = true
 		return
 	}
-	s.turns[turn] = s.turns[turn]
+	if _, exists := s.turns[turn]; !exists {
+		s.turns[turn] = observedTurn{}
+	}
 }
 
 func replyTurnID(result json.RawMessage) (string, error) {
