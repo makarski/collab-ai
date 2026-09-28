@@ -99,7 +99,9 @@ API rejects mutations. Polling this endpoint is visibility, not admission contro
 
 Container/host administrators remain trusted. Dev root can replace its executor;
 the protection here is against unprivileged agent commands. Missing or unsafe
-endpoints cause an error; there is no local-execution fallback. The supervisor
+endpoints prevent launch through a bounded connection check; there is no local-execution
+fallback. This startup check does not monitor later executor disconnects, which
+remain native tool errors under the session's soft cap. The supervisor
 [stops native clients on failure](budget-boundary.md#supervisor-failure).
 
 ## Status, stop and restart
