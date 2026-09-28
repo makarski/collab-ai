@@ -1,0 +1,21 @@
+[Unit]
+Description=Unprivileged Codex executor connection
+
+[Service]
+User=agent
+Group=agent
+WorkingDirectory=/workspace
+Environment=PATH=/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin
+Environment=HOME=/home/agent
+ExecStart=/usr/local/bin/codex exec-server --listen stdio
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectControlGroups=yes
+InaccessiblePaths=-/run/systemd/private -/run/dbus/system_bus_socket
+KillMode=control-group
+TasksMax=128
+TimeoutStopSec=3s
+SendSIGKILL=yes

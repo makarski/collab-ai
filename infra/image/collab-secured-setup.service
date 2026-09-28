@@ -10,6 +10,11 @@ Type=oneshot
 ExecStart=/usr/bin/chown root:root /var/lib/collab-ai-secured /mnt/collab-status
 ExecStart=/usr/bin/chmod 0700 /var/lib/collab-ai-secured
 ExecStart=/usr/bin/chmod 0755 /mnt/collab-status
+ExecStart=/usr/bin/install -d -m 0700 /var/lib/collab-ai-secured/codex
+ExecStart=/usr/bin/install -m 0600 /etc/collab-ai/secured-codex.toml /var/lib/collab-ai-secured/codex/config.toml
+ExecStart=/usr/bin/install -m 0600 /etc/collab-ai/secured-environments.toml /var/lib/collab-ai-secured/codex/environments.toml
+ExecStart=/usr/bin/chown root:root /workspace
+ExecStart=/usr/bin/chmod 0755 /workspace
 RemainAfterExit=yes
 
 [Install]

@@ -13,6 +13,7 @@ def command(name):
     return ["/usr/bin/systemd-run", "--quiet", "--wait", "--pipe", "--collect",
             "--service-type=exec", "--unit=collab-codex-" + name,
             "--property=ExitType=main", "--property=KillMode=control-group",
+            "--property=TasksMax=128",
             "--property=TimeoutStopSec=3s", "--property=SendSIGKILL=yes", "--property=Restart=no",
             "--property=NoNewPrivileges=yes", "--property=ProtectControlGroups=yes",
             "--property=CapabilityBoundingSet=",
@@ -22,6 +23,7 @@ def command(name):
             "--setenv=CODEX_HOME=" + root + "/codex",
             "--setenv=COLLAB_BUDGET_DIR=" + root + "/budgets",
             "/usr/local/bin/collab-codex", "--restricted-operator", "--budget", name,
+            "--budget-status-socket", "/mnt/collab-status/" + name + ".sock",
             "--socket", "/run/collab-ai/broker.sock",
             "--agent-id", "secured-" + name]
 

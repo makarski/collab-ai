@@ -226,17 +226,19 @@ run "secured_runtime" {
   }
   assert {
     condition = (
-      length(incus_profile.secured[0].device) == 3 &&
+      length(incus_profile.secured[0].device) == 4 &&
       alltrue([for device in incus_profile.secured[0].device : device.type == "disk" && contains(keys(device.properties), "pool")]) &&
       alltrue([for device in incus_profile.sandbox.device : device.name != "secured-state"]) &&
-      one([for device in incus_profile.sandbox.device : device if device.name == "budget-status"]).properties.readonly == "true"
+      one([for device in incus_profile.sandbox.device : device if device.name == "budget-status"]).properties.readonly == "true" &&
+      one([for device in incus_profile.secured[0].device : device if device.name == "dev-executor"]).properties.readonly == "true"
     )
     error_message = "Secured must have only managed volumes; dev must receive only read-only status, never private state."
   }
   assert {
     condition = (
       incus_storage_volume.secured_state[0].config["security.shifted"] == "true" &&
-      incus_storage_volume.budget_status[0].config["security.shifted"] == "true"
+      incus_storage_volume.budget_status[0].config["security.shifted"] == "true" &&
+      incus_storage_volume.dev_executor[0].config["security.shifted"] == "true"
     )
     error_message = "Persistent volumes must support isolated mappings; boot permissions are checked by the live smoke test."
   }

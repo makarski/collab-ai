@@ -1,0 +1,20 @@
+# Managed offline configuration. No real provider or credentials are provisioned.
+model = "gpt-5.4"
+model_provider = "offline"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+[features]
+shell_snapshot = false
+hooks = false
+plugins = false
+apps = false
+multi_agent = false
+code_mode = false
+code_mode_host = false
+enable_request_compression = false
+[model_providers.offline]
+name = "Offline fixture slot (normally unavailable)"
+base_url = "http://127.0.0.1:18080/v1"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false

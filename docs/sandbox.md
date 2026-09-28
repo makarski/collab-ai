@@ -67,8 +67,8 @@ a new `--output` directory. [Image contents and build details](sandbox-image.md)
 ## 3. Preview and apply
 
 For separate dev and secured containers, add `secured_runtime = true` to
-`sandbox.auto.tfvars`. Stop an existing workspace before enabling it; the apply
-will restart it. See [secured runtime setup](secured-runtime.md) for private
+`sandbox.auto.tfvars`. Stop workspace and any existing secured container before
+enabling or upgrading the layout; the apply restarts them. See [secured runtime setup](secured-runtime.md) for private
 state, host-only budget commands and lifecycle instructions. It remains offline.
 
 ```sh
@@ -78,7 +78,7 @@ tofu -chdir=infra/incus plan -out=sandbox.tfplan
 ```
 
 Review the plan: it creates a project, cached image, profile, and container.
-With `secured_runtime = true`, it also adds a secured container/profile and two
+With `secured_runtime = true`, it also adds a secured container/profile and three
 managed volumes. Then:
 
 ```sh

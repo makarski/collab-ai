@@ -1,42 +1,41 @@
-# Separate dev and secured runtimes
+# Protected runtime setup (offline)
 
 Use a workspace image built from this revision or later. For an existing deployment,
-stop dev first (Linux: replace `colima-collab-ai:` with `local:`):
+stop workspace and any existing secured container first (Linux: use `local:`):
 
 ```sh
 incus --project collab-ai stop colima-collab-ai:workspace
+# If secured already exists:
+incus --project collab-ai stop colima-collab-ai:secured
 ```
 
 Then add `secured_runtime = true` to `infra/incus/sandbox.auto.tfvars` and follow
 [plan and apply](sandbox.md#3-preview-and-apply). The apply starts both containers
-when `running = true`; existing workspace data is preserved. Fresh installations
-can enable this option directly.
+when `running = true`. Fresh installations can enable this option directly.
+Enabling the layout with the same image preserves workspace data; selecting a new
+image may replace the dev root disk, so export needed data before reviewing that plan.
 
-An apply-time host preflight rejects enabling the layout while dev is running.
+An apply-time host preflight rejects enabling/upgrading the layout while either container is running.
 Incus hot-added read-only mounts can be remounted writable by container root;
-the status mount must be present at boot to lock its read-only flag. Keep dev
-stopped if an apply fails, then retry. Do not manually hot-add or replace this mount.
+the status and executor mounts must be present at boot. Keep both containers
+stopped after a failed apply, then retry. Do not hot-add these mounts.
 
 | Runtime | Purpose | Access |
 | --- | --- | --- |
-| `workspace` (dev) | Repositories, builds, agent-executed commands and broker | Existing unprivileged SSH setup; selected host mounts |
-| `secured` | Private settings and budget storage | Human administrator through the host's Incus socket |
+| `workspace` (dev) | Repositories, builds and socket-activated executor running as `agent` | Unprivileged SSH; selected host mounts |
+| `secured` | Managed Codex configuration, private budgets, protected broker and supervisor | Human administration through host Incus |
 
 Both containers are offline, unprivileged and have separate UID mappings.
-Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, a 1 GiB state volume and
-a 16 MiB status volume. It inherits no dev mounts and does not start the broker. A boot service sets
-private-state permissions to `0700` and public-status permissions to `0755`, both
-owned by root.
-No authenticated clients or budget supervisor launch automatically.
-The [offline boundary proof](budget-boundary.md#experimental-restricted-operator)
-also exercises a restricted Codex operator protocol; it is not installed as a service.
+Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, 1 GiB private state,
+and two 16 MiB IPC volumes. The image starts the protected broker and dev socket
+automatically; native clients start only through an explicit administrator launch.
 
-**This provisions isolation and storage, not integrated agent-resistant sessions.**
-Native authentication, interactive/resume routing and shared accounting remain
-tracked in [#34](https://github.com/makarski/collab-ai/issues/34). Keep credentials
-out of dev and do not enable model access as part of this setup.
+**This is an experimental stdio setup.** Subscription login, interactive/resume
+support and Claude/shared accounting remain under [#34](https://github.com/makarski/collab-ai/issues/34).
+No credentials or external model access are provisioned. The managed provider
+points to an unused loopback fixture port (`18080`); normal model turns cannot run.
 
-## Human budget administration
+## Create a budget and launch
 
 Run on your host. On Linux replace `colima-collab-ai:` with `local:`:
 
@@ -50,6 +49,23 @@ incus --project collab-ai exec colima-collab-ai:secured -- \
   collab budget status my-task --json
 ```
 
+Launch from the host, connecting stdin/stdout to a restricted App Server client:
+
+```sh
+incus --project collab-ai exec colima-collab-ai:secured -T -- \
+  collab-supervised-codex my-task
+```
+
+This takes [JSON-line protocol messages](budget-boundary.md#experimental-restricted-operator),
+not terminal prompts. Terminal and resume support are not available on this path.
+The budget is fixed by the administrator; operator messages cannot select another.
+To stop it from another host terminal:
+
+```sh
+incus --project collab-ai exec colima-collab-ai:secured -- \
+  systemctl stop collab-codex-my-task.service
+```
+
 The budget directory lives on a root-only custom volume mounted only in secured.
 Creation refuses to overwrite a cap or reset usage. There is no workload-facing
 administration endpoint. Incus administrators remain trusted: they can change
@@ -59,16 +75,32 @@ socket outside dev mounts; run project code only in `workspace`.
 `/mnt/collab-status` is a separate volume: secured root can publish a status socket;
 dev receives a read-only mount. Its root-owned directory is not world-writable.
 Only public status belongs here, never budget JSON, credentials or admin sockets.
-Once a protected launcher publishes `status.sock`, a dev terminal can use:
+While `my-task` is running, a dev terminal can read its published status:
 
 ```sh
-collab budget status my-task --socket /mnt/collab-status/status.sock --json
+collab budget status my-task --socket /mnt/collab-status/my-task.sock --json
 ```
 
 Provisioning alone leaves this directory empty. A missing socket is an error;
 there is no fallback to a dev-local budget. Read-only mounting prevents directory
 changes but does **not** prevent socket requests; the status server's read-only
 API rejects mutations. Polling this endpoint is visibility, not admission control.
+
+## Installed services and trust
+
+- `collab-secured-setup` installs managed configuration on every secured boot,
+  preserving budgets and usage. `/workspace` there is root-owned and contains no dev repository.
+- `collab-secured-broker` owns `/run/collab-ai/broker.sock`. The ordinary dev broker
+  remains separate; dev terminals do not automatically join protected conversations.
+- `collab-dev-executor.socket` owns a root-only socket on `/mnt/collab-executor`.
+  Each accepted connection starts a native executor as `agent`, with no added privileges.
+  Secured mounts the endpoint read-only. Agent commands cannot connect, unlink it,
+  substitute a symlink, or modify installed executables.
+
+Container/host administrators remain trusted. Dev root can replace its executor;
+the protection here is against unprivileged agent commands. Missing or unsafe
+endpoints cause an error; there is no local-execution fallback. The supervisor
+[stops native clients on failure](budget-boundary.md#supervisor-failure).
 
 ## Status, stop and restart
 
@@ -97,12 +129,14 @@ stopped-workspace upgrade without data loss, unchanged second plan,
 separate mappings, denied private-state access, denied status replacement/remount,
 real status reads over the shared UDS, persisted accounting after stop/start and
 secured replacement, and teardown. Dev host mounts are tested in the same deployment.
-No provider requests or subscription credentials are used.
+It also exercises the installed native configuration, broker and executor, endpoint
+replacement denials, restart and missing-executor refusal. No provider requests or
+subscription credentials are used.
 
-To repeat with a disposable project (macOS shown):
+To repeat on the Linux Incus host (including inside the dedicated Colima VM):
 
 ```sh
-python3 scripts/sandbox-smoke.py --remote colima-collab-ai \
+sudo python3 scripts/sandbox-smoke.py --remote local \
   --image-dir dist/installed-workspace --secured-check
 ```
 

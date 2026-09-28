@@ -1,0 +1,57 @@
+#!/usr/bin/python3
+"""Fixed stdio connection to the installed dev executor; no command overrides."""
+
+import os
+from contextlib import suppress
+from pathlib import Path
+import socket
+import stat
+import sys
+import threading
+
+
+DIRECTORY = Path("/mnt/collab-executor")
+
+
+def endpoint(directory):
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError("Executor directory must not be a symlink")
+    if info.st_uid != 0 or info.st_mode & 0o022:
+        raise ValueError("Executor directory must be root-owned and not writable by agents")
+    path = directory / "codex.sock"
+    info = path.lstat()
+    if not stat.S_ISSOCK(info.st_mode):
+        raise ValueError("Executor endpoint must be a socket, not a symlink")
+    if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
+        raise ValueError("Executor endpoint must be a root-owned mode-0600 socket")
+    return str(path)
+
+
+def send_input(connection):
+    try:
+        while data := os.read(0, 65536):
+            connection.sendall(data)
+        connection.shutdown(socket.SHUT_WR)
+    except OSError:
+        with suppress(OSError):
+            connection.shutdown(socket.SHUT_RDWR)
+
+
+def relay(path):
+    with socket.socket(socket.AF_UNIX) as connection:
+        connection.connect(path)
+        threading.Thread(target=send_input, args=(connection,), daemon=True).start()
+        while data := connection.recv(65536):
+            remaining = memoryview(data)
+            while remaining:
+                remaining = remaining[os.write(1, remaining):]
+
+
+if __name__ == "__main__":
+    try:
+        if os.geteuid() != 0 or len(sys.argv) != 1:
+            raise ValueError("Executor connection is for the secured supervisor only")
+        relay(endpoint(DIRECTORY))
+    except (OSError, ValueError) as error:
+        sys.exit(str(error))

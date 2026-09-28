@@ -91,6 +91,7 @@ def crash_session(server):
 
 
 def main():
+    Path("/mnt/collab-status").mkdir(mode=0o755, exist_ok=True)
     (ROOT / "codex").mkdir(parents=True, mode=0o700)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), HeldProvider)
     server.called, server.release = threading.Event(), threading.Event()
