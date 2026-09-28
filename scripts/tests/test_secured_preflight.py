@@ -10,6 +10,10 @@ spec.loader.exec_module(preflight)
 
 
 class SecuredPreflightTests(unittest.TestCase):
+    def test_secured_upgrade_requires_stopped_controller(self):
+        with self.assertRaisesRegex(ValueError, "Stop secured"):
+            preflight.require_stopped(200, {"metadata": {"status": "Running"}}, "secured")
+
     def test_fresh_or_stopped_workspace_can_receive_the_mount_before_boot(self):
         preflight.require_stopped(404, {})
         preflight.require_stopped(200, {"metadata": {"status": "Stopped"}})

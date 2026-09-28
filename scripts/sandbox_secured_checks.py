@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import time
 
+import sandbox_installed_checks
 from sandbox_boundary_checks import report, stop_relay
 
 
@@ -55,7 +56,7 @@ def check_configuration(deployment):
     if mappings[0] == mappings[1]:
         raise ValueError("Dev and secured share an identity mapping")
     devices = instances["secured"]["expanded_devices"]
-    if set(devices) != {"root", "secured-state", "budget-status"}:
+    if set(devices) != {"root", "secured-state", "budget-status", "dev-executor"}:
         raise ValueError("Secured inherited unexpected devices")
     denied(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-broker"))
 
@@ -186,4 +187,5 @@ def verify(args, directory, project):
         stop_relay(process)
         run(deployment.base + ["restart", deployment.remote + "secured"])
     check_persistence(deployment)
+    sandbox_installed_checks.verify(deployment)
     print("PASS: isolated runtimes, root-only persistent state, read-only status, stop/start and secured replacement.")

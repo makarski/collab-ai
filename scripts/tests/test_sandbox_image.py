@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -27,6 +28,22 @@ installer = module("install_tools", "infra/image/install-tools.py")
 
 
 class ImageTests(unittest.TestCase):
+    def test_archive_cannot_assign_installed_code_to_the_agent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "vendor.tar.gz"
+            destination = Path(directory) / "installed"
+            destination.mkdir()
+            with tarfile.open(archive, "w:gz") as out:
+                info = tarfile.TarInfo("executable")
+                info.uid = info.gid = 1001
+                info.mode = 0o777
+                info.size = 4
+                out.addfile(info, io.BytesIO(b"code"))
+            installer.extract(archive, destination)
+            actual = (destination / "executable").stat()
+            self.assertEqual(actual.st_uid, os.getuid())
+            self.assertEqual(actual.st_mode & 0o777, 0o755)
+
     def test_archive_contains_only_build_inputs_and_records_their_contents(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "source.tar"
@@ -37,6 +54,8 @@ class ImageTests(unittest.TestCase):
                 self.assertIn("infra/image/tools.lock.json", names)
                 self.assertIn("infra/image/collab-secured-setup.service", names)
                 self.assertIn("infra/image/collab-supervised-codex", names)
+                self.assertIn("infra/image/collab-dev-executor.socket", names)
+                self.assertIn("infra/image/secured-environments.toml", names)
                 self.assertNotIn(".git/config", names)
                 self.assertNotIn("infra/incus/sandbox.auto.tfvars", names)
                 self.assertNotIn("scripts/sandbox-image.py", names)

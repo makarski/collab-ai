@@ -13,6 +13,8 @@ APP_PATHS = ["go.mod", "go.sum", "cmd", "internal"]
 RECIPE_PATHS = ["infra/image/" + name for name in (
     "install.sh", "install-tools.py", "sshd_config", "collab-broker.service",
     "collab-secured-setup.service", "collab-supervised-codex", "claude-mcp.json",
+    "collab-secured-broker.service", "collab-dev-setup.service", "collab-dev-executor.socket",
+    "collab-dev-executor@.service", "secured-codex.toml", "secured-environments.toml", "collab-executor-connect",
 )] + ["docs/skills/collab-ai/SKILL.md"]
 
 

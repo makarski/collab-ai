@@ -1,0 +1,13 @@
+[Unit]
+Description=Prepare the root-owned dev executor endpoint
+DefaultDependencies=no
+After=local-fs.target
+Before=sockets.target
+ConditionPathIsMountPoint=/mnt/collab-executor
+ConditionPathIsMountPoint=!/var/lib/collab-ai-secured
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/chown root:root /mnt/collab-executor
+ExecStart=/usr/bin/chmod 0755 /mnt/collab-executor
+RemainAfterExit=yes

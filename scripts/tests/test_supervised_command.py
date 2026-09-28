@@ -10,6 +10,7 @@ class SupervisedCommandTests(unittest.TestCase):
     def test_fixed_service_boundary(self):
         args = COMMAND("task-1")
         self.assertIn("--property=KillMode=control-group", args)
+        self.assertIn("--property=TasksMax=128", args)
         self.assertIn("--property=Restart=no", args)
         self.assertIn("--property=TimeoutStopSec=3s", args)
         self.assertIn("--property=SendSIGKILL=yes", args)

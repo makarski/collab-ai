@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import runpy
 import subprocess
+import sys
 import threading
 import time
 
@@ -63,14 +64,14 @@ def check_restart():
     saved = status()
     if saved["state"] != "supervised_unfinished" or not saved["session_unfinished"]:
         raise ValueError(f"Crash lost its durable uncertainty marker: {saved}")
-    result = subprocess.run(["collab-supervised-codex", "crash-proof"], input="",
+    result = subprocess.run(service_command("crash-proof"), input="",
                             capture_output=True, text=True, timeout=10)
     if result.returncode == 0 or "unfinished supervised session" not in result.stderr:
         raise ValueError(f"Interrupted budget allowed relaunch: {result.stderr}")
 
 
 def crash_session(server):
-    command = ["collab-supervised-codex", "crash-proof"]
+    command = service_command("crash-proof")
     with (ROOT / "crash-stderr.log").open("w+") as diagnostic:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=diagnostic, text=True)
@@ -91,6 +92,7 @@ def crash_session(server):
 
 
 def main():
+    Path("/mnt/collab-status").mkdir(mode=0o755, exist_ok=True)
     (ROOT / "codex").mkdir(parents=True, mode=0o700)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), HeldProvider)
     server.called, server.release = threading.Event(), threading.Event()
@@ -128,8 +130,7 @@ def start_broker():
 
 
 def prove_orphan_cleanup():
-    make_command = runpy.run_path("/usr/local/bin/collab-supervised-codex")["command"]
-    args = make_command("orphan-proof")
+    args = service_command("orphan-proof")
     args = args[:args.index("/usr/local/bin/collab-codex")]
     unit = "collab-codex-orphan-proof.service"
     with open(os.devnull, "w") as log:
@@ -156,5 +157,14 @@ def await_orphan():
     raise ValueError("Orphan fixture did not start")
 
 
+def service_command(name):
+    # This standalone cgroup proof uses its own executor/configuration fixtures.
+    # Installed launcher preflight is exercised separately by the provisioning test.
+    return runpy.run_path("/usr/local/bin/collab-supervised-codex")["command"](name)
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["check-restart"]:
+        check_restart()
+    else:
+        main()

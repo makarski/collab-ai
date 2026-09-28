@@ -122,6 +122,19 @@ resource "incus_profile" "sandbox" {
   }
 
   dynamic "device" {
+    for_each = incus_storage_volume.dev_executor
+    content {
+      name = "dev-executor"
+      type = "disk"
+      properties = {
+        source = device.value.name
+        pool   = var.storage_pool
+        path   = "/mnt/collab-executor"
+      }
+    }
+  }
+
+  dynamic "device" {
     for_each = var.host_mounts
     content {
       name = "host-${device.key}"

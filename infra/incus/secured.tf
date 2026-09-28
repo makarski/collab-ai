@@ -1,15 +1,15 @@
 variable "secured_runtime" {
-  description = "Add an offline secured runtime with private persistent state and a read-only status mount in workspace."
+  description = "Add offline protected configuration, broker, dev executor, private budgets and read-only status IPC."
   type        = bool
   default     = false
   nullable    = false
 }
 
-# Run only when enabling the layout (or moving its host/project), before any
-# Incus changes. The operator must keep dev stopped through a failed/retried apply.
+# Check both runtimes when enabling/upgrading the IPC layout, before Incus changes.
+# Keep both stopped through a failed/retried apply to avoid hot-added read-only mounts.
 resource "terraform_data" "secured_preflight" {
   count            = var.secured_runtime ? 1 : 0
-  triggers_replace = [var.incus_socket, var.project_name]
+  triggers_replace = [var.incus_socket, var.project_name, "executor-v1"]
   provisioner "local-exec" {
     interpreter = ["python3", "-c"]
     command     = file("${path.module}/secured_preflight.py")
@@ -81,6 +81,16 @@ resource "incus_profile" "secured" {
     }
   }
   device {
+    name = "dev-executor"
+    type = "disk"
+    properties = {
+      source   = incus_storage_volume.dev_executor[0].name
+      pool     = var.storage_pool
+      path     = "/mnt/collab-executor"
+      readonly = "true"
+    }
+  }
+  device {
     name = "budget-status"
     type = "disk"
     properties = {
@@ -109,12 +119,13 @@ resource "incus_instance" "secured" {
 output "secured" {
   description = "Host-only administration; provisioning does not start authenticated clients or a budget supervisor."
   value = var.secured_runtime ? {
-    project       = incus_project.sandbox.name
-    instance      = incus_instance.secured[0].name
-    budget_dir    = "/var/lib/collab-ai-secured/budgets"
-    status_dir    = "/mnt/collab-status"
-    network       = "none"
-    state_volume  = incus_storage_volume.secured_state[0].name
-    status_volume = incus_storage_volume.budget_status[0].name
+    project         = incus_project.sandbox.name
+    instance        = incus_instance.secured[0].name
+    budget_dir      = "/var/lib/collab-ai-secured/budgets"
+    status_dir      = "/mnt/collab-status"
+    network         = "none"
+    state_volume    = incus_storage_volume.secured_state[0].name
+    status_volume   = incus_storage_volume.budget_status[0].name
+    executor_volume = incus_storage_volume.dev_executor[0].name
   } : null
 }

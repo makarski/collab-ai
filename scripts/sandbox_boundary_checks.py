@@ -148,11 +148,7 @@ def check_restricted_native(host):
                                 CLI, "budget", "status", "crash-proof", "--json"))
     if not saved.get("session_unfinished"):
         raise ValueError("Container restart lost interrupted-session accounting")
-    retry = subprocess.run(host.execute("secured", "collab-supervised-codex", "crash-proof"),
-                           input="", capture_output=True, text=True, timeout=15)
-    if retry.returncode == 0 or "unfinished supervised session" not in retry.stderr:
-        raise ValueError("Relaunch did not produce the expected unfinished-session rejection "
-                         f"(exit {retry.returncode}): {retry.stdout}\n{retry.stderr}")
+    host.exe("secured", "python3", "/opt/proof/crash.py", "check-restart")
     print("PASS: container restart preserves unfinished accounting and refuses relaunch.", flush=True)
 
 

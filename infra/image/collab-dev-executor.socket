@@ -1,0 +1,17 @@
+[Unit]
+Description=Root-owned socket for the isolated dev executor
+Requires=collab-dev-setup.service
+After=collab-dev-setup.service
+ConditionPathIsMountPoint=/mnt/collab-executor
+ConditionPathIsMountPoint=!/var/lib/collab-ai-secured
+
+[Socket]
+ListenStream=/mnt/collab-executor/codex.sock
+SocketMode=0600
+DirectoryMode=0755
+Accept=yes
+MaxConnections=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

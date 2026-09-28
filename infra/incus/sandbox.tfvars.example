@@ -11,6 +11,6 @@ memory_gib   = 4
 disk_gib     = 10
 running      = true
 
-# Optional second runtime with private state; both containers remain offline.
-# Stop an existing workspace before enabling; see docs/secured-runtime.md.
+# Optional protected configuration, broker and dev executor; both runtimes stay offline.
+# Stop both existing runtimes before enabling/upgrading; see docs/secured-runtime.md.
 secured_runtime = false

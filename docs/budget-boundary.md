@@ -94,8 +94,8 @@ Unexpected host approval/input requests stop the session and persist a budget
 failure rather than waiting for an unsupported approval flow.
 
 This is an offline integration building block, not a production launch recipe.
-Use the proof above to exercise it. Trusted native configuration and executor
-provisioning, interactive/resume binding and native
+Use the proof above to exercise it. The [protected runtime setup](secured-runtime.md) now installs the trusted offline
+configuration, broker and executor. Interactive/resume binding and native
 subscription authentication still need integration under [#34](https://github.com/makarski/collab-ai/issues/34).
 
 ## Supervisor failure
@@ -121,8 +121,9 @@ stop timeout, final SIGKILL and no automatic restart. The service fixes its budg
 directory and Codex home under `/var/lib/collab-ai-secured`, uses `/workspace` as
 its working directory and `/run/collab-ai/broker.sock` for the broker. It accepts no
 arbitrary command or environment overrides. Run it only inside secured after
-trusted native configuration, executor and broker setup; this PR does not install
-those services or enable authenticated access.
+the [protected runtime setup](secured-runtime.md) has installed the configuration,
+executor and broker. It also publishes read-only status at `/mnt/collab-status/BUDGET.sock`.
+Authenticated access is not enabled.
 
 Unlike process-group cleanup inside the proxy, systemd remains available when
 the proxy itself is killed. Direct `collab-codex --restricted-operator` still

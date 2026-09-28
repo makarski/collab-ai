@@ -1,0 +1,23 @@
+[Unit]
+Description=Broker for protected collaboration sessions
+Requires=collab-secured-setup.service
+After=collab-secured-setup.service
+ConditionPathIsMountPoint=/var/lib/collab-ai-secured
+
+[Service]
+ExecStart=/usr/local/bin/broker
+Environment=COLLAB_SOCKET_PATH=/run/collab-ai/broker.sock
+Environment=COLLAB_DB_PATH=/var/lib/collab-ai-secured/broker.db
+RuntimeDirectory=collab-ai
+RuntimeDirectoryMode=0700
+UMask=0077
+TasksMax=32
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/collab-ai-secured /run/collab-ai
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

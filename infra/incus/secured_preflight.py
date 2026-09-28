@@ -1,4 +1,4 @@
-"""Read-only host preflight: never hot-add the status volume to a running dev."""
+"""Read-only host preflight: attach protected IPC mounts only to stopped runtimes."""
 
 import http.client
 import json
@@ -14,13 +14,13 @@ class IncusConnection(http.client.HTTPConnection):
         self.sock.connect(self.host)
 
 
-def require_stopped(status, payload):
+def require_stopped(status, payload, role="workspace"):
     if status == 404:
         return  # Fresh project/instance: the volume will be present at first boot.
     if status != 200:
-        raise ValueError(f"Cannot inspect workspace power state (Incus HTTP {status})")
+        raise ValueError(f"Cannot inspect {role} power state (Incus HTTP {status})")
     if payload.get("metadata", {}).get("status") != "Stopped":
-        raise ValueError("Stop workspace before enabling secured_runtime; hot-added read-only mounts can be remounted writable. "
+        raise ValueError(f"Stop {role} before enabling or upgrading secured_runtime; hot-added read-only mounts can be remounted writable. "
                          "Keep it stopped until the apply succeeds. The apply starts it again when running=true.")
 
 
@@ -28,13 +28,14 @@ def main():
     connection = IncusConnection(os.environ["COLLAB_INCUS_SOCKET"], timeout=10)
     try:
         project = quote(os.environ["COLLAB_INCUS_PROJECT"], safe="")
-        connection.request("GET", f"/1.0/instances/workspace?project={project}", headers={"Host": "incus"})
-        response = connection.getresponse()
-        data = response.read(1048577)
-        if len(data) > 1048576:
-            raise ValueError("Incus workspace metadata exceeds the preflight limit")
-        payload = json.loads(data) if response.status == 200 else {}
-        require_stopped(response.status, payload)
+        for role in ("workspace", "secured"):
+            connection.request("GET", f"/1.0/instances/{role}?project={project}", headers={"Host": "incus"})
+            response = connection.getresponse()
+            data = response.read(1048577)
+            if len(data) > 1048576:
+                raise ValueError("Incus instance metadata exceeds the preflight limit")
+            payload = json.loads(data) if response.status == 200 else {}
+            require_stopped(response.status, payload, role)
     finally:
         connection.close()
 
