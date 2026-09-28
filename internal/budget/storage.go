@@ -65,7 +65,7 @@ func (s state) validate() error {
 		return errors.New("invalid budget version")
 	}
 	if s.Limit <= 0 {
-		return errors.New("invalid budget version or cap")
+		return errors.New("invalid budget cap: must be positive")
 	}
 	if s.SessionActive && s.Version != 2 {
 		return errors.New("supervised budget requires version 2")
