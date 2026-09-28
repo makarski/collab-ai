@@ -20,6 +20,8 @@ In standalone mode, the `agent` account owns `/workspace` and the broker's datab
 never baked into the image. The SSH server runs only through Incus, per connection.
 Agent credentials, host files and private SSH keys are never copied into the build.
 Claude updates are disabled so its installed version stays fixed.
+`/workspace` and `/home/agent` use separate persistent volumes. First boot sets
+agent ownership and seeds missing shell defaults without overwriting stored files.
 
 With [control mode](secured-runtime.md) enabled, the local workspace broker is
 disabled. A dedicated `broker` user in control owns the database and shared socket;
@@ -66,8 +68,9 @@ exported workspace artifact. Updating the lock is an explicit reviewed change.
 The output contains `workspace.tar.gz`, its source/tool manifest,
 `image.tfvars.json`, and architecture-specific files under `release/`.
 Copy the variables file to `infra/incus/image.auto.tfvars.json`
-and review a new Terraform/OpenTofu plan. **Replacing an existing workspace can
-delete its disk.** Export work you need before applying a replacement.
+and review a new Terraform/OpenTofu plan. Replacing the workspace replaces its root disk; project and agent-home volumes
+are retained. Other root-disk files, including the standalone broker database,
+are not retained. Use a fresh sandbox for this storage layout.
 
 Provisioning is pinned to the finished image checksum. Rebuilding is not promised
 to be bit-for-bit identical: Ubuntu packages resolve at build time and image
@@ -80,7 +83,7 @@ image. The source manifest records file hashes, including tracked local edits.
 native images on separate AMD64 and ARM64 GitHub-hosted Ubuntu runners. Each image
 is downloaded through the same installer and tested in an offline Incus workspace:
 boot, unchanged plan, SSH as `agent`, tool versions, broker readiness and restart
-persistence. No credentials or model requests are involved.
+persistence, dev replacement with retained data, SSH re-pinning and deletion protection. No credentials or model requests are involved.
 
 PRs and main builds produce Actions artifacts retained for seven days. Once this
 workflow is on main, **Run workflow** also accepts an app ref and exact tool versions.

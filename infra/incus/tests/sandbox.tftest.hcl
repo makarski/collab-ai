@@ -13,7 +13,7 @@ run "offline_workspace" {
       incus_project.sandbox.config["restricted"] == "true" &&
       incus_project.sandbox.config["restricted.devices.nic"] == "block" &&
       incus_project.sandbox.config["restricted.devices.proxy"] == "block" &&
-      incus_project.sandbox.config["restricted.devices.disk"] == "block" &&
+      incus_project.sandbox.config["restricted.devices.disk"] == "managed" &&
       incus_project.sandbox.config["restricted.containers.privilege"] == "isolated"
     )
     error_message = "The project must reject networking, host bind mounts and privileged containers."
@@ -21,14 +21,14 @@ run "offline_workspace" {
 
   assert {
     condition = (
-      length(incus_profile.sandbox.device) == 1 &&
-      one(incus_profile.sandbox.device).type == "disk" &&
-      one(incus_profile.sandbox.device).properties.path == "/" &&
-      one(incus_profile.sandbox.device).properties.pool == "default" &&
-      one(incus_profile.sandbox.device).properties.size == "10GiB" &&
-      !contains(keys(one(incus_profile.sandbox.device).properties), "source")
+      length(incus_profile.sandbox.device) == 3 &&
+      alltrue([for device in incus_profile.sandbox.device : device.type == "disk" && device.properties.pool == "default"]) &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "root"]).properties.size == "10GiB" &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "workspace-data"]).properties.path == "/workspace" &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "agent-home"]).properties.path == "/home/agent" &&
+      alltrue([for volume in incus_storage_volume.dev_data : volume.config["security.shifted"] == "false"])
     )
-    error_message = "The only device must be a quota-bound managed root disk, with no host path or NIC."
+    error_message = "Dev must have only a bounded root disk and private workspace/home volumes, with no host path or NIC."
   }
 
   assert {
@@ -54,13 +54,17 @@ run "configured_limits_and_stop" {
     cpu_count  = 3
     memory_gib = 6
     disk_gib   = 12
+    workspace_gib = 20
+    agent_home_gib = 4
     running    = false
   }
   assert {
     condition = (
       incus_profile.sandbox.config["limits.cpu"] == "3" &&
       incus_profile.sandbox.config["limits.memory"] == "6GiB" &&
-      one(incus_profile.sandbox.device).properties.size == "12GiB" &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "root"]).properties.size == "12GiB" &&
+      incus_storage_volume.dev_data["workspace"].config["size"] == "20GiB" &&
+      incus_storage_volume.dev_data["home"].config["size"] == "4GiB" &&
       incus_instance.workspace.running == false
     )
     error_message = "Changing resources or desired power state must affect the planned workspace."
@@ -127,8 +131,10 @@ run "reject_unbounded_resources" {
     cpu_count  = 0
     memory_gib = 0
     disk_gib   = 0
+    workspace_gib = 0
+    agent_home_gib = 101
   }
-  expect_failures = [var.cpu_count, var.memory_gib, var.disk_gib]
+  expect_failures = [var.cpu_count, var.memory_gib, var.disk_gib, var.workspace_gib, var.agent_home_gib]
 }
 
 run "selected_host_mounts" {

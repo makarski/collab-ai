@@ -1,0 +1,15 @@
+[Unit]
+Description=Initialize persistent dev workspace and agent home
+DefaultDependencies=no
+After=local-fs.target
+Before=sockets.target multi-user.target
+ConditionPathIsMountPoint=/workspace
+ConditionPathIsMountPoint=/home/agent
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/collab-workspace-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

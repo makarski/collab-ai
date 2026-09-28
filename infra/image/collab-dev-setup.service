@@ -2,6 +2,8 @@
 Description=Prepare the root-owned dev executor endpoint
 DefaultDependencies=no
 After=local-fs.target
+Requires=collab-workspace-setup.service
+After=collab-workspace-setup.service
 Before=sockets.target
 ConditionPathIsMountPoint=/mnt/collab-executor
 ConditionPathIsMountPoint=!/var/lib/collab-ai-secured

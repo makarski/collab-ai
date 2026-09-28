@@ -13,6 +13,7 @@ import uuid
 
 import sandbox_mount_checks
 import sandbox_secured_checks
+import sandbox_storage_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +105,7 @@ def check_workspace(args, directory, project, manifest):
 
 def destroy_deployment(tofu, directory, project):
     try:
+        sandbox_storage_checks.allow_test_teardown(directory, project)
         run(tofu + ["destroy", "-auto-approve", "-input=false"])
     except BaseException:
         print(f"Cleanup failed; retained deployment state for {project} at {directory}", file=sys.stderr)
@@ -130,10 +132,12 @@ def main():
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         run(tofu + ["plan", "-detailed-exitcode", "-input=false"])
         check_workspace(args, directory, project, manifest)
+        sandbox_storage_checks.prepare(args, directory, project)
         if args.secured_check:
             sandbox_secured_checks.verify(args, directory, project)
         if args.mount_check:
             sandbox_mount_checks.verify(args, directory, project)
+        sandbox_storage_checks.verify(args, directory, project)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     except Exception:
         subprocess.run(["incus", "--project", project, "info", f"{args.remote}:workspace", "--show-log"],

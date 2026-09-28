@@ -8,7 +8,9 @@ project_name = "collab-ai"
 storage_pool = "default"
 cpu_count    = 2
 memory_gib   = 4
-disk_gib     = 10
+disk_gib     = 10 # replaceable root disk
+workspace_gib = 10 # persistent project data
+agent_home_gib = 2 # persistent settings, memory and sessions
 running      = true
 
 # Optional protected configuration, broker and dev executor; both runtimes stay offline.

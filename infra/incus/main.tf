@@ -28,7 +28,7 @@ resource "incus_project" "sandbox" {
     "restricted"                      = "true"
     "restricted.containers.privilege" = "isolated"
     "restricted.containers.nesting"   = "block"
-    "restricted.devices.disk"         = length(var.host_mounts) > 0 ? "allow" : (var.secured_runtime ? "managed" : "block")
+    "restricted.devices.disk"         = length(var.host_mounts) > 0 ? "allow" : "managed"
     "restricted.devices.nic"          = "block"
     "restricted.devices.proxy"        = "block"
     "limits.containers"               = var.secured_runtime ? "2" : "1"
@@ -104,6 +104,20 @@ resource "incus_profile" "sandbox" {
       path = "/"
       pool = var.storage_pool
       size = "${var.disk_gib}GiB"
+    }
+  }
+
+  dynamic "device" {
+    for_each = incus_storage_volume.dev_data
+    content {
+      name = device.value.name
+      type = "disk"
+      properties = {
+        source   = device.value.name
+        pool     = var.storage_pool
+        path     = local.dev_storage[device.key].path
+        readonly = "false"
+      }
     }
   }
 

@@ -3,7 +3,7 @@
 **Host → image → workspace → SSH.** Run these commands from the repository root.
 
 This setup creates an **offline Linux workspace** with 2 CPUs, 4 GiB memory,
-10 GiB disk, and a 512-process limit. By default it has no NIC, host mounts, or credentials.
+a 10 GiB root disk, 10 GiB project volume, 2 GiB agent-home volume, and a 512-process limit. By default it has no NIC, host mounts, or credentials.
 It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
 starts automatically. Model access remains disabled by the absence of networking
 and credentials; provisioning does not yet configure subscription logins or model access.
@@ -66,6 +66,8 @@ a new `--output` directory. [Image contents and build details](sandbox-image.md)
 
 ## 3. Preview and apply
 
+**Start with a fresh sandbox** for this storage layout.
+
 For separate dev and secured containers, add `secured_runtime = true` to
 `sandbox.auto.tfvars`. Stop workspace and any existing secured container before
 enabling or upgrading the layout; the apply restarts them. See [secured runtime setup](secured-runtime.md) for private
@@ -77,7 +79,8 @@ tofu -chdir=infra/incus validate
 tofu -chdir=infra/incus plan -out=sandbox.tfplan
 ```
 
-Review the plan: it creates a project, cached image, profile, and container.
+Review the plan: it creates a project, cached image, profile, container, and two
+protected dev volumes (`workspace-data` and `agent-home`).
 With `secured_runtime = true`, it also adds a secured container/profile and four
 managed volumes. Then:
 
@@ -88,7 +91,8 @@ tofu -chdir=infra/incus apply sandbox.tfplan
 An unchanged second plan should report no changes. Keep the ignored state and
 variables files; use one state per deployment. Keep these files and this operator
 checkout outside writable dev mounts. Image changes may replace the
-workspace and its disk, so review replacement/deletion actions before applying.
+workspace root disk, while project and home volumes survive. Review replacement/deletion
+actions before applying. [Storage, backups and quotas](sandbox-storage.md).
 
 ## 4. SSH into the workspace
 
@@ -180,15 +184,10 @@ the workspace. Incus boot autostart is disabled.
 `sandbox.auto.tfvars`, then repeat step 3. An apply with `running = true` starts
 it again, even if you stopped it manually.
 
-**To delete the workspace and its data**, review a destroy plan before applying:
-
-```sh
-tofu -chdir=infra/incus plan -destroy -out=destroy.tfplan
-# Review first: the following command deletes the workspace root disk.
-tofu -chdir=infra/incus apply destroy.tfplan
-```
-
-This retains the host VM and shared storage pool. Export any data you need first.
+**To delete the workspace and its data**, first back up what you need and follow
+[explicit storage removal](sandbox-storage.md#deliberate-removal). An ordinary
+destroy plan is blocked by the persistent volumes' deletion guard. The host VM
+and shared storage pool are retained.
 
 ## Incus web UI
 

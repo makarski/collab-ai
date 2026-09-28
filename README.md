@@ -54,6 +54,7 @@ colima stop collab-ai
 ```
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
+[Persistent data and backups](docs/sandbox-storage.md) ·
 [Mount host directories](docs/sandbox-mounts.md) ·
 [Shared control runtime (offline)](docs/secured-runtime.md) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
@@ -159,25 +160,24 @@ Codex prompts and approvals stay in its terminal. [Dashboard controls](docs/dash
 **Shared broker:** with `secured_runtime = true`, Codex and Claude adapters run in
 **workspace (dev)**; one broker, one collaboration SQLite database and the operator
 dashboard live in **secured (control)**. [Setup and access](docs/secured-runtime.md).
-The independent workspace and agent-home storage shown below is still proposed.
+Separate `/workspace` and `/home/agent` volumes retain projects and agent state when dev is replaced.
+[Backups and removal](docs/sandbox-storage.md).
 
-![Architecture: Codex and Claude in dev share a mounted broker socket with control, which owns the dashboard and collaboration SQLite. Independent workspace and agent-home volumes are proposed.](docs/assets/architecture.svg)
+![Architecture: Codex and Claude in dev share a mounted broker socket with control, which owns the dashboard and collaboration SQLite. Separate persistent workspace and agent-home volumes survive dev replacement.](docs/assets/architecture.svg)
 
 [Diagram source (PlantUML)](docs/assets/architecture.puml)
 
 For broker traffic, the socket directory is shared: read-write in control, read-only in dev.
 Clients can send requests without replacing the socket; SQLite stays private.
 
-| Dev storage | Proposed behavior |
+| Dev storage | Behavior |
 | --- | --- |
-| Project workspace | Persistent Incus volume by default; selected host directories are opt-in and read-only unless explicitly made writable. Use a dedicated sandbox identity, not your host UID/GID. |
-| Agent home | Separate persistent volume for Codex and Claude settings, skills, memory and sessions. Retain it when replacing the container; back it up and remove it explicitly. |
+| `/workspace` | Persistent project volume. Selected host directories remain opt-in and read-only unless explicitly made writable. |
+| `/home/agent` | Persistent settings, skills, memory and session files; private to the shared agent account. |
 
-Import selected host settings and memory once, adapting project paths. New state
-stays in the sandbox, with explicit backup/export instead of live writable host-home
-sharing. Credentials and hooks need separate setup; conversation resume must be
-tested during migration. Writable project mounts can affect later host execution;
-UID/GID separation and `noexec` do not prevent a host interpreter reading a script.
+Host-state import and dedicated host-sharing identities remain follow-ups. Retaining
+session files does not yet prove native conversation resume. Writable host sharing
+can affect later host execution; UID/GID separation and `noexec` cannot prevent that.
 
 For agents running directly on your machine, see [host integration](docs/host-integration.md).
 
