@@ -15,14 +15,18 @@ Three goals:
 
 ## Set up a sandbox
 
+These diagrams show the currently provisioned layout.
+
 | macOS | Linux |
 | --- | --- |
-| ![macOS: Colima supplies a Linux VM containing the Incus project and offline workspace.](docs/assets/sandbox-macos.svg) | ![Linux: the Incus project and offline workspace run directly on the Linux host.](docs/assets/sandbox-linux.svg) |
+| ![macOS: Colima hosts Incus, with a dev workspace and optional secured supervisor that owns budgets and sends commands over a Unix socket.](docs/assets/sandbox-macos.svg) | ![Linux: Incus runs directly on the host, with a dev workspace and optional secured supervisor that owns budgets and sends commands over a Unix socket.](docs/assets/sandbox-linux.svg) |
 | [PlantUML source](docs/assets/sandbox-macos.puml) | [PlantUML source](docs/assets/sandbox-linux.puml) |
 
 **Included in the workspace image:** collab-ai, Codex, Claude Code, Go, Git and tmux.
 The broker starts automatically; you open agent terminals over SSH. The workspace
 stays offline; network access and subscription login are not provisioned yet.
+The optional **secured** container owns protected caps and supervises Codex;
+project commands run in **workspace**. Its protected path is currently offline and protocol-only.
 
 On **macOS**, install the tools and start the dedicated host from this repository:
 
@@ -152,12 +156,29 @@ Codex prompts and approvals stay in its terminal. [Dashboard controls](docs/dash
 
 ## How it fits together
 
-![Architecture: human interaction in each agent mode, a shared broker UDS file, and durable SQLite inboxes.](docs/assets/architecture.svg)
+**Architecture draft:** Codex and Claude run in **dev**; one broker, one SQLite
+database and the dashboard live in **control**. This proposed layout is not yet
+provisioned; see [current runtime setup](docs/secured-runtime.md) for what is installed.
+
+![Draft architecture: Codex and Claude in dev share a mounted broker socket with control, which owns the dashboard and collaboration SQLite. Project storage supports an Incus volume or opt-in host mount; a separate persistent agent home preserves memory and sessions.](docs/assets/architecture.svg)
 
 [Diagram source (PlantUML)](docs/assets/architecture.puml)
 
-Dotted arrows show startup; solid arrows show communication. The shared UDS
-connects agents to the broker, with a separate inbox for each agent.
+Between dev and control, only the socket directory is shared: read-write in control, read-only in dev.
+Clients can send requests without replacing the socket; SQLite stays private.
+
+| Dev storage | Proposed behavior |
+| --- | --- |
+| Project workspace | Persistent Incus volume by default; selected host directories are opt-in and read-only unless explicitly made writable. Use a dedicated sandbox identity, not your host UID/GID. |
+| Agent home | Separate persistent volume for Codex and Claude settings, skills, memory and sessions. Retain it when replacing the container; back it up and remove it explicitly. |
+
+Import selected host settings and memory once, adapting project paths. New state
+stays in the sandbox, with explicit backup/export instead of live writable host-home
+sharing. Credentials and hooks need separate setup; conversation resume must be
+tested during migration. Writable project mounts can affect later host execution;
+UID/GID separation and `noexec` do not prevent a host interpreter reading a script.
+
+For agents running directly on your machine, see [host integration](docs/host-integration.md).
 
 ## Documentation
 

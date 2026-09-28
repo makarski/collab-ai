@@ -2,11 +2,7 @@
 ' Render from the repository root:
 ' plantuml -tsvg -nometadata docs/assets/architecture.puml
 
-title collab-ai · How it fits together
-
-!$humanColor = "#fff3b0"
-!$brokerColor = "#lightblue"
-!$agentColor = "#palegreen"
+title collab-ai · Two-container architecture (draft)
 
 <style>
 title {
@@ -22,37 +18,23 @@ rectangle {
     LineThickness 2
 }
 .HumanControl {
-    BackgroundColor $humanColor
+    BackgroundColor #fff3b0
 }
-.Broker {
-    BackgroundColor $brokerColor
+.Control {
+    BackgroundColor #e3efff
 }
-.AgentRuntime {
-    BackgroundColor $agentColor
+.Dev {
+    BackgroundColor #e7f5eb
 }
 .Socket {
     BackgroundColor #fce4f0
 }
-.startupFlow {
-    LineColor #indigo
-    LineThickness 1
-}
-.controlFlow {
-    LineColor #indigo
-    LineThickness 2
-}
-.peerFlow {
-    LineColor #deepPink
-    LineThickness 2
-}
-.sessionFlow {
-    LineColor #teal
-    LineThickness 2
+.Storage {
+    BackgroundColor #f0eaff
 }
 legend {
-    FontSize 14
-    Padding 15
-    BackgroundColor #f0f0f0
+    FontSize 15
+    Padding 12
 }
 </style>
 
@@ -64,71 +46,47 @@ skinparam {
     defaultFontSize 16
     padding 10
     nodesep 40
-    ranksep 25
+    ranksep 35
 }
 
-rectangle "One machine" as Local {
-    rectangle "Managed Codex · automatic listening" as CodexPath {
-        actor "Human operator" as Human
-        component "=collab-codex --terminal\n//Launch command//" as Launcher <<HumanControl>>
-        component "=Codex terminal UI\n//Normal Codex interface//" as UI <<AgentRuntime>>
-        component "=Proxy and listener\n//Inside collab-codex//" as Proxy <<Broker>>
-        component "=Codex App Server\n//One managed thread//" as AppServer <<AgentRuntime>>
-        component "=MCP stdio relay\n//collab_runtime tools//" as Relay
-    }
+actor "You · host terminals" as Human
 
-    rectangle "Claude channel · automatic listening" as ClaudePath {
-        actor "Human operator" as ClaudeHuman
-        component "=Claude Code\n//Channel opt-in and org policy required//" as Claude <<AgentRuntime>>
-        component "=collab-mcp\n~--claude-channel ~--auto-listen" as ClaudeMCP
-    }
-
-    rectangle "Alternative · manual inbox checks" as ManualPath {
-        actor "Human operator" as ManualHuman
-        component "=Codex or Claude Code" as ManualAgent <<AgentRuntime>>
-        component "=collab-mcp\n//Default mode//" as ManualMCP
-    }
-
-    file "=Broker socket · UDS\n/tmp/collab-ai.sock\n//Broker-owned endpoint (default path)//" as BrokerSocket <<Socket>>
-    component "=collab-ai broker\n//One owner per logical inbox//" as Broker <<Broker>>
-    component "=Operator console\ncollab status / dashboard" as Console <<HumanControl>>
-    database "=SQLite\nMessages, sessions and receipts" as Store
+rectangle "dev container" as Dev {
+    component "=Codex\nTerminal + collab-codex\nManaged proxy / listener" as Codex <<Dev>>
+    component "=Claude Code\nTerminal + collab-mcp\nMCP over stdin / stdout" as Claude <<Dev>>
+    component "=Project workspace · /workspace/<project>\nDefault: persistent Incus workspace volume\nOptional: selected host directory\nHost mount: read-only unless opted into writes\n--\nDedicated sandbox UID/GID; no personal host identity\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
+    file "=Persistent agent home · /home/agent\nSeparate Incus volume; survives container replacement\nCodex + Claude settings, skills, memory and sessions\n--\nImport selected host config / memory once\nAgents update sandbox-owned state\nExplicit backup / export; no live host-home sync" as AgentHome <<Storage>>
+    file "=broker.sock · Unix socket\n/run/collab-ipc/broker.sock\nDirectory mounted READ-ONLY in dev\nOwner: broker · group: collab-clients\nSocket mode: 0660\n--\nClients may connect and send requests\nCannot replace or remove the socket" as Socket <<Socket>>
 }
 
-' Startup / process ownership.
-Human .right.> Launcher <<startupFlow>> : launches
-Launcher .down.> UI <<startupFlow>> : starts
-Launcher .down.> Proxy <<startupFlow>> : runs
-Proxy .down.> AppServer <<startupFlow>> : starts
-AppServer .down.> Relay <<startupFlow>> : starts
+rectangle "control container" as Control {
+    component "=Human controls\ncollab dashboard · collab status\nOperator settings stay here" as Dashboard <<HumanControl>>
+    component "=One collab-ai broker\nCreates / listens on broker.sock\nOnly process accessing SQLite" as Broker <<Control>>
+    database "=One collaboration SQLite database\nPrivate persistent volume\nNever mounted in dev" as DB <<Control>>
+}
 
-' Native sessions and the managed Codex relay loop.
-Human <--> UI <<controlFlow>> : prompts, output\nand approvals
-UI <-down-> Proxy <<sessionFlow>> : WebSocket / private Unix socket
-Proxy <-down-> AppServer <<sessionFlow>> : App Server / stdio\nTools and incoming peer context
-AppServer <-down-> Relay <<sessionFlow>> : MCP / stdio
-Relay <--> Proxy <<sessionFlow>> : MCP / private Unix socket\nSame listener and inbox owner
+Human -down-> Codex : SSH · prompts / output
+Human -down-> Claude : SSH · prompts / output
+Human -down-> Dashboard : Host-administered terminal
 
-ClaudeHuman .down.> Claude <<startupFlow>> : launches
-ClaudeHuman <-down-> Claude <<controlFlow>> : prompts, output\nand approvals
-ManualHuman .down.> ManualAgent <<startupFlow>> : launches
-ManualHuman <-down-> ManualAgent <<controlFlow>> : prompts, output\nand approvals
+Codex -down-> Socket : Broker protocol
+Claude -down-> Socket : Broker protocol
+Socket -[hidden]down-> Project
+Project -[hidden]down-> AgentHome
 
-Claude <-down-> ClaudeMCP <<sessionFlow>> : MCP / stdio\nTools and channel notifications
-ManualAgent <-down-> ManualMCP <<sessionFlow>> : MCP / stdio\nsend, receive, wait_reply, acknowledge
-
-Proxy <--> BrokerSocket <<peerFlow>> : Broker protocol
-ClaudeMCP <--> BrokerSocket <<peerFlow>> : Broker protocol
-ManualMCP <--> BrokerSocket <<peerFlow>> : Broker protocol
-Console <--> BrokerSocket <<controlFlow>> : Read-only status
-BrokerSocket <--> Broker <<peerFlow>> : accepts connections
-Broker <--> Store : Persist state and replay\nunacknowledged messages
+Dashboard -down-> Broker : Queries via the same local UDS
+Broker <-left-> Socket : Same shared Incus volume\n/run/collab-ipc\nREAD-WRITE mount in control
+Broker -down-> DB : Read / write
 
 legend bottom
-    <color:indigo>┄┄</color> Startup    <color:indigo>━━</color> Human / operator control
-    <color:teal>━━</color> Native session integration    <color:deepPink>━━</color> Broker messages
-    ----
-    Solid arrows show communication. Each agent has a separate durable inbox.
+    <back:#e7f5eb> Agents in dev </back>   <back:#e3efff> Services in control </back>   <back:#fce4f0> One shared Unix socket </back>   <back:#fff3b0> Human controls </back>
+    Directory: broker:collab-clients, 0750. Socket: broker:collab-clients, 0660.
+    Map the broker UID and client GID explicitly across Incus containers; mount the directory at boot.
+    Read-only mount protects the socket path. It does not prevent sending socket requests.
+    Dev clients share access; this does not isolate Codex from Claude or other code running as their user.
+    Workspace and agent-home volumes outlive container replacement; removal is explicit, with backups.
+    Writable host sharing changes host files. UID/GID isolation and noexec cannot prevent later host interpretation.
+    DRAFT: proposed layout and permissions, not installed provisioning.
 endlegend
 
 @enduml

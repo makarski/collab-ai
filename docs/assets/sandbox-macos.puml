@@ -20,6 +20,9 @@ rectangle {
 .Workspace {
     BackgroundColor #e7f5eb
 }
+.Secured {
+    BackgroundColor #e3efff
+}
 </style>
 
 hide stereotype
@@ -31,21 +34,29 @@ skinparam {
     padding 12
 }
 
-rectangle "Your Mac" as Mac {
+rectangle "Your Mac\nYou administer Incus and open workspace SSH here" as Mac {
     rectangle "Colima VM: collab-ai\nLinux + Incus server" as VM {
 rectangle "Incus project: collab-ai" as Project {
-    component Workspace <<Workspace>> [
-        =workspace
-        Offline Linux container
-        collab-ai · Codex · Claude Code
-        SSH terminal via Incus
+    component Secured <<Secured>> [
+        =secured · optional
+        Codex supervisor + broker
+        Private budgets and configuration
         --
-        Defaults: 2 CPUs · 4 GiB RAM · 10 GiB disk
-        No network or host mounts
-        No credentials
+        Agents cannot edit caps
+    ]
+    component Workspace <<Workspace>> [
+        =workspace · dev
+        Your repository, builds and tests
+        Commands run as unprivileged agent
+        --
+        collab-ai · Codex · Claude installed
+        Selected host mounts optional
     ]
 }
     }
+Secured -down-> Workspace : Commands via Unix socket (UDS)\nResults return to supervisor
 }
+
+caption Both containers are offline. Protected login and interactive sessions are not connected yet.
 
 @enduml
