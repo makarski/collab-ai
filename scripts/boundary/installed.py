@@ -83,19 +83,23 @@ def main(name, missing):
     try:
         run_session(name, missing)
         verify_boundary()
-        if missing:
-            if server.observed:
-                raise ValueError("Missing executor reached the model fixture")
-        else:
-            verify_collaboration(server)
-            require_tool_output(server.observed[-1], "protected-cap-100")
-            saved = json.loads(budget("status", name, "--json"))
-            if saved["reported_tokens"] != 60 or saved["state"] != "ready":
-                raise ValueError(f"Installed session lost its accounting: {saved}")
+        verify_observations(server, name, missing)
         print(f"PASS: installed protected session {name}; missing executor={missing}.", flush=True)
     finally:
         server.shutdown()
         server.server_close()
+
+
+def verify_observations(server, name, missing):
+    if missing:
+        if server.observed:
+            raise ValueError("Missing executor reached the model fixture")
+        return
+    verify_collaboration(server)
+    require_tool_output(server.observed[-1], "protected-cap-100")
+    saved = json.loads(budget("status", name, "--json"))
+    if saved["reported_tokens"] != 60 or saved["state"] != "ready":
+        raise ValueError(f"Installed session lost its accounting: {saved}")
 
 
 if __name__ == "__main__":
