@@ -54,8 +54,8 @@ actor "You · host terminals" as Human
 rectangle "workspace · dev container" as Dev {
     component "=Codex\nTerminal + collab-codex\nManaged proxy / listener" as Codex <<Dev>>
     component "=Claude Code\nTerminal + collab-mcp\nMCP over stdin / stdout" as Claude <<Dev>>
-    component "=Workspace storage · proposed\nDefault: persistent Incus workspace volume\nOptional: selected host directory\nHost mount: read-only unless opted into writes\n--\nDedicated sandbox UID/GID; no personal host identity\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
-    file "=Persistent agent home · proposed\n/home/agent on a separate Incus volume\nSurvives container replacement\nCodex + Claude settings, skills, memory and sessions\n--\nImport selected host config / memory once\nAgents update sandbox-owned state\nExplicit backup / export; no live host-home sync" as AgentHome <<Storage>>
+    component "=Persistent workspace\n/workspace · independent Incus volume\nOptional: selected host directory\nHost mount: read-only unless opted into writes\n--\nSandbox data owned by agent (1001:1001)\nDedicated host-sharing identity · future\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
+    file "=Persistent agent home\n/home/agent on a separate Incus volume\nSurvives container replacement\nCodex + Claude settings, skills, memory and sessions\n--\nAgents update sandbox-owned state\nSelected host-state import tooling · future\nNo live host-home sync" as AgentHome <<Storage>>
     file "=broker.sock · Unix socket\n/mnt/collab-ipc/broker.sock\nDirectory mounted READ-ONLY in dev\nOwner: broker · group: collab-clients\nSocket mode: 0660\n--\nClients may connect and send requests\nCannot replace or remove the socket" as Socket <<Socket>>
 }
 
@@ -84,9 +84,9 @@ legend bottom
     Broker UID 1002 / client GID 1003 are mapped by the shifted IPC volume; directory mounted at boot.
     Read-only mount protects the socket path. It does not prevent sending socket requests.
     Dev clients share access; this does not isolate Codex from Claude or other code running as their user.
-    Proposed workspace / agent-home volumes would survive replacement; current dev data stays on its root disk.
+    Workspace and agent-home volumes survive replacement; Terraform blocks their deletion until explicitly allowed.
     Writable host sharing changes host files. UID/GID isolation and noexec cannot prevent later host interpretation.
-    Shared broker is implemented. Independent workspace storage and agent-home migration remain proposed.
+    Host-state import and dedicated host-sharing identities remain future work. File retention is not a resume guarantee.
 endlegend
 
 @enduml

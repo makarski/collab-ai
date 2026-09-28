@@ -51,6 +51,8 @@ rectangle "Incus project: collab-ai" as Project {
         Codex + Claude adapters
         Selected host mounts optional
     ]
+    folder "Persistent dev volumes\n/workspace · /home/agent\nRetained when dev is replaced" as Data <<Workspace>>
+    Workspace -down-> Data
 }
 Secured -down-> Workspace : Shared broker socket (UDS)\nRead-only mount in workspace
 }

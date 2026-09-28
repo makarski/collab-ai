@@ -39,11 +39,12 @@ cp infra/image/sshd_config /etc/ssh/sshd_config.collab-ai
 cp infra/image/collab-broker.service infra/image/collab-secured-setup.service /etc/systemd/system/
 cp infra/image/collab-secured-broker.service infra/image/collab-dev-setup.service \
     infra/image/collab-dev-executor.socket infra/image/collab-dev-executor@.service \
-    infra/image/collab-client-setup.service /etc/systemd/system/
+    infra/image/collab-client-setup.service infra/image/collab-workspace-setup.service /etc/systemd/system/
 cp infra/image/secured-codex.toml infra/image/secured-environments.toml /etc/collab-ai/
 install -m 0755 infra/image/collab-executor-connect /usr/local/bin/collab-executor-connect
 install -m 0755 infra/image/collab-supervised-codex /usr/local/bin/collab-supervised-codex
 install -m 0755 infra/image/collab-broker-setup /usr/local/bin/collab-broker-setup
+install -m 0755 infra/image/collab-workspace-setup /usr/local/bin/collab-workspace-setup
 printf 'd /run/sshd 0755 root root -\n' >/etc/tmpfiles.d/collab-ssh.conf
 printf 'DISABLE_UPDATES=1\nDISABLE_AUTOUPDATER=1\n' >>/etc/environment
 printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/profile.d/collab-ai.sh
@@ -52,6 +53,7 @@ systemctl mask ssh.service ssh.socket
 systemctl enable collab-broker.service collab-secured-setup.service
 systemctl enable collab-secured-broker.service collab-dev-executor.socket
 systemctl enable collab-client-setup.service
+systemctl enable collab-workspace-setup.service
 dpkg-query -W >/usr/local/share/collab-ai/os-packages.txt
 
 # Images must not share SSH host keys, machine identities, credentials or state.

@@ -12,8 +12,8 @@ incus --project collab-ai stop colima-collab-ai:secured
 Then add `secured_runtime = true` to `infra/incus/sandbox.auto.tfvars` and follow
 [plan and apply](sandbox.md#3-preview-and-apply). The apply starts both containers
 when `running = true`. Fresh installations can enable this option directly.
-Enabling the layout with the same image preserves workspace data; selecting a new
-image may replace the dev root disk, so export needed data before reviewing that plan.
+Enabling the layout preserves dev volumes. Images may replace the dev root disk;
+`/workspace` and `/home/agent` survive. This storage layout supports fresh deployments only.
 
 An apply-time host preflight rejects enabling/upgrading the layout while either container is running.
 Incus hot-added read-only mounts can be remounted writable by container root;
@@ -162,11 +162,11 @@ Set it back to `true` and apply to restart. Boot autostart is disabled. The Incu
 web UI shows both containers under project `collab-ai`.
 
 Private state survives restarts and replacement of the secured root disk.
-Changing an image can still replace the dev root disk. Export needed data first.
+Changing an image replaces the dev root disk but retains its workspace and agent-home volumes.
 Setting `secured_runtime = false`, changing the project/pool, or applying a destroy
 plan can delete the custom volumes and their budgets: review deletions carefully.
 The [destroy procedure](sandbox.md#stop-or-remove) now includes both runtimes and
-volumes. It retains the host VM and shared storage pool.
+volumes. Persistent dev volumes block destruction until their deletion guard is explicitly disabled. The procedure retains the host VM and shared storage pool.
 
 ## Validation
 

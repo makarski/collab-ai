@@ -89,6 +89,8 @@ def setup(args):
     execute = [shutil.which("incus"), "--project", args.project, "exec",
                f"{args.remote}:{args.instance}", "-T", "--"]
     run(execute + ["test", "-f", "/etc/ssh/sshd_config.collab-ai"])
+    # Incus start may return before first-boot volume initialization finishes.
+    run(execute + ["systemctl", "start", "collab-workspace-setup.service"])
     run(execute + ["ssh-keygen", "-A"], stdout=subprocess.DEVNULL)
     host_key = run(execute + ["cat", "/etc/ssh/ssh_host_ed25519_key.pub"],
                    capture_output=True, text=True).stdout
