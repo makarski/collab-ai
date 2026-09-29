@@ -181,7 +181,7 @@ resource "incus_profile" "sandbox" {
   dynamic "device" {
     for_each = var.host_mounts
     content {
-      name = "host-${device.key}"
+      name = "host-${device.value.name}"
       type = "disk"
       properties = {
         source   = device.value.source

@@ -7,22 +7,28 @@ The sandbox never maps your operator account through this helper.
 
 ## Choose directories
 
-Create `mounts.json` outside the repository, using existing absolute paths:
+Create `mounts.json` outside the repository: a list of mounts with explicit names
+and existing absolute source paths.
 
 ```json
-{
-  "project": {
+[
+  {
+    "name": "project",
     "source": "/absolute/path/to/your/project",
     "path": "/workspace/project"
   },
-  "reference": {
+  {
+    "name": "reference",
     "source": "/absolute/path/to/reference",
     "path": "/workspace/reference",
     "readonly": true
   }
-}
+]
 ```
 
+`name` is a unique mount label; `source` is the host directory and `path` is its
+location inside the sandbox. Names use lowercase letters, digits and hyphens,
+start with a letter, and have at most 30 characters.
 Omitting `readonly` means `true`. Destinations must be directly under `/workspace`.
 Sources cannot overlap; choose individual directories, not `/` or your whole home.
 The helper resolves symlinks and previews the actual paths without applying changes:
@@ -132,7 +138,7 @@ for an identity change, detach all host devices first:
 incus --project collab-ai profile unset colima-collab-ai:offline raw.idmap
 ```
 
-Edit the manifest and repeat **Apply**. Use `{}` to remove all mounts. Keep the
+Edit the manifest and repeat **Apply**. Use `[]` to remove all mounts. Keep the
 empty generated variables file so the next plan explicitly selects no mounts.
 Removal does not delete host data or revoke host ACLs you granted separately.
 

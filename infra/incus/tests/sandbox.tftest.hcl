@@ -141,10 +141,10 @@ run "reject_unbounded_resources" {
 run "selected_host_mounts" {
   command = plan
   variables {
-    host_mounts = {
-      source = { source = "/home/operator/source", path = "/workspace/source" }
-      work   = { source = "/home/operator/work", path = "/workspace/work", readonly = false }
-    }
+    host_mounts = [
+      { name = "source", source = "/home/operator/source", path = "/workspace/source" },
+      { name = "work", source = "/home/operator/work", path = "/workspace/work", readonly = false },
+    ]
     share_identity = { uid = 60000, gid = 60000 }
   }
   assert {
@@ -168,7 +168,7 @@ run "selected_host_mounts" {
 run "readonly_without_host_identity" {
   command = plan
   variables {
-    host_mounts = { reference = { source = "/srv/reference", path = "/workspace/reference" } }
+    host_mounts = [{ name = "reference", source = "/srv/reference", path = "/workspace/reference" }]
   }
   assert {
     condition = (
@@ -180,10 +180,32 @@ run "readonly_without_host_identity" {
   }
 }
 
+run "reject_duplicate_mount_names" {
+  command = plan
+  variables {
+    host_mounts = [
+      { name = "repo", source = "/srv/one", path = "/workspace/one" },
+      { name = "repo", source = "/srv/two", path = "/workspace/two" },
+    ]
+  }
+  expect_failures = [var.host_mounts]
+}
+
+run "reject_duplicate_mount_targets" {
+  command = plan
+  variables {
+    host_mounts = [
+      { name = "one", source = "/srv/one", path = "/workspace/repo" },
+      { name = "two", source = "/srv/two", path = "/workspace/repo" },
+    ]
+  }
+  expect_failures = [var.host_mounts]
+}
+
 run "reject_root_mount" {
   command = plan
   variables {
-    host_mounts    = { bad = { source = "/", path = "/workspace/root" } }
+    host_mounts    = [{ name = "bad", source = "/", path = "/workspace/root" }]
     share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
@@ -192,7 +214,7 @@ run "reject_root_mount" {
 run "reject_escaping_target" {
   command = plan
   variables {
-    host_mounts    = { bad = { source = "/home/operator/repo", path = "/workspace/../etc" } }
+    host_mounts    = [{ name = "bad", source = "/home/operator/repo", path = "/workspace/../etc" }]
     share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
@@ -201,7 +223,7 @@ run "reject_escaping_target" {
 run "reject_missing_share_identity" {
   command = plan
   variables {
-    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
+    host_mounts = [{ name = "repo", source = "/home/operator/repo", path = "/workspace/repo", readonly = false }]
   }
   expect_failures = [incus_project.sandbox]
 }
@@ -217,10 +239,10 @@ run "reject_root_identity" {
 run "reject_nested_mount_sources" {
   command = plan
   variables {
-    host_mounts = {
-      repo   = { source = "/home/operator/repo", path = "/workspace/repo" }
-      nested = { source = "/home/operator/repo/subdir", path = "/workspace/nested" }
-    }
+    host_mounts = [
+      { name = "repo", source = "/home/operator/repo", path = "/workspace/repo" },
+      { name = "nested", source = "/home/operator/repo/subdir", path = "/workspace/nested" },
+    ]
     share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
@@ -231,7 +253,7 @@ run "secured_runtime" {
   variables {
     secured_runtime = true
     running         = false
-    host_mounts     = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
+    host_mounts     = [{ name = "repo", source = "/home/operator/repo", path = "/workspace/repo", readonly = false }]
     share_identity  = { uid = 60000, gid = 60000 }
   }
   assert {

@@ -20,13 +20,13 @@ def require_local_root(remote):
 def prepare(directory, remote):
     require_local_root(remote)
     uid = gid = 60000
-    mounts = {}
+    mounts = []
     for name, readonly in [("reference", True), ("work", False)]:
         source = directory / name
         source.mkdir()
         (source / "from-host").write_text(name)
         os.chown(source, uid, gid)  # only this disposable test directory
-        mounts[name] = {"source": str(source), "path": f"/workspace/{name}", "readonly": readonly}
+        mounts.append({"name": name, "source": str(source), "path": f"/workspace/{name}", "readonly": readonly})
     private = directory / "work/operator-private"
     private.write_text("operator only")
     private.chmod(0o600)
@@ -86,5 +86,5 @@ def remove_mounts(incus, target, directory, tofu):
     for name in ("reference", "work"):
         run(incus + ["profile", "device", "remove", profile, "host-" + name])
     run(incus + ["profile", "unset", profile, "raw.idmap"])
-    (directory / "mounts.auto.tfvars.json").write_text('{"host_mounts":{},"share_identity":null}')
+    (directory / "mounts.auto.tfvars.json").write_text('{"host_mounts":[],"share_identity":null}')
     run([tofu, f"-chdir={directory}", "apply", "-auto-approve", "-input=false"])

@@ -1,16 +1,17 @@
 variable "host_mounts" {
   description = "Opt-in host directories. Generate with sandbox-host.py mounts-plan/mounts-apply."
-  type = map(object({
+  type = list(object({
+    name     = string
     source   = string
     path     = string
     readonly = optional(bool, true)
   }))
-  default  = {}
+  default  = []
   nullable = false
 
   validation {
-    condition = alltrue([for name, mount in var.host_mounts :
-      can(regex("^[a-z][a-z0-9-]{0,29}$", name)) &&
+    condition = alltrue([for mount in var.host_mounts :
+      can(regex("^[a-z][a-z0-9-]{0,29}$", mount.name)) &&
       startswith(mount.source, "/") && mount.source != "/" &&
       mount.source == abspath(mount.source) &&
       !can(regex("[,\\n\\r]", mount.source)) &&
@@ -20,13 +21,18 @@ variable "host_mounts" {
   }
 
   validation {
+    condition     = length(distinct([for mount in var.host_mounts : mount.name])) == length(var.host_mounts)
+    error_message = "Each mount must have a distinct name."
+  }
+
+  validation {
     condition     = length(distinct([for mount in var.host_mounts : mount.path])) == length(var.host_mounts)
     error_message = "Each mount must have a distinct /workspace destination."
   }
 
   validation {
-    condition = alltrue(flatten([for name, mount in var.host_mounts : [
-      for other_name, other in var.host_mounts : name == other_name || (
+    condition = alltrue(flatten([for index, mount in var.host_mounts : [
+      for other_index, other in var.host_mounts : index == other_index || (
         mount.source != other.source && !startswith(mount.source, "${other.source}/")
       )
     ]]))
