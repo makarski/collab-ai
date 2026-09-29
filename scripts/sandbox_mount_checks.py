@@ -10,11 +10,15 @@ def run(command):
     return subprocess.run(command, check=True, capture_output=True, text=True)
 
 
-def prepare(directory, remote):
+def require_local_root(remote):
     if platform.system() != "Linux" or remote != "local":
         raise ValueError("--mount-check requires the local Linux Incus server")
     if os.getuid() != 0:
         raise ValueError("--mount-check requires root for disposable identity fixtures")
+
+
+def prepare(directory, remote):
+    require_local_root(remote)
     uid = gid = 60000
     mounts = {}
     for name, readonly in [("reference", True), ("work", False)]:
@@ -69,14 +73,18 @@ def verify(args, directory, project):
     check_access(execute, directory)
     run(incus + ["restart", target])
     run(execute + ["test", "-f", "/workspace/work/from-agent"])
-    run(incus + ["stop", target])
-    profile = f"{args.remote}:offline"
-    for name in ("reference", "work"):
-        run(incus + ["profile", "device", "remove", profile, "host-" + name])
-    run(incus + ["profile", "unset", profile, "raw.idmap"])
-    (directory / "mounts.auto.tfvars.json").write_text('{"host_mounts":{},"share_identity":null}')
-    run([args.tofu, f"-chdir={directory}", "apply", "-auto-approve", "-input=false"])
+    remove_mounts(incus, target, directory, args.tofu)
     run(execute + ["test", "!", "-e", "/workspace/work/from-host"])
     if (directory / "work/from-host").read_text() != "work":
         raise ValueError("Mount removal changed host data")
     print("PASS: host mounts, agent ownership, read-only denial, restart and safe removal.")
+
+
+def remove_mounts(incus, target, directory, tofu):
+    run(incus + ["stop", target])
+    profile = target.removesuffix("workspace") + "offline"
+    for name in ("reference", "work"):
+        run(incus + ["profile", "device", "remove", profile, "host-" + name])
+    run(incus + ["profile", "unset", profile, "raw.idmap"])
+    (directory / "mounts.auto.tfvars.json").write_text('{"host_mounts":{},"share_identity":null}')
+    run([tofu, f"-chdir={directory}", "apply", "-auto-approve", "-input=false"])

@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import tempfile
 
-from sandbox_share_identity import sharing_identity
+from sandbox_share_identity import resolve_identity
 
 
 def validate_source_path(value):
@@ -82,20 +82,8 @@ def mount_variables(mounts, share_user=None, system="Linux"):
     if not mounts:
         return {"host_mounts": {}, "share_identity": None}
     writable = any(not entry["readonly"] for entry in mounts.values())
-    validate_sharing_platform(system, writable, share_user)
-    if writable and not share_user:
-        raise ValueError("Writable mounts require --share-user with a dedicated Linux account")
-    identity = sharing_identity(share_user) if share_user else None
+    identity = resolve_identity(share_user, writable, system)
     return {"host_mounts": mounts, "share_identity": identity}
-
-
-def validate_sharing_platform(system, writable, share_user):
-    if system == "Linux":
-        return
-    if system != "Darwin":
-        raise ValueError("Host sharing supports Linux and macOS only")
-    if writable or share_user:
-        raise ValueError("macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace")
 
 
 def colima_mounts(mounts):

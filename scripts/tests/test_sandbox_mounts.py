@@ -44,7 +44,7 @@ class MountTests(unittest.TestCase):
         self.assertFalse(mounts.colima_mounts(spec)[0]["writable"])
         spec = mounts.read_mounts(self.manifest_with(readonly=False))
         self.assertTrue(mounts.colima_mounts(spec)[0]["writable"])
-        with patch.object(mounts, "sharing_identity", return_value={"uid": 60000, "gid": 60000}):
+        with patch("sandbox_share_identity.sharing_identity", return_value={"uid": 60000, "gid": 60000}):
             self.assertEqual(mounts.mount_variables(spec, "collab-share")["share_identity"],
                              {"uid": 60000, "gid": 60000})
 
