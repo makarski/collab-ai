@@ -35,6 +35,12 @@ def check_access(execute, directory):
     if run(execute + ["cat", "/workspace/reference/from-host"]).stdout != "reference":
         raise ValueError("Agent could not read the host reference directory")
     run(execute + ["touch", "/workspace/work/from-agent"])
+    check_host_ownership(directory)
+    check_readonly_mount(execute, directory)
+    check_mount_restrictions(execute)
+
+
+def check_host_ownership(directory):
     if not (directory / "work/from-agent").is_file():
         raise ValueError("Agent write did not reach the host")
     owner = (directory / "work/from-agent").stat()
@@ -42,10 +48,12 @@ def check_access(execute, directory):
         raise ValueError("Agent write used an identity other than the dedicated share IDs")
     if (directory / "work/from-host").stat().st_uid != 0:
         raise ValueError("Sharing changed the original host file ownership")
+
+
+def check_readonly_mount(execute, directory):
     denied = subprocess.run(execute + ["touch", "/workspace/reference/forbidden"], capture_output=True)
     if denied.returncode == 0 or (directory / "reference/forbidden").exists():
         raise ValueError("Read-only mount allowed a write")
-    check_mount_restrictions(execute)
 
 
 def check_mount_restrictions(execute):

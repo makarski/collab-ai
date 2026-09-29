@@ -82,14 +82,20 @@ def mount_variables(mounts, share_user=None, system="Linux"):
     if not mounts:
         return {"host_mounts": {}, "share_identity": None}
     writable = any(not entry["readonly"] for entry in mounts.values())
-    if system == "Darwin" and (writable or share_user):
-        raise ValueError("macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace")
-    if system not in ("Linux", "Darwin"):
-        raise ValueError("Host sharing supports Linux and macOS only")
+    validate_sharing_platform(system, writable, share_user)
     if writable and not share_user:
         raise ValueError("Writable mounts require --share-user with a dedicated Linux account")
     identity = sharing_identity(share_user) if share_user else None
     return {"host_mounts": mounts, "share_identity": identity}
+
+
+def validate_sharing_platform(system, writable, share_user):
+    if system == "Linux":
+        return
+    if system != "Darwin":
+        raise ValueError("Host sharing supports Linux and macOS only")
+    if writable or share_user:
+        raise ValueError("macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace")
 
 
 def colima_mounts(mounts):

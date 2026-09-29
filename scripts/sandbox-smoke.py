@@ -8,13 +8,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import uuid
 
 import sandbox_mount_checks
 import sandbox_network_checks
 import sandbox_secured_checks
 import sandbox_storage_checks
+import sandbox_workspace_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,71 +54,6 @@ def prepare_state(directory, args, project):
     return manifest
 
 
-def wait_for_broker(ssh):
-    for _ in range(30):
-        result = subprocess.run(ssh + ["collab status --json"], capture_output=True, text=True)
-        if result.returncode == 0:
-            if json.loads(result.stdout)["health"] == "ready":
-                return
-        time.sleep(1)
-    raise ValueError(f"Broker did not become ready: {result.stderr} {result.stdout}")
-
-
-def check_versions(ssh, lock):
-    commands = {
-        "codex --version": f"codex-cli {lock['codex_version']}\n",
-        "claude --version": f"{lock['claude_version']} (Claude Code)",
-        "go version": f"go version go{lock['go_version']} ",
-    }
-    for command, expected in commands.items():
-        output = run(ssh + [command], capture_output=True, text=True).stdout
-        if not output.startswith(expected):
-            raise ValueError(f"Installed version differs from the manifest: {command}")
-
-
-def check_offline_image(execute):
-    links = json.loads(run(execute + ["ip", "-json", "link"], capture_output=True, text=True).stdout)
-    if [link["ifname"] for link in links] != ["lo"]:
-        raise ValueError("Workspace unexpectedly has a network interface")
-    key_check = run(execute + ["find", "/etc/ssh", "-name", "ssh_host_*"], capture_output=True, text=True)
-    if key_check.stdout.strip():
-        raise ValueError("Image shipped SSH host keys")
-
-
-def check_agent_aliases(ssh, lock):
-    # Exercise installed login and non-login shell startup, without model requests.
-    for flags in ("-ic", "-lic"):
-        command = ('test "$(type -t codex)" = alias && test "$(type -t claude)" = alias && '
-                   'test "$(type -t dashboard)" = alias && codex --version && claude --version')
-        result = run(ssh + ["bash", flags, "'" + command + "'"], capture_output=True, text=True)
-        if f"codex-cli {lock['codex_version']}" not in result.stdout or \
-                f"{lock['claude_version']} (Claude Code)" not in result.stdout:
-            raise ValueError("Interactive agent aliases did not reach the installed native tools")
-
-
-def check_workspace(args, directory, project, manifest):
-    target = f"{args.remote}:workspace"
-    execute = ["incus", "--project", project, "exec", target, "-T", "--"]
-    check_offline_image(execute)
-    ssh_dir = directory / "ssh"
-    run([sys.executable, str(ROOT / "scripts/sandbox-ssh.py"), "--remote", args.remote,
-         "--project", project, "--state-dir", str(ssh_dir)])
-    ssh = ["ssh", "-F", str(ssh_dir / "config"), "workspace"]
-    uid = run(ssh + ["id -u"], capture_output=True, text=True).stdout.strip()
-    if uid == "0":
-        raise ValueError("SSH must log in as an unprivileged user")
-    check_versions(ssh, manifest["tools"])
-    run(["ssh", "-tt", "-F", str(ssh_dir / "config"), "workspace", "test -t 0 && test -t 1"],
-        stdin=subprocess.DEVNULL)
-    wait_for_broker(ssh)
-    check_agent_aliases(ssh, manifest["tools"])
-    run(ssh + ["touch /workspace/restart-check"])
-    run(["incus", "--project", project, "stop", target])
-    run(["incus", "--project", project, "start", target])
-    wait_for_broker(ssh)
-    run(ssh + ["test -f /workspace/restart-check"])
-
-
 def destroy_deployment(tofu, directory, project):
     try:
         sandbox_storage_checks.allow_test_teardown(directory, project)
@@ -129,7 +64,7 @@ def destroy_deployment(tofu, directory, project):
     shutil.rmtree(directory)
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", required=True)
     parser.add_argument("--image-dir", required=True, type=Path)
@@ -137,7 +72,23 @@ def main():
     parser.add_argument("--mount-check", action="store_true", help="also test disposable local Linux host mounts")
     parser.add_argument("--network-check", action="store_true", help="also test dev network enable/disable using only the bridge DNS service")
     parser.add_argument("--secured-check", action="store_true", help="also test persistent secured state and read-only status IPC")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def check_deployment(args, directory, project, manifest):
+    sandbox_workspace_checks.check_workspace(args, directory, project, manifest)
+    sandbox_storage_checks.prepare(args, directory, project)
+    if args.secured_check:
+        sandbox_secured_checks.verify(args, directory, project)
+    if args.mount_check:
+        sandbox_mount_checks.verify(args, directory, project)
+    sandbox_storage_checks.verify(args, directory, project)
+    if args.network_check:
+        sandbox_network_checks.verify(args, directory, project)
+
+
+def main():
+    args = parse_args()
     project = "collab-smoke-" + uuid.uuid4().hex[:12]
     directory = Path(tempfile.mkdtemp(prefix="collab-smoke-"))
     manifest = prepare_state(directory, args, project)
@@ -148,15 +99,7 @@ def main():
     try:
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         run(tofu + ["plan", "-detailed-exitcode", "-input=false"])
-        check_workspace(args, directory, project, manifest)
-        sandbox_storage_checks.prepare(args, directory, project)
-        if args.secured_check:
-            sandbox_secured_checks.verify(args, directory, project)
-        if args.mount_check:
-            sandbox_mount_checks.verify(args, directory, project)
-        sandbox_storage_checks.verify(args, directory, project)
-        if args.network_check:
-            sandbox_network_checks.verify(args, directory, project)
+        check_deployment(args, directory, project, manifest)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     except Exception:
         subprocess.run(["incus", "--project", project, "info", f"{args.remote}:workspace", "--show-log"],
