@@ -27,8 +27,7 @@ def sharing_identity(name):
     account, group = lookup_account(name)
     validate_account(account)
     other_users = [user for user in pwd.getpwall() if user.pw_name != name]
-    if any(user.pw_uid == account.pw_uid for user in other_users):
-        raise ValueError("The sharing account must have a unique UID")
+    validate_unique_uid(account, other_users)
     validate_private_group(account, group, other_users)
     return {"uid": account.pw_uid, "gid": account.pw_gid}
 
@@ -66,3 +65,8 @@ def validate_private_group(account, group, other_users):
         raise ValueError(error)
     if any(user.pw_gid == account.pw_gid for user in other_users):
         raise ValueError(error)
+
+
+def validate_unique_uid(account, other_users):
+    if any(user.pw_uid == account.pw_uid for user in other_users):
+        raise ValueError("The sharing account must have a unique UID")
