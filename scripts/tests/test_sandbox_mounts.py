@@ -28,7 +28,8 @@ class MountTests(unittest.TestCase):
         self.output = self.root / "mounts.auto.tfvars.json"
 
     def manifest_with(self, **changes):
-        spec = {"name": "project", "source": str(self.source), "path": "/workspace/project", **changes}
+        spec = {"project_name": "project", "host_path": str(self.source),
+                "container_mount_path": "/workspace/project", **changes}
         self.manifest.write_text(json.dumps([spec]))
         return self.manifest
 
@@ -40,19 +41,21 @@ class MountTests(unittest.TestCase):
 
     def test_readonly_default_and_explicit_write(self):
         spec = mounts.read_mounts(self.manifest_with())
-        self.assertTrue(spec[0]["readonly"])
+        self.assertTrue(spec[0]["container_readonly"])
         self.assertFalse(mounts.colima_mounts(spec)[0]["writable"])
-        spec = mounts.read_mounts(self.manifest_with(readonly=False))
+        spec = mounts.read_mounts(self.manifest_with(container_readonly=False))
         self.assertTrue(mounts.colima_mounts(spec)[0]["writable"])
         with patch("sandbox_share_identity.sharing_identity", return_value={"uid": 60000, "gid": 60000}):
             self.assertEqual(mounts.mount_variables(spec, "collab-share")["share_identity"],
                              {"uid": 60000, "gid": 60000})
 
     def test_rejects_bad_sources_destinations_and_types(self):
-        cases = [{"name": None}, {"name": 1}, {"name": ""}, {"name": "bad_name"}, {"name": "x" * 31},
-                 {"source": "relative"}, {"source": "/"}, {"source": str(self.root / "missing")},
-                 {"source": str(self.manifest)}, {"source": str(self.source) + ",bad"},
-                 {"path": "/etc"}, {"path": "/workspace/../etc"}, {"readonly": "false"}, {"extra": True}]
+        cases = [{"project_name": None}, {"project_name": 1}, {"project_name": ""},
+                 {"project_name": "bad_name"}, {"project_name": "x" * 31},
+                 {"host_path": "relative"}, {"host_path": "/"}, {"host_path": str(self.root / "missing")},
+                 {"host_path": str(self.manifest)}, {"host_path": str(self.source) + ",bad"},
+                 {"container_mount_path": "/etc"}, {"container_mount_path": "/workspace/../etc"},
+                 {"container_readonly": "false"}, {"readonly": False}, {"extra": True}]
         for changes in cases:
             with self.subTest(changes=changes), self.assertRaises((ValueError, OSError)):
                 mounts.read_mounts(self.manifest_with(**changes))
@@ -60,13 +63,13 @@ class MountTests(unittest.TestCase):
     def test_resolves_symlinks_before_allowlisting(self):
         alias = self.root / "alias"
         alias.symlink_to(self.source, target_is_directory=True)
-        spec = mounts.read_mounts(self.manifest_with(source=str(alias)))
-        self.assertEqual(spec[0]["source"], str(self.source))
+        spec = mounts.read_mounts(self.manifest_with(host_path=str(alias)))
+        self.assertEqual(spec[0]["host_path"], str(self.source))
 
     def test_invalid_manifest_cannot_change_host_or_generated_variables(self):
         self.output.write_text("existing configuration")
         invalid = [{}, {"project": {}}, None, "bad", [None], [[]],
-                   [{"source": str(self.source), "path": "/workspace/project"}]]
+                   [{"host_path": str(self.source), "container_mount_path": "/workspace/project"}]]
         for manifest in invalid:
             self.manifest.write_text(json.dumps(manifest))
             with self.subTest(manifest=manifest), \
@@ -82,7 +85,7 @@ class MountTests(unittest.TestCase):
         for name, target in [("project", "/workspace/other"), ("other", "/workspace/project")]:
             self.manifest_with()
             data = json.loads(self.manifest.read_text())
-            data.append({"name": name, "source": str(other), "path": target})
+            data.append({"project_name": name, "host_path": str(other), "container_mount_path": target})
             self.manifest.write_text(json.dumps(data))
             with self.subTest(name=name, target=target), self.assertRaisesRegex(ValueError, "distinct"):
                 mounts.read_mounts(self.manifest)
@@ -91,13 +94,13 @@ class MountTests(unittest.TestCase):
         self.manifest_with()
         with patch.object(host.platform, "system", return_value="Linux"):
             self.invoke("mounts-apply")
-        expected = [{"name": "project", "source": str(self.source),
-                     "path": "/workspace/project", "readonly": True}]
+        expected = [{"project_name": "project", "host_path": str(self.source),
+                     "container_mount_path": "/workspace/project", "container_readonly": True}]
         self.assertEqual(json.loads(self.output.read_text()), {"host_mounts": expected, "share_identity": None})
 
     def test_colima_mount_order_is_independent_of_manifest_order(self):
-        entries = [{"name": "z", "source": "/z", "readonly": False},
-                   {"name": "a", "source": "/a", "readonly": True}]
+        entries = [{"project_name": "z", "host_path": "/z", "container_readonly": False},
+                   {"project_name": "a", "host_path": "/a", "container_readonly": True}]
         expected = [{"location": "/a", "writable": False}, {"location": "/z", "writable": True}]
         self.assertEqual(mounts.colima_mounts(entries), expected)
         self.assertEqual(mounts.colima_mounts(list(reversed(entries))), expected)
@@ -108,7 +111,7 @@ class MountTests(unittest.TestCase):
         for target in ["/workspace/project", "/workspace/child"]:
             self.manifest_with()
             data = json.loads(self.manifest.read_text())
-            data.append({"name": "child", "source": str(child), "path": target})
+            data.append({"project_name": "child", "host_path": str(child), "container_mount_path": target})
             self.manifest.write_text(json.dumps(data))
             with self.assertRaises(ValueError):
                 mounts.read_mounts(self.manifest)
@@ -132,7 +135,7 @@ class MountTests(unittest.TestCase):
         self.assertEqual(mounts.mount_variables(empty), {"host_mounts": [], "share_identity": None})
         self.assertIsNone(mounts.colima_mounts(empty))
         with self.assertRaisesRegex(ValueError, "--share-user"):
-            mounts.mount_variables([{"name": "project", "readonly": False}])
+            mounts.mount_variables([{"project_name": "project", "container_readonly": False}])
 
     def test_mac_changes_require_stop_and_preserve_other_settings(self):
         self.manifest_with()
@@ -158,7 +161,7 @@ class MountTests(unittest.TestCase):
 
     def test_mac_rejects_writes_and_identity_mapping_before_any_mutation(self):
         for readonly, options in [(False, []), (True, ["--share-user", "collab-share"])]:
-            self.manifest_with(readonly=readonly)
+            self.manifest_with(container_readonly=readonly)
             with self.subTest(readonly=readonly), \
                     patch.object(host.platform, "system", return_value="Darwin"), \
                     patch.object(host, "configure_profile_mounts") as configure, \
@@ -168,7 +171,7 @@ class MountTests(unittest.TestCase):
             self.assertFalse(self.output.exists())
 
     def test_linux_write_requires_identity_before_writing_variables(self):
-        self.manifest_with(readonly=False)
+        self.manifest_with(container_readonly=False)
         with patch.object(host.platform, "system", return_value="Linux"), \
                 self.assertRaisesRegex(ValueError, "--share-user"):
             self.invoke("mounts-apply")

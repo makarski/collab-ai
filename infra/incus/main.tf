@@ -41,7 +41,7 @@ resource "incus_project" "sandbox" {
 
   lifecycle {
     precondition {
-      condition     = alltrue([for mount in var.host_mounts : mount.readonly]) || var.share_identity != null
+      condition     = alltrue([for mount in var.host_mounts : mount.container_readonly]) || var.share_identity != null
       error_message = "Writable host mounts require a dedicated share_identity; generate it with sandbox-host.py --share-user."
     }
   }
@@ -181,12 +181,12 @@ resource "incus_profile" "sandbox" {
   dynamic "device" {
     for_each = var.host_mounts
     content {
-      name = "host-${device.value.name}"
+      name = "host-${device.value.project_name}"
       type = "disk"
       properties = {
-        source   = device.value.source
-        path     = device.value.path
-        readonly = tostring(device.value.readonly)
+        source   = device.value.host_path
+        path     = device.value.container_mount_path
+        readonly = tostring(device.value.container_readonly)
         required = "true"
       }
     }

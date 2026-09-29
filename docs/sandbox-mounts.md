@@ -7,29 +7,32 @@ The sandbox never maps your operator account through this helper.
 
 ## Choose directories
 
-Create `mounts.json` outside the repository: a list of mounts with explicit names
-and existing absolute source paths.
+Create `mounts.json` outside the repository: a list of projects and their host-to-container mounts.
 
 ```json
 [
   {
-    "name": "project",
-    "source": "/absolute/path/to/your/project",
-    "path": "/workspace/project"
+    "project_name": "project",
+    "host_path": "/absolute/path/to/your/project",
+    "container_mount_path": "/workspace/project"
   },
   {
-    "name": "reference",
-    "source": "/absolute/path/to/reference",
-    "path": "/workspace/reference",
-    "readonly": true
+    "project_name": "reference",
+    "host_path": "/absolute/path/to/reference",
+    "container_mount_path": "/workspace/reference",
+    "container_readonly": true
   }
 ]
 ```
 
-`name` is a unique mount label; `source` is the host directory and `path` is its
-location inside the sandbox. Names use lowercase letters, digits and hyphens,
+`project_name` identifies the project; `host_path` is its existing directory on
+your machine and `container_mount_path` is where it appears inside the sandbox.
+Project names must be unique, use lowercase letters, digits and hyphens,
 start with a letter, and have at most 30 characters.
-Omitting `readonly` means `true`. Destinations must be directly under `/workspace`.
+
+`container_readonly: true` prevents writes through this mount from inside the
+container; it does not make the host directory read-only for you. It defaults to
+`true`. Container mount paths must be directly under `/workspace` and unique.
 Sources cannot overlap; choose individual directories, not `/` or your whole home.
 The helper resolves symlinks and previews the actual paths without applying changes:
 
@@ -43,7 +46,7 @@ stay private. Mounted data uses host storage and is outside the workspace quota.
 
 ## Linux writable sharing
 
-For a mount you want to edit, set `"readonly": false`. Create a dedicated account
+For a mount you want to edit, set `"container_readonly": false`. Create a dedicated account
 once (Ubuntu/Debian example):
 
 ```sh

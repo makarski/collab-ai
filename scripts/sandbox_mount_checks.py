@@ -26,7 +26,8 @@ def prepare(directory, remote):
         source.mkdir()
         (source / "from-host").write_text(name)
         os.chown(source, uid, gid)  # only this disposable test directory
-        mounts.append({"name": name, "source": str(source), "path": f"/workspace/{name}", "readonly": readonly})
+        mounts.append({"project_name": name, "host_path": str(source),
+                       "container_mount_path": f"/workspace/{name}", "container_readonly": readonly})
     private = directory / "work/operator-private"
     private.write_text("operator only")
     private.chmod(0o600)
