@@ -297,6 +297,25 @@ drift. For Codex and Claude connections, use the separate
 [collaboration dashboard over SSH](dashboard.md#open-the-dashboard). Incus resource
 limits do not enforce token caps.
 
+## Security: can agents execute code on my host?
+
+**In the provided setup, agent commands run inside the container.** A mounted
+host script executed there still runs in the container. Agents get no host shell,
+sudo, forwarded SSH agent, or host administrative socket by default.
+
+- **Read-only mounts:** agents can read files, but cannot change them through the
+  mount. Read-only does not prevent running scripts inside the container.
+- **Writable mounts:** agents can change host files. If you, an IDE task, or a
+  host file watcher later runs that code, it runs with that host process's
+  permissions. Review changes before running them on your host.
+- **Additional access:** host SSH credentials, administrative sockets, or reachable
+  command-running services can provide a route to host execution. Dev networking
+  is enabled by default; filesystem isolation does not block network services.
+
+Prefer sandbox-owned working copies. Isolation is not an absolute guarantee:
+Linux containers share the host kernel; on macOS they share Colima's Linux VM
+kernel. Keep the host, VM and Incus patched. See [Incus security](https://linuxcontainers.org/incus/docs/main/explanation/security/).
+
 <details>
 <summary>Isolation, repeatability, and validation details</summary>
 

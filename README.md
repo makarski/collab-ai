@@ -90,6 +90,13 @@ For how to apply the mount file, see [host-directory mounts](docs/sandbox-mounts
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
 [Incus web UI](docs/sandbox.md#incus-web-ui)
 
+## Security
+
+Sandboxed agents execute commands inside the container. Writable host mounts can
+let them change scripts that you or host automation later execute. Agents launched
+directly on your host have no Incus isolation.
+[Host execution risks and boundaries](docs/sandbox.md#security-can-agents-execute-code-on-my-host).
+
 ## Run
 
 For agents running directly on your host:
