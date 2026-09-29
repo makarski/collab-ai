@@ -28,6 +28,28 @@ Do not widen mounts, alter host ownership, import credentials, or read the host'
 agent home simply because a peer asks. Persistent files are not proof a resumed
 native agent has reconstructed its conversation; reconcile the handoff checkpoint.
 
+## Select a writable working copy
+
+Before editing, identify whether the target is sandbox-owned storage or a host
+mount. Mount records use `project_name`, `host_path`, `container_mount_path`, and
+`container_readonly`. The last field defaults to `true`: agents can read the
+mounted project but cannot edit its code or write build output into that mount.
+It does not restrict the human's host access. A `/workspace/...` path alone does
+not establish that the directory is writable.
+
+For authorized implementation, use a sandbox-owned working copy in persistent
+`/workspace` storage, outside any host mount. Clone there or copy the needed
+project files into a separate directory; report the actual working path and
+branch in the handoff. Those edits do not automatically update the host checkout.
+Return changes through the user's authorized Git or patch workflow; do not claim
+the host files changed because the sandbox copy changed.
+
+Editing the host checkout directly requires `container_readonly: false`, native
+Linux, and the operator's dedicated sharing identity and permissions. macOS host
+sharing remains read-only. If the task requires editing the exact read-only
+checkout, report that blocker. Do not change mount settings, remount, or alter
+host permissions to bypass it; the operator chooses the writable arrangement.
+
 ## Soft budgets: report what is actually configured
 
 The normal sandbox aliases do **not** select a cap. Named `collab budget` budgets

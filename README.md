@@ -46,6 +46,10 @@ automatically with the VM. Run from the repository root. On Linux, skip Colima
 commands and use `local:` / `--remote local`. For optional host mounts, use the
 [`mounts.json` example](docs/sandbox-mounts.md#choose-directories).
 
+**Where agents edit:** use a working copy in the sandbox's persistent `/workspace`
+storage. Host mounts are read-only by default, so agents can inspect those files
+but cannot edit them there. [Editing options](docs/sandbox-mounts.md#where-agents-can-edit).
+
 ```sh
 # Start the Mac VM, then the containers
 python3 scripts/sandbox-host.py apply

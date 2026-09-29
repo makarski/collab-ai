@@ -7,7 +7,9 @@ a 10 GiB root disk, 10 GiB project volume, 2 GiB agent-home volume, and a 512-pr
 Dev has network access by default; host mounts and credentials are not supplied.
 It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
 starts automatically. [Sign in to your subscription inside dev](#sign-in-and-network-access).
-To work on a local checkout, opt into [selected host directory mounts](sandbox-mounts.md).
+For coding, keep a working copy in the sandbox's persistent `/workspace` storage.
+[Host directory mounts](sandbox-mounts.md#where-agents-can-edit) are read-only by
+default: agents can inspect the host checkout but cannot edit it through that mount.
 
 [Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
 [SSH](#4-ssh-into-the-workspace) · [Agent dashboard](dashboard.md#open-the-dashboard) ·

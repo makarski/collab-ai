@@ -5,6 +5,21 @@ sharing; edit inside the persistent `/workspace` volume. On native Linux, writab
 sharing requires a dedicated account with access to the selected directory.
 The sandbox never maps your operator account through this helper.
 
+## Where agents can edit
+
+| Project location | What agents can do |
+| --- | --- |
+| Sandbox-owned working copy in persistent `/workspace` storage | Edit code and write build output inside the sandbox. |
+| Host mount with `container_readonly: true` (the default) | Read and analyze files; cannot edit code or write build output into that mount. |
+| Host mount with `container_readonly: false` | Edit host files directly, subject to host permissions. Supported on native Linux with a dedicated sharing identity. |
+
+**For coding on macOS, use a sandbox-owned working copy.** Clone the project inside
+the sandbox, or copy the needed files from a read-only mount into a separate,
+unmounted directory such as `/workspace/project-work`. Changes in that copy do
+not automatically sync back to the host; return them through Git or a patch.
+A path under `/workspace` can still be a read-only host mount—its location alone
+does not make it writable.
+
 ## Choose directories
 
 Create `mounts.json` outside the repository: a list of projects and their host-to-container mounts.
