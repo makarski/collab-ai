@@ -1,8 +1,9 @@
 mock_provider "incus" {}
 
 variables {
-  incus_socket      = "/tmp/test-incus.sock"
-  image_fingerprint = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  incus_socket        = "/tmp/test-incus.sock"
+  image_fingerprint   = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  dev_network_enabled = false
 }
 
 run "offline_workspace" {
@@ -11,12 +12,12 @@ run "offline_workspace" {
   assert {
     condition = (
       incus_project.sandbox.config["restricted"] == "true" &&
-      incus_project.sandbox.config["restricted.devices.nic"] == "block" &&
+      incus_project.sandbox.config["restricted.devices.nic"] == "managed" &&
       incus_project.sandbox.config["restricted.devices.proxy"] == "block" &&
       incus_project.sandbox.config["restricted.devices.disk"] == "managed" &&
       incus_project.sandbox.config["restricted.containers.privilege"] == "isolated"
     )
-    error_message = "The project must reject networking, host bind mounts and privileged containers."
+    error_message = "The project must restrict network selection, host bind mounts and privileged containers."
   }
 
   assert {
@@ -51,12 +52,12 @@ run "offline_workspace" {
 run "configured_limits_and_stop" {
   command = plan
   variables {
-    cpu_count  = 3
-    memory_gib = 6
-    disk_gib   = 12
-    workspace_gib = 20
+    cpu_count      = 3
+    memory_gib     = 6
+    disk_gib       = 12
+    workspace_gib  = 20
     agent_home_gib = 4
-    running    = false
+    running        = false
   }
   assert {
     condition = (
@@ -128,10 +129,10 @@ run "reject_default_project" {
 run "reject_unbounded_resources" {
   command = plan
   variables {
-    cpu_count  = 0
-    memory_gib = 0
-    disk_gib   = 0
-    workspace_gib = 0
+    cpu_count      = 0
+    memory_gib     = 0
+    disk_gib       = 0
+    workspace_gib  = 0
     agent_home_gib = 101
   }
   expect_failures = [var.cpu_count, var.memory_gib, var.disk_gib, var.workspace_gib, var.agent_home_gib]
@@ -144,17 +145,17 @@ run "selected_host_mounts" {
       source = { source = "/home/operator/source", path = "/workspace/source" }
       work   = { source = "/home/operator/work", path = "/workspace/work", readonly = false }
     }
-    mount_owner = { uid = 501, gid = 20 }
+    share_identity = { uid = 60000, gid = 60000 }
   }
   assert {
     condition = (
       incus_project.sandbox.config["restricted.devices.disk.paths"] == "/home/operator/source,/home/operator/work" &&
-      incus_project.sandbox.config["restricted.idmap.uid"] == "501" &&
-      incus_project.sandbox.config["restricted.devices.nic"] == "block" &&
-      incus_profile.sandbox.config["raw.idmap"] == "uid 501 1001\ngid 20 1001" &&
+      incus_project.sandbox.config["restricted.idmap.uid"] == "60000" &&
+      incus_project.sandbox.config["restricted.devices.nic"] == "managed" &&
+      incus_profile.sandbox.config["raw.idmap"] == "uid 60000 1001\ngid 60000 1001" &&
       incus_profile.sandbox.config["security.idmap.isolated"] == "true"
     )
-    error_message = "Only selected paths and one non-root host identity may be shared."
+    error_message = "Only selected paths and one dedicated host identity may be shared."
   }
   assert {
     condition = alltrue([for device in incus_profile.sandbox.device :
@@ -164,11 +165,26 @@ run "selected_host_mounts" {
   }
 }
 
+run "readonly_without_host_identity" {
+  command = plan
+  variables {
+    host_mounts = { reference = { source = "/srv/reference", path = "/workspace/reference" } }
+  }
+  assert {
+    condition = (
+      !contains(keys(incus_profile.sandbox.config), "raw.idmap") &&
+      !contains(keys(incus_project.sandbox.config), "restricted.idmap.uid") &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "host-reference"]).properties.readonly == "true"
+    )
+    error_message = "Read-only sharing must not inherit an operator identity."
+  }
+}
+
 run "reject_root_mount" {
   command = plan
   variables {
-    host_mounts = { bad = { source = "/", path = "/workspace/root" } }
-    mount_owner = { uid = 501, gid = 20 }
+    host_mounts    = { bad = { source = "/", path = "/workspace/root" } }
+    share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
 }
@@ -176,16 +192,16 @@ run "reject_root_mount" {
 run "reject_escaping_target" {
   command = plan
   variables {
-    host_mounts = { bad = { source = "/home/operator/repo", path = "/workspace/../etc" } }
-    mount_owner = { uid = 501, gid = 20 }
+    host_mounts    = { bad = { source = "/home/operator/repo", path = "/workspace/../etc" } }
+    share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
 }
 
-run "reject_missing_mount_owner" {
+run "reject_missing_share_identity" {
   command = plan
   variables {
-    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo" } }
+    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
   }
   expect_failures = [incus_project.sandbox]
 }
@@ -193,19 +209,19 @@ run "reject_missing_mount_owner" {
 run "reject_root_identity" {
   command = plan
   variables {
-    mount_owner = { uid = 0, gid = 20 }
+    share_identity = { uid = 0, gid = 20 }
   }
-  expect_failures = [var.mount_owner]
+  expect_failures = [var.share_identity]
 }
 
 run "reject_nested_mount_sources" {
   command = plan
   variables {
     host_mounts = {
-      repo = { source = "/home/operator/repo", path = "/workspace/repo" }
+      repo   = { source = "/home/operator/repo", path = "/workspace/repo" }
       nested = { source = "/home/operator/repo/subdir", path = "/workspace/nested" }
     }
-    mount_owner = { uid = 501, gid = 20 }
+    share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
 }
@@ -214,9 +230,9 @@ run "secured_runtime" {
   command = plan
   variables {
     secured_runtime = true
-    running = false
-    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
-    mount_owner = { uid = 501, gid = 20 }
+    running         = false
+    host_mounts     = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
+    share_identity  = { uid = 60000, gid = 60000 }
   }
   assert {
     condition = (

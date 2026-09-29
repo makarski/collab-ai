@@ -2,11 +2,11 @@
 
 **Host → image → workspace → SSH.** Run these commands from the repository root.
 
-This setup creates an **offline Linux workspace** with 2 CPUs, 4 GiB memory,
-a 10 GiB root disk, 10 GiB project volume, 2 GiB agent-home volume, and a 512-process limit. By default it has no NIC, host mounts, or credentials.
+This setup creates an **isolated Linux workspace** with 2 CPUs, 4 GiB memory,
+a 10 GiB root disk, 10 GiB project volume, 2 GiB agent-home volume, and a 512-process limit.
+Dev has network access by default; host mounts and credentials are not supplied.
 It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
-starts automatically. Model access remains disabled by the absence of networking
-and credentials; provisioning does not yet configure subscription logins or model access.
+starts automatically. [Sign in to your subscription inside dev](#sign-in-and-network-access).
 To work on a local checkout, opt into [selected host directory mounts](sandbox-mounts.md).
 
 [Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
@@ -51,7 +51,7 @@ cp dist/installed-workspace/image.tfvars.json infra/incus/image.auto.tfvars.json
 
 The downloader selects your Incus server's architecture and verifies the image's
 SHA256. Nothing compiles locally. CI has already built and tested the image;
-the finished workspace has no NIC. No Docker or host Go installation is needed.
+dev networking is selected at provisioning time. No Docker or host Go installation is needed.
 
 Edit `sandbox.auto.tfvars`:
 
@@ -59,6 +59,8 @@ Edit `sandbox.auto.tfvars`:
 | --- | --- |
 | `incus_socket` | Absolute socket path printed by the Mac bootstrap; usually `/var/lib/incus/unix.socket` on Linux |
 | `storage_pool` | Existing quota-capable pool; `default` for the Colima host |
+| `dev_network` | Existing managed bridge with DHCP/DNS and outbound routing/NAT; defaults to `incusbr0` |
+| `dev_network_enabled` | Defaults to `true`; set `false` to remove dev's NIC |
 
 The generated image variables pin the artifact's absolute path and SHA256.
 Keep that artifact: provisioning verifies its checksum. For another version, use
@@ -71,7 +73,7 @@ a new `--output` directory. [Image contents and build details](sandbox-image.md)
 For separate dev and secured containers, add `secured_runtime = true` to
 `sandbox.auto.tfvars`. Stop workspace and any existing secured container before
 enabling or upgrading the layout; the apply restarts them. See [secured runtime setup](secured-runtime.md) for private
-state, host-only budget commands and lifecycle instructions. It remains offline.
+state, host-only budget commands and lifecycle instructions. Control remains offline.
 
 ```sh
 tofu -chdir=infra/incus init
@@ -105,7 +107,7 @@ ssh -F infra/incus/ssh/config workspace
 ```
 
 You log in as **`agent`**, without sudo. Interactive shells start in `/workspace`.
-SSH travels through `incus exec`; it needs no IP address, NIC or listening port.
+SSH travels through `incus exec`; it works even with dev networking disabled and opens no network SSH listener.
 Your host must already have Incus access and OpenSSH. The helper creates a dedicated
 local key in the ignored `infra/incus/ssh/` directory, copies only its public key,
 and pins the guest host key through Incus. It never forwards your SSH agent.
@@ -114,28 +116,82 @@ Inside the workspace:
 
 ```sh
 collab status
-collab dashboard
+dashboard
 codex --version
 claude --version
 tmux new -A -s work
 ```
 
-Both agent CLIs are installed, but model sessions cannot work offline. Once model
-access is separately provided, their launch commands are:
+After [signing in](#sign-in-and-network-access), launch the installed agents:
 
 ```sh
-collab-codex --agent-id codex-1 --terminal -- -C /workspace
-claude --strict-mcp-config --mcp-config /etc/collab-ai/claude-mcp.json \
-  --dangerously-load-development-channels server:collab
+codex
+claude
 ```
 
 Open each in its own SSH terminal or tmux pane. `exit` closes a shell; tmux keeps
 sessions alive across disconnects. No agents launch automatically. The collaboration
 skill is available at `/usr/local/share/collab-ai/SKILL.md`.
 
+Interactive `agent` shells alias `codex` to the managed `collab-codex` terminal
+(ID `codex-1`) and `claude` to channels with `/etc/collab-ai/claude-mcp.json`
+(ID `claude-1`). Both use the sandbox broker. Arguments still work, for example
+`codex resume SESSION_ID` and `claude --resume`. Claude requires channel consent
+and an account that permits channels. One active session owns each ID; additional
+sessions need distinct IDs and explicit launcher/configuration commands.
+Use `command codex` or `command claude` for the native CLI, including login/setup.
+Aliases apply to interactive SSH and Bash/tmux shells; scripts use native binaries.
+`dashboard` opens `collab dashboard` in either an interactive dev shell or a control
+shell. It queries the same broker without starting another broker or database.
+
 If a replaced workspace has a new host key, the helper refuses it: verify the
 replacement, remove `infra/incus/ssh/known_hosts`, then rerun the helper.
 Setup replaces the single operator public key; multiple terminals share it.
+
+## Sign in and network access
+
+**Dev is online by default; control has no NIC.** The selected managed Incus
+bridge supplies DHCP/DNS and its configured outbound routing/NAT. This is general
+network access, including reachable host/LAN services, not a provider-domain
+allowlist. No port forwards are added. Bridge and host firewall rules determine
+who can reach services you start in dev; NAT alone is not an ingress firewall.
+
+If you provision another project on the same Incus server, select a different
+managed bridge with `dev_network`: two instances named `workspace` cannot share
+the same bridge's managed DNS. The provisioning module uses an existing bridge;
+it does not create or reconfigure your host network.
+
+For Codex subscription login, run **inside your dev SSH shell**:
+
+```sh
+command codex login --device-auth
+command codex login status
+codex
+```
+
+Open the supplied verification URL on your Mac/Linux host and enter the code.
+Enable device-code login in your ChatGPT security settings or workspace permissions
+if required. `command` bypasses the interactive collaboration alias for setup.
+Browser login to `localhost:1455` cannot reach the container: that address refers
+to the browser's machine, and sandbox SSH forwarding stays disabled. See
+[OpenAI's device-login guide](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
+For Claude, run `command claude auth login` and follow its terminal instructions;
+the installed CLI defaults to Claude subscription login. Credentials saved under
+`/home/agent` survive container replacement; they are not copied from your host.
+
+**Opt out:** set `dev_network_enabled = false` in your deployment's
+`sandbox.auto.tfvars` (or edit the same key in its JSON variables file), then
+review and apply:
+
+```sh
+tofu -chdir=infra/incus plan -out=sandbox.tfplan
+tofu -chdir=infra/incus apply sandbox.tfplan
+```
+
+Use the same checkout/state that provisioned the deployment. The apply removes
+dev's NIC and interrupts its network connections. Set `true` and apply again to
+restore access. Offline mode keeps SSH, broker communication and the dashboard
+available; subscription login and model requests need networking.
 
 ## Status and recovery
 
@@ -157,7 +213,8 @@ Run the command for your platform:
 | List containers | `incus --project collab-ai list colima-collab-ai:` | `incus --project collab-ai list local:` |
 | Recovery shell (root) | `incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh` | `incus --project collab-ai exec local:workspace -- /bin/sh` |
 
-Expect `workspace` to be `RUNNING`. `ip -brief link` inside it should show only loopback.
+Expect `workspace` to be `RUNNING` with an IP address. `ip -brief link` inside it
+should show `eth0` and loopback. With `dev_network_enabled = false`, only loopback remains.
 After starting it, allow a few seconds for the broker to become ready.
 
 - **Remote missing on Mac:** check `colima list`, then rerun the host bootstrap.
@@ -263,7 +320,8 @@ tofu -chdir=infra/incus test
 
 Live-tested on Apple Silicon with Colima 0.10.3 and Incus server 7.1/client 7.4:
 image build/export, provisioning, unchanged second plan, unprivileged SSH,
-host-key replacement detection, offline networking, and restart persistence.
+host-key replacement detection, dev network enable/disable with offline control,
+dedicated Linux sharing IDs, read-only denial, and restart persistence.
 Mock tests pass with OpenTofu 1.12.6 and Terraform 1.15.4. The image workflow also
 exercises provisioning and SSH on AMD64 and ARM64 Ubuntu runners.
 

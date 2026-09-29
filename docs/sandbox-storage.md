@@ -22,8 +22,8 @@ private volume. No dev volume is mounted into control.
 
 Selected host directories remain optional nested mounts under `/workspace`.
 Their data lives on the host, not in `workspace-data`. Host-agent homes are never
-mounted automatically. Dedicated host-sharing identities and selected host-state
-import are later work.
+mounted automatically. [Linux writable sharing uses a dedicated account](sandbox-mounts.md#linux-writable-sharing);
+macOS sharing is read-only. Selected host-state import remains later work.
 
 ## Back up and restore
 

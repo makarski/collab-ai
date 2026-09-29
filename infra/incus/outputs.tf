@@ -6,6 +6,6 @@ output "workspace" {
     instance          = incus_instance.workspace.name
     image_fingerprint = local.workspace_fingerprint
     architecture      = incus_instance.workspace.architecture
-    network           = "none"
+    network           = var.dev_network_enabled ? var.dev_network : "none"
   }
 }

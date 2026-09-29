@@ -12,7 +12,9 @@ disk_gib     = 10 # replaceable root disk
 workspace_gib = 10 # persistent project data
 agent_home_gib = 2 # persistent settings, memory and sessions
 running      = true
+dev_network_enabled = true # set false to remove dev's NIC (offline)
+dev_network = "incusbr0" # existing managed bridge; general network access, not a domain allowlist
 
-# Optional protected configuration, broker and dev executor; both runtimes stay offline.
+# Optional control services and shared broker; control always stays offline.
 # Stop both existing runtimes before enabling/upgrading; see docs/secured-runtime.md.
 secured_runtime = false
