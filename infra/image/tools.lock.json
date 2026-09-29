@@ -4,7 +4,7 @@
   "claude_version": "2.1.283",
   "architectures": {
     "aarch64": {
-      "base_image": "354d46aeb19462028b7aaa03cc71d41b7c7584e49c5efed9033ec88091cc6bad",
+      "base_image": "6381f978985fdd66f52809ab21ea17dfece05576debdd3c6e5824cba6c93886d",
       "go_arch": "arm64",
       "go_sha256": "9bf234ea70ffec9347fdf6b22ce4add51717d3386a38a441e8c8743fceb5eaee",
       "codex_target": "aarch64-unknown-linux-musl",
@@ -13,7 +13,7 @@
       "claude_sha256": "346d294f0103d6fc0de11ac953579b5c62dfa90698a4cfc486b6f927c615e697"
     },
     "x86_64": {
-      "base_image": "a1f771bd710c64e03893794267cfa35da8e23e8d4749436028af4d606220ce28",
+      "base_image": "a4f3be59e3082311939e194f9b69ded49785979aafb4bcb7ef58b2506104c61b",
       "go_arch": "amd64",
       "go_sha256": "a21ae5633a269bcd7e90cf767e48225633795e99d831742cbf3397064fee7712",
       "codex_target": "x86_64-unknown-linux-musl",

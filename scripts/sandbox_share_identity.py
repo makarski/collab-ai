@@ -6,7 +6,14 @@ import pwd
 
 
 def resolve_identity(share_user, writable, system):
-    validate_sharing_platform(system, writable, share_user)
+    if system == "Darwin":
+        return mac_identity(share_user, writable)
+    if system != "Linux":
+        raise ValueError("Host sharing supports Linux and macOS only")
+    return linux_identity(share_user, writable)
+
+
+def linux_identity(share_user, writable):
     if share_user:
         return sharing_identity(share_user)
     if writable:
@@ -14,13 +21,13 @@ def resolve_identity(share_user, writable, system):
     return None
 
 
-def validate_sharing_platform(system, writable, share_user):
-    if system == "Linux":
-        return
-    if system != "Darwin":
-        raise ValueError("Host sharing supports Linux and macOS only")
-    if writable or share_user:
-        raise ValueError("macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace")
+def mac_identity(share_user, writable):
+    error = "macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace"
+    if writable:
+        raise ValueError(error)
+    if share_user:
+        raise ValueError(error)
+    return None
 
 
 def sharing_identity(name):
@@ -50,23 +57,23 @@ def validate_account(account):
 
 def validate_account_ids(account):
     error = "The sharing account must not be root or the invoking operator"
-    if min(account.pw_uid, account.pw_gid) <= 0:
-        raise ValueError(error)
+    require(min(account.pw_uid, account.pw_gid) > 0, error)
     operator_ids = {os.getuid(), int(os.environ.get("SUDO_UID", os.getuid()))}
-    if account.pw_uid in operator_ids:
-        raise ValueError(error)
+    require(account.pw_uid not in operator_ids, error)
 
 
 def validate_private_group(account, group, other_users):
     error = "The sharing account must have a private primary group with the same name"
-    if group.gr_name != account.pw_name:
-        raise ValueError(error)
-    if set(group.gr_mem) - {account.pw_name}:
-        raise ValueError(error)
-    if any(user.pw_gid == account.pw_gid for user in other_users):
-        raise ValueError(error)
+    require(group.gr_name == account.pw_name, error)
+    require(set(group.gr_mem).issubset({account.pw_name}), error)
+    require(all(user.pw_gid != account.pw_gid for user in other_users), error)
 
 
 def validate_unique_uid(account, other_users):
-    if any(user.pw_uid == account.pw_uid for user in other_users):
-        raise ValueError("The sharing account must have a unique UID")
+    require(all(user.pw_uid != account.pw_uid for user in other_users),
+            "The sharing account must have a unique UID")
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
