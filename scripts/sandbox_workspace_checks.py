@@ -6,6 +6,8 @@ import subprocess
 import sys
 import time
 
+import sandbox_skill_checks
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,6 +70,7 @@ def check_workspace(args, directory, project, manifest):
     if uid == "0":
         raise ValueError("SSH must log in as an unprivileged user")
     check_versions(ssh, manifest["tools"])
+    sandbox_skill_checks.verify(ssh, manifest)
     run(["ssh", "-tt", "-F", str(ssh_dir / "config"), "workspace", "test -t 0 && test -t 1"],
         stdin=subprocess.DEVNULL)
     wait_for_broker(ssh)

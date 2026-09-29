@@ -21,7 +21,10 @@ alone do not wake an idle conversation.
 
 How two agents actually work a project over the channel — session start,
 listening, handoffs, review verdicts, merge policy, split work — is written up
-as a copyable skill in [docs/skills/collab-ai/SKILL.md](skills/collab-ai/SKILL.md).
+as a portable skill in [docs/skills/collab-ai/SKILL.md](skills/collab-ai/SKILL.md).
+Copy the whole `collab-ai` directory, including `references/`, when installing it
+elsewhere. [Offline acceptance cases](skill-validation.md) cover the interaction
+contract and distinguish packaging checks from live model-delivery evidence.
 An `agent_id` is a logical inbox name (1–128 bytes, other than `*`). Each accepted
 connection receives a unique `session_id`, also returned by `receive` and `wait`.
 One session owns an inbox. A second messaging connection using the same agent ID

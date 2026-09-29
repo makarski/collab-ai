@@ -131,7 +131,10 @@ claude
 
 Open each in its own SSH terminal or tmux pane. `exit` closes a shell; tmux keeps
 sessions alive across disconnects. No agents launch automatically. The collaboration
-skill is available at `/usr/local/share/collab-ai/SKILL.md`.
+skill and its references are installed at `/usr/local/share/collab-ai/`.
+Ask either agent to read `/usr/local/share/collab-ai/SKILL.md` for the interaction
+contract. This location is a readable bundle, not automatic skill discovery; when
+installing it into a project's skill directory, copy the whole `collab-ai` folder.
 
 Interactive `agent` shells alias `codex` to the managed `collab-codex` terminal
 (ID `codex-1`) and `claude` to channels with `/etc/collab-ai/claude-mcp.json`

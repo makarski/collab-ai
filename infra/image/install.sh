@@ -33,7 +33,7 @@ install -d -o agent -g agent /workspace /var/lib/collab-ai
 install -d /etc/collab-ai /etc/ssh/authorized_keys /usr/local/share/collab-ai
 cp infra/image/tools.lock.json /usr/local/share/collab-ai/
 cp build-source.json /usr/local/share/collab-ai/
-cp docs/skills/collab-ai/SKILL.md /usr/local/share/collab-ai/SKILL.md
+bash infra/image/install-skill.sh docs/skills/collab-ai /usr/local/share/collab-ai
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
 cp infra/image/sshd_config /etc/ssh/sshd_config.collab-ai
 cp infra/image/collab-broker.service infra/image/collab-secured-setup.service /etc/systemd/system/
