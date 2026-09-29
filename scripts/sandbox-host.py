@@ -186,7 +186,7 @@ def configure_mounts(args):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["plan", "apply", "mounts-plan", "mounts-apply"])
-    parser.add_argument("--mounts-file", type=Path, help="JSON map of selected source/path/readonly entries")
+    parser.add_argument("--mounts-file", type=Path, help="JSON list of project_name/host_path/container_mount_path/container_readonly mount objects")
     parser.add_argument("--output", type=Path, default=CONFIG.parent / "mounts.auto.tfvars.json")
     parser.add_argument("--share-user", help="Dedicated local Linux sharing account; required for writable mounts")
     return parser.parse_args()

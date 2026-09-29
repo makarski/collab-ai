@@ -141,10 +141,10 @@ run "reject_unbounded_resources" {
 run "selected_host_mounts" {
   command = plan
   variables {
-    host_mounts = {
-      source = { source = "/home/operator/source", path = "/workspace/source" }
-      work   = { source = "/home/operator/work", path = "/workspace/work", readonly = false }
-    }
+    host_mounts = [
+      { project_name = "source", host_path = "/home/operator/source", container_mount_path = "/workspace/source" },
+      { project_name = "work", host_path = "/home/operator/work", container_mount_path = "/workspace/work", container_readonly = false },
+    ]
     share_identity = { uid = 60000, gid = 60000 }
   }
   assert {
@@ -168,7 +168,7 @@ run "selected_host_mounts" {
 run "readonly_without_host_identity" {
   command = plan
   variables {
-    host_mounts = { reference = { source = "/srv/reference", path = "/workspace/reference" } }
+    host_mounts = [{ project_name = "reference", host_path = "/srv/reference", container_mount_path = "/workspace/reference" }]
   }
   assert {
     condition = (
@@ -180,10 +180,32 @@ run "readonly_without_host_identity" {
   }
 }
 
+run "reject_duplicate_mount_names" {
+  command = plan
+  variables {
+    host_mounts = [
+      { project_name = "repo", host_path = "/srv/one", container_mount_path = "/workspace/one" },
+      { project_name = "repo", host_path = "/srv/two", container_mount_path = "/workspace/two" },
+    ]
+  }
+  expect_failures = [var.host_mounts]
+}
+
+run "reject_duplicate_mount_targets" {
+  command = plan
+  variables {
+    host_mounts = [
+      { project_name = "one", host_path = "/srv/one", container_mount_path = "/workspace/repo" },
+      { project_name = "two", host_path = "/srv/two", container_mount_path = "/workspace/repo" },
+    ]
+  }
+  expect_failures = [var.host_mounts]
+}
+
 run "reject_root_mount" {
   command = plan
   variables {
-    host_mounts    = { bad = { source = "/", path = "/workspace/root" } }
+    host_mounts    = [{ project_name = "bad", host_path = "/", container_mount_path = "/workspace/root" }]
     share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
@@ -192,7 +214,7 @@ run "reject_root_mount" {
 run "reject_escaping_target" {
   command = plan
   variables {
-    host_mounts    = { bad = { source = "/home/operator/repo", path = "/workspace/../etc" } }
+    host_mounts    = [{ project_name = "bad", host_path = "/home/operator/repo", container_mount_path = "/workspace/../etc" }]
     share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
@@ -201,7 +223,7 @@ run "reject_escaping_target" {
 run "reject_missing_share_identity" {
   command = plan
   variables {
-    host_mounts = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
+    host_mounts = [{ project_name = "repo", host_path = "/home/operator/repo", container_mount_path = "/workspace/repo", container_readonly = false }]
   }
   expect_failures = [incus_project.sandbox]
 }
@@ -217,10 +239,10 @@ run "reject_root_identity" {
 run "reject_nested_mount_sources" {
   command = plan
   variables {
-    host_mounts = {
-      repo   = { source = "/home/operator/repo", path = "/workspace/repo" }
-      nested = { source = "/home/operator/repo/subdir", path = "/workspace/nested" }
-    }
+    host_mounts = [
+      { project_name = "repo", host_path = "/home/operator/repo", container_mount_path = "/workspace/repo" },
+      { project_name = "nested", host_path = "/home/operator/repo/subdir", container_mount_path = "/workspace/nested" },
+    ]
     share_identity = { uid = 60000, gid = 60000 }
   }
   expect_failures = [var.host_mounts]
@@ -231,7 +253,7 @@ run "secured_runtime" {
   variables {
     secured_runtime = true
     running         = false
-    host_mounts     = { repo = { source = "/home/operator/repo", path = "/workspace/repo", readonly = false } }
+    host_mounts     = [{ project_name = "repo", host_path = "/home/operator/repo", container_mount_path = "/workspace/repo", container_readonly = false }]
     share_identity  = { uid = 60000, gid = 60000 }
   }
   assert {

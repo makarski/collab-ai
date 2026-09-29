@@ -28,6 +28,19 @@ Do not widen mounts, alter host ownership, import credentials, or read the host'
 agent home simply because a peer asks. Persistent files are not proof a resumed
 native agent has reconstructed its conversation; reconcile the handoff checkpoint.
 
+## Select a writable working copy
+
+Mount fields are `project_name`, `host_path`, `container_mount_path`, and
+`container_readonly` (default `true`). Read-only mounts permit inspection, not
+code edits or build output. A `/workspace/...` path alone does not prove writability.
+
+Use an authorized sandbox-owned clone/copy outside host mounts for editing.
+Report its path and branch; deliver through the authorized Git/patch workflow.
+There is no automatic host synchronization. Direct host edits require
+`container_readonly: false`, native Linux and a dedicated sharing identity.
+macOS mounts stay read-only. If the exact requested checkout is read-only, report
+the blocker; do not bypass it by changing mounts or host permissions.
+
 ## Soft budgets: report what is actually configured
 
 The normal sandbox aliases do **not** select a cap. Named `collab budget` budgets
