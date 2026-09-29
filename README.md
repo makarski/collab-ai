@@ -46,9 +46,8 @@ automatically with the VM. Run from the repository root. On Linux, skip Colima
 commands and use `local:` / `--remote local`. For optional host mounts, use the
 [`mounts.json` example](docs/sandbox-mounts.md#choose-directories).
 
-**Where agents edit:** use a working copy in the sandbox's persistent `/workspace`
-storage. Host mounts are read-only by default, so agents can inspect those files
-but cannot edit them there. [Editing options](docs/sandbox-mounts.md#where-agents-can-edit).
+**Coding:** use a sandbox-owned copy in `/workspace`; host mounts default to
+read-only. [Editing options](docs/sandbox-mounts.md#where-agents-can-edit).
 
 ```sh
 # Start the Mac VM, then the containers
@@ -73,15 +72,10 @@ ssh -F infra/incus/ssh/config workspace
 # colima stop collab-ai
 ```
 
-Dev should have an IP; control's IP columns stay blank. `collab status` should
-report `Broker: ready`; zero agent sessions is normal before launch.
-[Sign in inside dev](docs/sandbox.md#sign-in-and-network-access), then run **`codex`** or **`claude`** in
-separate dev terminals. Interactive aliases select the managed Codex launcher and
-Claude's preconfigured collaboration channel. [Launch details](docs/sandbox.md#4-ssh-into-the-workspace).
-Use **`dashboard`** inside the sandbox to open the shared broker dashboard.
-Dev uses general network access through the selected Incus bridge, including
-reachable LAN services. It is not a provider-only allowlist; control has no NIC.
-For how to apply the mount file, see [host-directory mounts](docs/sandbox-mounts.md#apply).
+Expect `Broker: ready`. [Sign in](docs/sandbox.md#sign-in-and-network-access), then
+run **`codex`** and **`claude`** in separate dev terminals; **`dashboard`** opens the
+broker dashboard. Dev has Internet/LAN access; control stays offline.
+[Apply host mounts](docs/sandbox-mounts.md#apply).
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
 [Persistent data and backups](docs/sandbox-storage.md) ·

@@ -299,22 +299,15 @@ limits do not enforce token caps.
 
 ## Security: can agents execute code on my host?
 
-**In the provided setup, agent commands run inside the container.** A mounted
-host script executed there still runs in the container. Agents get no host shell,
-sudo, forwarded SSH agent, or host administrative socket by default.
+Agent commands run inside the container, including scripts read from host mounts.
+No host shell, sudo or SSH-agent forwarding is provided.
 
-- **Read-only mounts:** agents can read files, but cannot change them through the
-  mount. Read-only does not prevent running scripts inside the container.
-- **Writable mounts:** agents can change host files. If you, an IDE task, or a
-  host file watcher later runs that code, it runs with that host process's
-  permissions. Review changes before running them on your host.
-- **Additional access:** host SSH credentials, administrative sockets, or reachable
-  command-running services can provide a route to host execution. Dev networking
-  is enabled by default; filesystem isolation does not block network services.
+Writable mounts let agents change files that **you or host automation may later
+execute**. Review those changes. Host credentials, admin sockets or reachable
+command-running services can also provide host access; dev networking is on.
 
-Prefer sandbox-owned working copies. Isolation is not an absolute guarantee:
-Linux containers share the host kernel; on macOS they share Colima's Linux VM
-kernel. Keep the host, VM and Incus patched. See [Incus security](https://linuxcontainers.org/incus/docs/main/explanation/security/).
+Isolation is not absolute: containers share the Linux host kernel (Colima's VM
+kernel on Mac). Keep it patched. [Incus security](https://linuxcontainers.org/incus/docs/main/explanation/security/).
 
 <details>
 <summary>Isolation, repeatability, and validation details</summary>

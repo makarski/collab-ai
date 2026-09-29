@@ -30,25 +30,16 @@ native agent has reconstructed its conversation; reconcile the handoff checkpoin
 
 ## Select a writable working copy
 
-Before editing, identify whether the target is sandbox-owned storage or a host
-mount. Mount records use `project_name`, `host_path`, `container_mount_path`, and
-`container_readonly`. The last field defaults to `true`: agents can read the
-mounted project but cannot edit its code or write build output into that mount.
-It does not restrict the human's host access. A `/workspace/...` path alone does
-not establish that the directory is writable.
+Mount fields are `project_name`, `host_path`, `container_mount_path`, and
+`container_readonly` (default `true`). Read-only mounts permit inspection, not
+code edits or build output. A `/workspace/...` path alone does not prove writability.
 
-For authorized implementation, use a sandbox-owned working copy in persistent
-`/workspace` storage, outside any host mount. Clone there or copy the needed
-project files into a separate directory; report the actual working path and
-branch in the handoff. Those edits do not automatically update the host checkout.
-Return changes through the user's authorized Git or patch workflow; do not claim
-the host files changed because the sandbox copy changed.
-
-Editing the host checkout directly requires `container_readonly: false`, native
-Linux, and the operator's dedicated sharing identity and permissions. macOS host
-sharing remains read-only. If the task requires editing the exact read-only
-checkout, report that blocker. Do not change mount settings, remount, or alter
-host permissions to bypass it; the operator chooses the writable arrangement.
+Use an authorized sandbox-owned clone/copy outside host mounts for editing.
+Report its path and branch; deliver through the authorized Git/patch workflow.
+There is no automatic host synchronization. Direct host edits require
+`container_readonly: false`, native Linux and a dedicated sharing identity.
+macOS mounts stay read-only. If the exact requested checkout is read-only, report
+the blocker; do not bypass it by changing mounts or host permissions.
 
 ## Soft budgets: report what is actually configured
 
