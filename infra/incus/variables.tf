@@ -1,5 +1,5 @@
 variable "incus_socket" {
-  description = "Absolute path to the operator's Incus Unix socket. Never mounted into the container."
+  description = "Absolute path to the operator's Incus Unix socket. Never exposed to an agent container."
   type        = string
   nullable    = false
   validation {

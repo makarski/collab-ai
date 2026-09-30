@@ -12,7 +12,7 @@ Projects and agent home persist; tools live on the replaceable root disk.
 **macOS** — Homebrew required:
 
 ```sh
-brew install colima incus opentofu python gh
+brew install colima incus python gh
 python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
@@ -21,7 +21,7 @@ This starts the dedicated `collab-ai` Colima VM running Incus. Existing Docker
 profiles stay separate. Starting the VM does **not** create the workspace.
 
 **Linux** — [install Incus](https://linuxcontainers.org/incus/docs/main/installing/),
-Python 3.9+, OpenTofu/Terraform 1.9+, OpenSSH and GitHub CLI. Use an existing
+Python 3.9+, OpenSSH and GitHub CLI. Use an existing
 quota-capable pool (ZFS/Btrfs), a managed network bridge and Incus access.
 Skip Colima; replace `colima-collab-ai:` with `local:` throughout.
 Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
@@ -29,45 +29,33 @@ Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
 ## 2. Download the workspace image
 
 Follow [Download a built image](sandbox-image.md#download-a-built-image) on the host.
-It sets `run_id` and creates `dist/workspace-$run_id/image.tfvars.json`.
-In the **same host shell**, prepare a new deployment:
-
-```sh
-cp infra/incus/sandbox.tfvars.example infra/incus/sandbox.auto.tfvars
-cp "dist/workspace-$run_id/image.tfvars.json" infra/incus/image.auto.tfvars.json
-```
-
-Edit `sandbox.auto.tfvars`:
-
-| Setting | Choose |
-| --- | --- |
-| `incus_socket` | Mac bootstrap's printed path; usually `/var/lib/incus/unix.socket` on Linux |
-| `storage_pool` | Your quota-capable pool; `default` on the Colima host |
-| `dev_network` | Existing bridge; default `incusbr0` |
-| `secured_runtime` | `true` for a separate broker/control container |
-| `dev_network_enabled` | `true` for agent login and model requests; `false` for offline dev |
-
-Keep the downloaded image: provisioning verifies its checksum. No host Go or Docker
-is needed. [Choose tool versions / build locally](sandbox-image.md#development-builds).
-For an existing deployment, use [upgrade](sandbox-storage.md#replace-dev-retain-data) instead.
+It sets `run_id` and creates `dist/workspace-$run_id/`. Keep that directory.
+For an existing deployment, use [upgrade](sandbox-storage.md#replace-dev-retain-data).
 
 ## 3. Preview and apply
 
+In the same host shell:
+
 ```sh
-tofu -chdir=infra/incus init
-tofu -chdir=infra/incus validate
-tofu -chdir=infra/incus plan -out=sandbox.tfplan
-# Review the plan, then create the sandbox
-tofu -chdir=infra/incus apply sandbox.tfplan
+python3 scripts/sandbox-provision.py plan --image-dir "dist/workspace-$run_id"
+# Review the printed plan, then:
+python3 scripts/sandbox-provision.py apply
 ```
 
-Expect a workspace and protected `workspace-data` / `agent-home` volumes.
-Control mode also creates `secured` and its private state/IPC volumes.
-An unchanged second plan should report no changes.
+No host Terraform/OpenTofu installation is needed. The helper runs pinned OpenTofu
+in a disposable operator container. **New deployments default to dev plus offline
+control.** Use `--storage-pool` / `--network` for a non-default Incus pool/bridge.
 
-Keep the state, variables and operator checkout **outside writable sandbox mounts**.
-Use the same state for every later apply. Both containers must be stopped before
-[control-mode changes](secured-runtime.md); do not hot-add shared mounts.
+State, backup, settings and saved plans stay on the host, normally under
+`~/.local/state/collab-ai/operator/collab-ai/`. The command prints the actual path
+and remembers it. Existing repository/worktree state is discovered; multiple matches
+require one explicit `--state-dir` selection. It never adopts an existing Incus
+project using empty state. Host mounts that expose operator state are rejected.
+
+Edit the printed directory's `operator.auto.tfvars.json` for settings such as
+`dev_network_enabled`, `running`, or `secured_runtime`, then plan/apply again.
+Existing deployments keep their existing variable files. Both containers must be
+stopped before control-mode updates. [Provisioning and recovery](sandbox-operator.md).
 
 ## 4. SSH into the workspace
 
@@ -165,7 +153,7 @@ incus webui colima-collab-ai:  # Linux: incus webui local:
 
 Open the printed URL, select project `collab-ai`, and keep the command running.
 The URL contains a temporary login token; keep it private. Ctrl+C closes the UI
-proxy without stopping containers. Use OpenTofu for managed changes to avoid drift.
+proxy without stopping containers. Use the provisioning helper for managed changes to avoid drift.
 
 If `webui` is unknown, update the Incus client (`brew upgrade incus` on Mac).
 Missing UI assets belong on the **Incus server**, not in the workspace.
@@ -211,7 +199,7 @@ Storage backends may reject disk shrinking. Keep state local, serialize
 applies, and do not use a second empty state for the same project. Project deletion
 does not force-delete resources created outside this state.
 
-Offline checks after provider initialization:
+Maintainer checks (CI supplies OpenTofu), after provider initialization:
 
 ```sh
 python3 -m unittest discover -s scripts/tests -v

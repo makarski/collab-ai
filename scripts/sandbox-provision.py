@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Provision through disposable pinned OpenTofu; no host Terraform installation."""
+
+import argparse
+import json
+from pathlib import Path
+import platform
+import re
+import signal
+import subprocess
+import sys
+
+from sandbox_operator_config import deployment_directory, remember
+from sandbox_operator_workflow import run_operation
+from sandbox_operator_recovery import recover
+
+
+def identifier(value):
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", value):
+        raise argparse.ArgumentTypeError("Expected an Incus name without spaces or a colon")
+    return value
+
+
+def arguments():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=["plan", "apply", "recover"])
+    parser.add_argument("--remote", default="colima-collab-ai" if platform.system() == "Darwin" else "local")
+    parser.add_argument("--image-dir", type=Path, help="Verified workspace image directory; remembered after first selection")
+    parser.add_argument("--state-dir", type=Path, help="Select an existing operator checkout once; otherwise discover it")
+    parser.add_argument("--project", default="collab-ai", type=identifier)
+    parser.add_argument("--storage-pool", default="default", type=identifier)
+    parser.add_argument("--network", default="incusbr0", type=identifier)
+    changes = parser.add_mutually_exclusive_group()
+    changes.add_argument("--replace", action="store_true", help="Plan replacement of the dev container")
+    changes.add_argument("--destroy", action="store_true", help="Explicitly plan deletion; volume guards must be removed first")
+    args = parser.parse_args()
+    if args.action != "plan" and any((args.replace, args.destroy)):
+        parser.error("--replace and --destroy are plan options; apply uses the saved plan")
+    return args
+
+
+def main():
+    args = arguments()
+    if args.remote not in ("local", "colima-collab-ai"):
+        raise ValueError("Use Linux local or macOS colima-collab-ai")
+    metadata = json.loads(subprocess.check_output(["incus", "query", args.remote + ":/1.0"]))
+    directory = deployment_directory(args.state_dir, args.project)
+    remember(directory, args.project)
+    operation = recover if args.action == "recover" else run_operation
+    operation(args, directory, metadata["environment"])
+
+
+def interrupted(*_):
+    raise KeyboardInterrupt
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        main()
+    except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
+        sys.exit(f"sandbox-provision: {error}")
+    except KeyboardInterrupt:
+        sys.exit("sandbox-provision: interrupted; inspect the reported state/operator before retrying")

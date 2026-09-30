@@ -82,16 +82,16 @@ python3 scripts/sandbox-host.py mounts-apply --mounts-file /path/to/mounts.json
 # Add --share-user collab-share for writable mounts or access via that account.
 ```
 
-On **both platforms**, apply the generated `infra/incus/mounts.auto.tfvars.json`
-from the same directory as your existing deployment state:
+The helper writes mount settings into the discovered deployment directory.
+On **both platforms**, review and apply:
 
 ```sh
-tofu -chdir=infra/incus plan -out=sandbox.tfplan
-tofu -chdir=infra/incus apply sandbox.tfplan
+python3 scripts/sandbox-provision.py plan
+python3 scripts/sandbox-provision.py apply
 ```
 
-For state stored elsewhere, set `--output /path/to/deployment/mounts.auto.tfvars.json`
-and adjust `-chdir`. Restart dev after UID mapping changes.
+For a first deployment, also pass `--image-dir` to plan. `--output` still overrides
+the mount-variable destination for advanced setups. Restart dev after UID mapping changes.
 
 ## Change or remove a mount
 

@@ -179,15 +179,26 @@ def configure_mounts(args):
         return
     if platform.system() == "Darwin":
         configure_profile_mounts(mounts)
-    write_json(args.output, variables)
-    print(f"Wrote {args.output}. Review and apply the Incus plan; macOS: start the dedicated host first.")
+    output = mount_output(args)
+    write_json(output, variables)
+    print(f"Wrote {output}. Run sandbox-provision.py plan, then apply; macOS: start the dedicated host first.")
+
+
+def mount_output(args):
+    if args.output is not None:
+        return args.output
+    from sandbox_operator_config import deployment_directory, remember
+    directory = deployment_directory(None, args.project)
+    remember(directory, args.project)
+    return directory / "mounts.auto.tfvars.json"
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["plan", "apply", "mounts-plan", "mounts-apply"])
     parser.add_argument("--mounts-file", type=Path, help="JSON list of project_name/host_path/container_mount_path/container_readonly mount objects")
-    parser.add_argument("--output", type=Path, default=CONFIG.parent / "mounts.auto.tfvars.json")
+    parser.add_argument("--output", type=Path, help="Override the discovered deployment mount-variable file")
+    parser.add_argument("--project", default="collab-ai", help="Deployment project for automatic state discovery")
     parser.add_argument("--share-user", help="Dedicated local Linux sharing account; required for writable mounts")
     return parser.parse_args()
 

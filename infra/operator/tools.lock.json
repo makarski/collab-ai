@@ -1,0 +1,13 @@
+{
+  "tofu_version": "1.12.6",
+  "architectures": {
+    "aarch64": {
+      "archive": "tofu_1.12.6_linux_arm64.zip",
+      "sha256": "e573979ba68a17fe7b881752051a694a7efcd970e39521f6a25775197861ed4d"
+    },
+    "x86_64": {
+      "archive": "tofu_1.12.6_linux_amd64.zip",
+      "sha256": "5dc43da4f750f33873dc25e94587128709e819e544b7be9016b255316153c3a8"
+    }
+  }
+}
