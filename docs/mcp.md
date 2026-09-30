@@ -1,6 +1,6 @@
 # Manual MCP setup and messaging reference
 
-[Back to the quick start](../README.md#run). For automatic delivery, use
+[Back to the quick start](../README.md#run-on-your-host). For automatic delivery, use
 [managed Codex or Claude channels](host-integration.md).
 
 Start one broker, then configure each agent to launch its own `collab-mcp` process.
@@ -48,7 +48,7 @@ retains its inbox and is responsible for draining and explicitly acknowledging i
 
 Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
 your built MCP executable. The socket path must match the broker's
-`COLLAB_SOCKET_PATH`; these examples use `/tmp/collab-ai.sock` as in the [quick start](../README.md#run).
+`COLLAB_SOCKET_PATH`; these examples use `/tmp/collab-ai.sock` as in the [quick start](../README.md#run-on-your-host).
 
 Codex:
 

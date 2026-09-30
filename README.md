@@ -10,7 +10,7 @@ Three goals:
 
 [MIT licensed](LICENSE).
 
-[Agent setup](#run) · [Sandbox setup](#set-up-a-sandbox) ·
+[Host setup](#run-on-your-host) · [Sandbox setup](#set-up-a-sandbox) ·
 [Dashboards](#dashboards) · [Stop the sandbox](docs/sandbox.md#stop-or-remove) · [Architecture](#how-it-fits-together)
 
 ## Set up a sandbox
@@ -41,7 +41,7 @@ directly; Colima is unnecessary. **Starting the host does not create the workspa
 Follow the [sandbox guide](docs/sandbox.md) to download a released image and provision it.
 [Development builds](docs/sandbox-image.md#development-builds) let you choose app and tool versions.
 
-**After provisioning: start, check, connect and stop.** Containers do not start
+**Daily quick start — tools are already installed; no build needed.** Containers do not start
 automatically with the VM. Run from the repository root. On Linux, skip Colima
 commands and use `local:` / `--remote local`. For optional host mounts, use the
 [`mounts.json` example](docs/sandbox-mounts.md#choose-directories).
@@ -50,31 +50,55 @@ commands and use `local:` / `--remote local`. For optional host mounts, use the
 read-only. [Editing options](docs/sandbox-mounts.md#where-agents-can-edit).
 
 ```sh
+# HOST: run from your provisioning checkout
 # Start the Mac VM, then the containers
 python3 scripts/sandbox-host.py apply
 incus --project collab-ai start colima-collab-ai:secured   # if secured_runtime = true
 incus --project collab-ai start colima-collab-ai:workspace
 
-# Check: expect workspace and secured to show RUNNING
+# Check: expect workspace (and secured, if enabled) to show RUNNING
 incus --project collab-ai list colima-collab-ai:
 
-# Optional: preview selected host-directory mounts (does not apply changes)
-python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json
+# Optional: preview host mounts; uncomment with your file (does not apply)
+# python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json
 
 # Configure SSH once, check the broker, then enter dev
 python3 scripts/sandbox-ssh.py --remote colima-collab-ai
 ssh -F infra/incus/ssh/config workspace collab status
 ssh -F infra/incus/ssh/config workspace
 
-# When finished: uncomment to stop, keeping data
+# CONTAINER: all commands below until exit run inside your SSH session
+# First use only: sign in, following each CLI's instructions
+# command codex login --device-auth
+# command claude auth login
+
+# First use only: clone if you have not already done so
+# git clone https://github.com/makarski/collab-ai.git /workspace/collab-ai
+tmux new -A -s collab
+
+# In each tmux window: enter the project, then choose one agent or dashboard
+# Ctrl+B then C opens another window
+cd /workspace/collab-ai
+codex                         # new managed Codex conversation
+# codex resume                # choose a saved sandbox conversation
+# codex resume SESSION_ID     # resume a specific sandbox conversation
+# claude                      # Claude with collaboration channels enabled
+# claude --resume             # resume Claude
+# dashboard                   # broker status and agent inboxes
+
+# Disconnect: Ctrl+B then D detaches tmux; exit leaves SSH
+exit
+
+# HOST AGAIN: optional shutdown; stops agents, keeps persistent files
 # incus --project collab-ai stop colima-collab-ai:workspace
 # incus --project collab-ai stop colima-collab-ai:secured   # if secured_runtime = true
 # colima stop collab-ai
 ```
 
-Expect `Broker: ready`. [Sign in](docs/sandbox.md#sign-in-and-network-access), then
-run **`codex`** and **`claude`** in separate dev terminals; **`dashboard`** opens the
-broker dashboard. Dev has Internet/LAN access; control stays offline.
+Expect `Broker: ready`. `codex` and `claude` are preconfigured sandbox aliases;
+run one of each. Reconnect with SSH and `tmux new -A -s collab` after a disconnect.
+Host memory/sessions are not imported; start with a handoff for existing work.
+[Login help](docs/sandbox.md#sign-in-and-network-access).
 [Apply host mounts](docs/sandbox-mounts.md#apply).
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
@@ -91,9 +115,9 @@ let them change scripts that you or host automation later execute. Agents launch
 directly on your host have no Incus isolation.
 [Host execution risks and boundaries](docs/sandbox.md#security-can-agents-execute-code-on-my-host).
 
-## Run
+## Run on your host
 
-For agents running directly on your host:
+Outside the sandbox only: build the tools below. Sandbox users can skip this section.
 
 You need **Go 1.25+**, **macOS or Linux**, and your agent CLIs.
 Codex integration is tested with **0.156.1**.

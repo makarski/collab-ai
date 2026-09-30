@@ -10,6 +10,7 @@ describes development builds and CI releases.
 | `broker`, `collab-codex`, `collab-mcp`, `collab` | Compiled from the selected app source inside the image; Go tests run first |
 | Codex 0.156.1, Claude Code 2.1.283 | Official native distributions, verified against committed SHA256 checksums |
 | Go 1.25.14 | Official archive, checksum verified; available for workspace development |
+| Starship 1.26.0 | Checksum-pinned native release; enabled in interactive agent Bash shells |
 | Git, ripgrep, tmux, OpenSSH, Python | Ubuntu 24.04 packages |
 | Claude collaboration config | `/etc/collab-ai/claude-mcp.json` |
 | Interactive shell aliases | `/etc/profile.d/collab-agent-aliases.sh`; `codex`, `claude` and `dashboard` |

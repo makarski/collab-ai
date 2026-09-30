@@ -1,6 +1,6 @@
 # Troubleshooting
 
-[Back to the quick start](../README.md#run).
+[Back to the quick start](../README.md#run-on-your-host).
 
 | Symptom | What to check |
 |---------|---------------|

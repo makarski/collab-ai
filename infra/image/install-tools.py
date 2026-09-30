@@ -38,6 +38,9 @@ def main():
         download(f"https://downloads.claude.ai/claude-code-releases/{lock['claude_version']}/"
                  f"{arch['claude_platform']}/claude", arch["claude_sha256"], claude)
         claude.chmod(0o755)
+        download(f"https://github.com/starship/starship/releases/download/v{lock['starship_version']}/"
+                 f"starship-{arch['starship_target']}.tar.gz", arch["starship_sha256"], archive)
+        extract(archive, "/usr/local/bin")
 
 
 def extract(archive, destination):
