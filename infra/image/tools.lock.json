@@ -13,7 +13,9 @@
       "codex_target": "aarch64-unknown-linux-musl",
       "codex_sha256": "fdd47ed6aade0360796fd3f6f95a45096f327c15e19e8c7339f9dc5633041786",
       "claude_platform": "linux-arm64",
-      "claude_sha256": "346d294f0103d6fc0de11ac953579b5c62dfa90698a4cfc486b6f927c615e697"
+      "claude_sha256": "346d294f0103d6fc0de11ac953579b5c62dfa90698a4cfc486b6f927c615e697",
+      "rtk_target": "aarch64-unknown-linux-gnu",
+      "rtk_sha256": "d1cc49dfa2cd443fc32625444b59fe616b6c80478cca210985118347174dd758"
     },
     "x86_64": {
       "base_image": "a4f3be59e3082311939e194f9b69ded49785979aafb4bcb7ef58b2506104c61b",
@@ -24,7 +26,10 @@
       "codex_target": "x86_64-unknown-linux-musl",
       "codex_sha256": "8b711520beddf385467b8da4d2c93736637c6ba1e46811cf0d8606b7c490b6f6",
       "claude_platform": "linux-x64",
-      "claude_sha256": "1859583ce32920595c61ef868bee52e1b1594f7486db209935e01f1e5e804ae2"
+      "claude_sha256": "1859583ce32920595c61ef868bee52e1b1594f7486db209935e01f1e5e804ae2",
+      "rtk_target": "x86_64-unknown-linux-musl",
+      "rtk_sha256": "bc2b8902b0d9c796c82ef45f16ae2307e17757afeca5ee156235a3dc7bda5f89"
     }
-  }
+  },
+  "rtk_version": "0.50.0"
 }

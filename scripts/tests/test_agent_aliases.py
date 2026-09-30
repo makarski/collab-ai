@@ -18,6 +18,7 @@ class AgentAliasTests(unittest.TestCase):
                             'codex resume "session with spaces" -C "/workspace/my repo"')
         self.assertEqual(output, ["--codex", "/usr/local/bin/codex", "--agent-id", "codex-1",
                                   "--socket", "/tmp/collab-ai.sock", "--terminal", "--",
+                                  "--add-dir", "/home/agent/.local/share/rtk",
                                   "resume", "session with spaces", "-C", "/workspace/my repo"])
 
     def test_claude_uses_preconfigured_channel_and_preserves_arguments(self):

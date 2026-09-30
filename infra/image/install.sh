@@ -24,6 +24,7 @@ codex --version
 codex app-server --help >/dev/null
 claude --version
 starship --version
+rtk --version
 addgroup --gid 1001 agent
 adduser --uid 1001 --gid 1001 --disabled-password --gecos '' agent
 addgroup --gid 1002 broker
@@ -46,6 +47,8 @@ install -m 0755 infra/image/collab-executor-connect /usr/local/bin/collab-execut
 install -m 0755 infra/image/collab-supervised-codex /usr/local/bin/collab-supervised-codex
 install -m 0755 infra/image/collab-broker-setup /usr/local/bin/collab-broker-setup
 install -m 0755 infra/image/collab-workspace-setup /usr/local/bin/collab-workspace-setup
+install -m 0755 infra/image/collab-rtk-setup /usr/local/bin/collab-rtk-setup
+install -m 0644 infra/image/collab-rtk-setup.service /etc/systemd/system/
 printf 'd /run/sshd 0755 root root -\n' >/etc/tmpfiles.d/collab-ssh.conf
 printf 'DISABLE_UPDATES=1\nDISABLE_AUTOUPDATER=1\n' >>/etc/environment
 printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/profile.d/collab-ai.sh
@@ -60,6 +63,7 @@ systemctl enable collab-broker.service collab-secured-setup.service
 systemctl enable collab-secured-broker.service collab-dev-executor.socket
 systemctl enable collab-client-setup.service
 systemctl enable collab-workspace-setup.service
+systemctl enable collab-rtk-setup.service
 dpkg-query -W >/usr/local/share/collab-ai/os-packages.txt
 
 # Images must not share SSH host keys, machine identities, credentials or state.

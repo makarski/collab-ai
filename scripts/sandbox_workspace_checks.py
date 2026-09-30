@@ -7,6 +7,7 @@ import sys
 import time
 
 import sandbox_skill_checks
+import sandbox_rtk_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ def check_versions(ssh, lock):
         "claude --version": f"{lock['claude_version']} (Claude Code)",
         "go version": f"go version go{lock['go_version']} ",
         "starship --version": f"starship {lock['starship_version']}\n",
+        "rtk --version": f"rtk {lock['rtk_version']}\n",
     }
     for command, expected in commands.items():
         output = run(ssh + [command], capture_output=True, text=True).stdout
@@ -77,8 +79,10 @@ def check_workspace(args, directory, project, manifest):
         stdin=subprocess.DEVNULL)
     wait_for_broker(ssh)
     check_agent_aliases(ssh, manifest["tools"])
+    sandbox_rtk_checks.verify(ssh)
     run(ssh + ["touch /workspace/restart-check"])
     run(["incus", "--project", project, "stop", target])
     run(["incus", "--project", project, "start", target])
     wait_for_broker(ssh)
     run(ssh + ["test -f /workspace/restart-check"])
+    sandbox_rtk_checks.verify(ssh)

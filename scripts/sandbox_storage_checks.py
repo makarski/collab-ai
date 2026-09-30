@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from sandbox_secured_checks import Deployment, run, denied
+import sandbox_rtk_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +88,7 @@ def check_ssh_replacement(args, directory, project):
     (ssh / "known_hosts").unlink()  # Only after this test's verified replacement.
     run(command)
     run(["ssh", "-F", str(ssh / "config"), "workspace", "test -f /workspace/persistence-proof/repository.txt"])
+    sandbox_rtk_checks.verify(["ssh", "-F", str(ssh / "config"), "workspace"])
 
 
 def allow_test_teardown(directory, project):

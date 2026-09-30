@@ -41,6 +41,9 @@ def main():
         download(f"https://github.com/starship/starship/releases/download/v{lock['starship_version']}/"
                  f"starship-{arch['starship_target']}.tar.gz", arch["starship_sha256"], archive)
         extract(archive, "/usr/local/bin")
+        download(f"https://github.com/rtk-ai/rtk/releases/download/v{lock['rtk_version']}/"
+                 f"rtk-{arch['rtk_target']}.tar.gz", arch["rtk_sha256"], archive)
+        extract(archive, "/usr/local/bin")
 
 
 def extract(archive, destination):

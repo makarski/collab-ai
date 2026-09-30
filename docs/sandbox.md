@@ -3,7 +3,7 @@
 **Host → download image → provision → SSH → sign in.** Run host commands from
 this repository. Already provisioned? Use the [daily quick start](../README.md#set-up-a-sandbox).
 
-The image includes collab-ai, Codex, Claude Code, Go, Git, tmux and Starship.
+The image includes collab-ai, Codex, Claude Code, Go, Git, tmux, Starship and RTK.
 Defaults: 2 CPUs, 4 GiB RAM, 10 GiB root disk, 10 GiB projects, 2 GiB agent home.
 Projects and agent home persist; tools live on the replaceable root disk.
 
@@ -87,6 +87,13 @@ installing that skill elsewhere.
 
 Starship settings go in persistent `~/.config/starship.toml`. Older containers need
 an [image update](sandbox-storage.md#replace-dev-retain-data).
+
+**RTK reduces shell output** through Codex/Claude hooks, configured on first boot.
+Approve the RTK hook if Codex prompts. `rtk gain` shows estimated output savings,
+not provider billing or a token cap. History stays in `~/.local/share/rtk/` across
+container replacement; the `codex` alias grants that directory write access.
+Existing settings are preserved; telemetry is not enabled. To opt out, run
+`rtk init -g --codex --uninstall` and `rtk init -g --uninstall --auto-patch`, then restart agents.
 
 ## Sign in and network access
 

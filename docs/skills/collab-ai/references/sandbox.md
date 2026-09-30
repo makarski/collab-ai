@@ -9,6 +9,12 @@ sessions need separately configured identities; do not bypass a duplicate owner.
 `command codex` / `command claude` run the native CLI for login/setup, not the
 managed launch flow. `dashboard` and `collab status` inspect collaboration state.
 
+RTK is preinstalled; hooks rewrite supported shell commands for both agents.
+Use `rtk proxy <command>` when exact output is needed. `rtk gain` estimates shell
+output savings, not model usage or budget headroom. History persists under
+`~/.local/share/rtk`; the `codex` alias grants only that extra directory write access.
+Do not bypass sandbox permissions if a custom launcher cannot write RTK history.
+
 With `secured_runtime = true`, `secured` owns the broker and one collaboration
 SQLite database. Dev connects through `/mnt/collab-ipc/broker.sock`, also reachable
 via `/tmp/collab-ai.sock`. The socket directory is mounted read-only in dev: clients
