@@ -7,23 +7,14 @@ Fresh deployments keep dev data on two Incus volumes, mounted only in `workspace
 | `workspace-data` | `/workspace` | 10 GiB (`workspace_gib`) | `agent:agent`, directory `0750` |
 | `agent-home` | `/home/agent` | 2 GiB (`agent_home_gib`) | `agent:agent`, directory `0700` |
 
-This setup targets fresh deployments.
+These volumes survive restart and replacement. Both agents share the home;
+existing settings are preserved. Stored sessions do not prove native resume across
+versions. Host homes/memory are not imported automatically.
 
-The volumes survive container restart and replacement, including image upgrades. Incus
-maps ownership into each replacement container. First boot seeds missing shell
-startup files; existing settings are never overwritten. Both agents share this home.
-Retaining session files does **not** yet prove native conversation resume across versions.
-
-The root disk (`disk_gib`) is replaceable: installed tools, SSH host keys and files
-outside these mounts do not survive replacement. The standalone broker database
-is also on that root disk; use [control mode](secured-runtime.md) for persistent
-collaboration history. In control mode, SQLite and budgets stay on their separate
-private volume. No dev volume is mounted into control.
-
-Selected host directories remain optional nested mounts under `/workspace`.
-Their data lives on the host, not in `workspace-data`. Host-agent homes are never
-mounted automatically. [Linux writable sharing uses a dedicated account](sandbox-mounts.md#linux-writable-sharing);
-macOS sharing is read-only. Selected host-state import remains later work.
+Files outside these mounts—including standalone broker history—are lost on root-disk
+replacement. [Control mode](secured-runtime.md) keeps broker history and budgets on
+its private volume. Optional [host mounts](sandbox-mounts.md) store data on the host,
+not in `workspace-data`.
 
 ## Back up and restore
 
@@ -56,10 +47,9 @@ incus --project collab-ai exec colima-collab-ai:workspace -T --user 1001 --group
   tar -C /home/agent --no-same-owner --no-overwrite-dir -xzf - < agent-home.tgz
 ```
 
-Check restored files, permissions and agent settings before discarding backups. The paths remain `/workspace` and `/home/agent`; hooks and credentials
-are not validated by this procedure. No model calls or host-home import are needed.
-Incus also supports [volume snapshots and exports](https://linuxcontainers.org/incus/docs/main/howto/storage_backup_volume/)
-for operator-managed backups. Retention is not a substitute for backup.
+Check restored files, permissions and agent settings before discarding backups; hooks
+and credentials are not validated. [Incus volume snapshots/exports](https://linuxcontainers.org/incus/docs/main/howto/storage_backup_volume/)
+are another backup option. Persistence alone is not a backup.
 
 ## Replace dev, retain data
 
@@ -67,16 +57,11 @@ Run on the **host**, from the repository root. Exit agents and [back up](#back-u
 first. Projects and agent home survive; processes and tmux sessions do not.
 Standalone broker history is lost on replacement; control-mode history persists.
 
-For an upgrade, download a [tested CI artifact](sandbox-image.md#ci-and-releases):
-
-```sh
-python3 scripts/sandbox-download.py --remote colima-collab-ai \
-  --from-dir /path/to/extracted-artifact --output dist/workspace-upgrade
-```
-
-Replace `image_file` and `image_fingerprint` in your existing deployment variables
-with the values from `dist/workspace-upgrade/image.tfvars.json`. Keep the image.
-Skip this step to reprovision with the current image.
+For an upgrade, follow [Download a built image](sandbox-image.md#download-a-built-image).
+It creates `dist/workspace-RUN_ID/image.tfvars.json` on your host. Replace
+`image_file` and `image_fingerprint` in your existing deployment variables with
+that file's values. Keep its image directory. Skip this step to reprovision with
+the current image.
 
 Use the directory containing your **existing `terraform.tfstate` and variables**,
 including a separate operator checkout if used. Do not initialize a new deployment.

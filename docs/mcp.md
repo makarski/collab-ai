@@ -1,48 +1,21 @@
 # Manual MCP setup and messaging reference
 
-[Back to the quick start](../README.md#run-on-your-host). For automatic delivery, use
-[managed Codex or Claude channels](host-integration.md).
+Use [managed Codex / Claude channels](host-integration.md) for automatic delivery.
+**Manual MCP needs inbox checks and does not wake idle conversations.**
 
-Start one broker, then configure each agent to launch its own `collab-mcp` process.
-Each process opens one persistent broker connection on its first messaging tool
-call and then reads incoming frames in the background. MCP initialization and
-tool discovery do not connect or register an agent, so a short-lived inventory
-probe cannot displace an active session with the same configured ID.
+Start one broker and one adapter per agent. Default initialization/discovery is
+passive; call `receive` once to register before another agent sends to you.
+Channel `--auto-listen` is different: reserve that configuration for its owner.
 
-Call `receive` once to register before another agent sends to you. Until that
-first messaging call, the broker considers the agent offline.
+Each logical `agent_id` (1–128 bytes, except `*`) has one owning `session_id`.
+A duplicate returns `duplicate_id` / `owner_session_id` without displacing it.
+Close the owner to transfer the inbox; use distinct IDs for simultaneous agents.
+A failed initial registration can retry. After an established disconnect, restart
+with the same ID for durable recovery; other in-memory frames are lost.
 
-For automatic delivery in terminal sessions, use `collab-codex --terminal` for
-Codex and a dedicated Claude channel configuration with `--auto-listen`.
-These modes activate at host startup and maintain the fallback queue after
-explicit acknowledgments. See [host setup](host-integration.md) for launch
-commands, opt-in requirements, and failure/recovery limits. Ordinary MCP tools
-alone do not wake an idle conversation.
-
-How two agents actually work a project over the channel — session start,
-listening, handoffs, review verdicts, merge policy, split work — is written up
-as a portable skill in [docs/skills/collab-ai/SKILL.md](skills/collab-ai/SKILL.md).
-Copy the whole `collab-ai` directory, including `references/`, when installing it
-elsewhere. [Offline acceptance cases](skill-validation.md) cover the interaction
-contract and distinguish packaging checks from live model-delivery evidence.
-An `agent_id` is a logical inbox name (1–128 bytes, other than `*`). Each accepted
-connection receives a unique `session_id`, also returned by `receive` and `wait`.
-One session owns an inbox. A second messaging connection using the same agent ID
-is rejected with `duplicate_id`, its own session ID, and `owner_session_id`; the
-owner stays connected. Use a distinct agent ID for a separate simultaneous agent.
-
-Default discovery-only probes remain connection-free. Explicit `--auto-listen`
-channel configurations register after MCP initialization and must be reserved
-for the owning session. To transfer inbox ownership, close
-the owning adapter, then connect again; there is no takeover flag or observer
-mode. A failed initial registration can be retried. An established connection
-that disconnects remains terminal: restart that adapter to obtain a new session.
-A v3 reconnect recovers unacknowledged durable messages; other buffered frames and acknowledgment events are not replayed. A separate
-listener cannot share the working agent's logical inbox by claiming the same ID.
-For a background subagent, use [delegated listening](delegated-listeners.md):
-the parent grants temporary read access through its adapter, and the child calls
-`wait_delegated` without registering a second broker connection. The parent
-retains its inbox and is responsible for draining and explicitly acknowledging it.
+For a child listener, use [delegation](delegated-listeners.md), not duplicate
+registration. For working conventions, install the [skill](skills/collab-ai/SKILL.md)
+with its `references/` directory. [Acceptance cases](skill-validation.md).
 
 ## Register an adapter
 

@@ -1,28 +1,15 @@
-# Your first agent exchange
+# Host quick start
 
-Run one broker, one Codex session, and one Claude Code session on the same
-machine. Leave their terminals open while you work. A fourth terminal lets you
-check connections without interrupting either agent.
+**Outside the sandbox only.** Sandbox users have preinstalled tools and should use
+[the README](../README.md#set-up-a-sandbox).
 
-## Before you start
-
-You need macOS or Linux, Git, Go 1.25+, and installed, signed-in `codex` and
-`claude` CLIs. Check `go version`, `codex --version`, and `claude --version`.
-Complete each CLI's login and project-trust prompts before testing collaboration.
-The Codex integration was tested with 0.156.1.
-
-Claude's automatic delivery requires its development-channel opt-in and an
-account/organization that permits channels. If unavailable, use the
-[manual MCP setup](mcp.md#register-an-adapter); ordinary MCP tools require inbox
-checks and do not wake an idle agent.
-
-Use `/tmp/collab-ai.sock` throughout this walkthrough. If you already have a
-broker there, reuse it or choose a different path in **every** command and config.
-Replace the example repository and project paths with your own absolute paths.
+You need macOS/Linux, Git, Go 1.25+, and installed, signed-in Codex and Claude Code.
+Codex integration was tested with 0.156.1. Claude needs channel consent and an
+account/organization that permits channels; otherwise use [manual MCP](mcp.md).
 
 ## 1. Build and start the broker
 
-**Terminal 1:**
+Terminal 1:
 
 ```sh
 git clone https://github.com/makarski/collab-ai.git
@@ -31,46 +18,30 @@ go build -o broker ./cmd/broker
 go build -o collab-codex ./cmd/codex
 go build -o collab-mcp ./cmd/mcp
 go build -o collab ./cmd/collab
-pwd
-
+pwd  # use this absolute directory in the configuration below
 COLLAB_SOCKET_PATH=/tmp/collab-ai.sock COLLAB_DB_PATH="$PWD/collab-ai.db" ./broker
 ```
 
-Save the directory printed by `pwd`: that is your `/absolute/path/to/collab-ai`
-below. The broker stays in the foreground. Its SQLite database retains inbox
-state across restarts; keep using the same database path.
-
-**Terminal 4**, from that repository directory, check it is serving requests:
-
-```sh
-./collab status --socket /tmp/collab-ai.sock
-```
-
-Expect `Broker: ready (socket reachable: true)`. A fresh broker has zero connected
-sessions. Resolve errors here before launching agents.
+Leave it running. If you already have a broker, reuse it or choose another socket
+in **every** command/config. Keep its database for message recovery.
 
 ## 2. Start Codex
 
-**Terminal 2**, from the collab-ai repository directory:
+Terminal 2, from the collab-ai checkout:
 
 ```sh
 ./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   -C /absolute/path/to/your/project
 ```
 
-Your normal Codex UI opens. Complete any trust prompt and start the conversation.
-Its listener starts automatically when the conversation is created. Options for
-Codex go after `--`; options for collab-ai go before it.
-
-Use the session's `collab_runtime` tools. If you previously configured a manual
-collab MCP adapter, do not activate it with the same `codex-1` ID. Each inbox has
-one owner. [Resume and fork commands](../README.md#resume-or-fork) work for saved
-managed and ordinary Codex conversations.
+Complete Codex's trust prompt and start a conversation. Listening is automatic;
+use its `collab_runtime` tools. Do not register another adapter as `codex-1`.
+[Resume, fork and caps](host-integration.md#codex-terminal).
 
 ## 3. Start Claude Code
 
-Save this as `mcp.json` **outside your project repository**, replacing `command`
-with the absolute path to the `collab-mcp` binary you just built:
+Save this as a dedicated `mcp.json` outside the project; replace `command` with
+the absolute path to the binary built in step 1:
 
 ```json
 {
@@ -87,7 +58,7 @@ with the absolute path to the `collab-mcp` binary you just built:
 }
 ```
 
-**Terminal 3:**
+Terminal 3:
 
 ```sh
 cd /absolute/path/to/your/project
@@ -95,51 +66,31 @@ claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
   --dangerously-load-development-channels server:collab
 ```
 
-Accept Claude's local-development channel consent. `--strict-mcp-config` uses
-only this MCP configuration for the session. Keep this config dedicated to this
-Claude session; a second session needs its own agent ID.
-
-If tools appear but Claude ignores incoming messages, check
-[channel requirements](host-integration.md#claude-code). Registration alone does
-not prove that Claude received a notification.
+Accept channel consent. Keep this session open; another session needs a different
+agent ID. [Channel troubleshooting](host-integration.md#claude-code).
 
 ## 4. Check both directions
 
-In **Terminal 4**, run status again. Both `codex-1` and `claude-1` should be
-connected. Then ask Claude:
-
-> Use collab to send codex-1 "Reply with pong".
-
-The send tool requests acknowledgment automatically. Codex should receive the
-message without an inbox reminder. Ask it to acknowledge the
-message and reply with `in_reply_to` set to the incoming message ID. Claude should
-receive the reply without polling. Ask Claude to acknowledge the reply if it
-requests acknowledgment. Do not have either agent reply to the pong again.
-
-This checks delivery into both conversations. Broker acceptance, connection
-status, and acknowledgment are separate observations; a reply does not
-implicitly acknowledge its request.
-
-For ongoing work, point both agents at the
-[collaboration skill](skills/collab-ai/SKILL.md) for handoff and acknowledgment
-conventions. For a shared checkout, agree who edits which files; separate
-worktrees can keep simultaneous changes apart.
-
-## Watch, stop, and return
-
-In **Terminal 4**:
+Terminal 4, from the collab-ai checkout:
 
 ```sh
+./collab status --socket /tmp/collab-ai.sock
 ./collab dashboard --socket /tmp/collab-ai.sock
 ```
 
-Press `q` to leave the dashboard; agents and broker continue running.
-The dashboard shows connections and pending acknowledgments, without consuming
-inboxes. [Controls](dashboard.md).
+Expect `Broker: ready` and both IDs connected. Ask Claude:
 
-To stop collaboration, exit the agent UIs, then press Ctrl+C in the broker
-terminal. Listeners stop with their processes. To return, start the broker with
-the same database, then relaunch agents with their previous IDs to recover
-unacknowledged durable messages. Resume the host conversation separately if you
-want its history too. See [troubleshooting](troubleshooting.md) for failed
-connections or stale sockets.
+> Send codex-1 “Reply with pong”. Codex should acknowledge the message and reply
+> with `in_reply_to` set to its ID. Acknowledge the pong without replying again.
+
+Both conversations should receive messages without reminders. A reply does not
+implicitly acknowledge a message. Connection status alone does not prove delivery.
+Point both agents at the [collaboration skill](skills/collab-ai/SKILL.md) and agree
+file ownership before concurrent edits.
+
+## Watch, stop, and return
+
+`q` closes the dashboard only. Exit agents, then Ctrl+C the broker to stop.
+Restart with the same database and agent IDs for unacknowledged message recovery;
+resume the agent conversation separately for its history.
+[Dashboard controls](dashboard.md) · [Troubleshooting](troubleshooting.md).

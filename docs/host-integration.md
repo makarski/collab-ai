@@ -1,169 +1,102 @@
 # Host integration
 
-This is the ordinary host setup. For the proposed two-container layout, see the
-[sandbox architecture](../README.md#how-it-fits-together).
+For installation, use the [host quick start](quickstart.md). For containers, use
+[the sandbox guide](sandbox.md). This page covers launch options and behavior.
 
-![Host integration: human terminals for Codex and Claude, their collaboration adapters, and the local broker Unix socket.](assets/host-integration.svg)
+![Human terminals, collaboration adapters and the broker Unix socket.](assets/host-integration.svg)
 
-[Diagram source (PlantUML)](assets/host-integration.puml)
+[Diagram source](assets/host-integration.puml)
 
-For a first installation, follow the [step-by-step setup](quickstart.md).
-The [README](../README.md#run-on-your-host) keeps everyday launch, resume, fork, and status
-commands handy.
-
-The default MCP adapter remains a manual inbox. Two opt-in integrations can
-submit peer context to a running host: a Claude Code channel and an App Server
-proxy for a single Codex thread, including the normal Codex terminal UI. The
-broker still uses UDS. Both modes use [durable inbox recovery](durable-inboxes.md)
-for accepted v3 messages. Neither listens after its process stops. The listener
-lifetime is independent
-of model turns and context compaction; host scheduling still determines when
-the model sees submitted context.
-
-For a background subagent using the manual adapter, use
-[delegated listening](delegated-listeners.md). It shares the parent's inbox
-through an explicit read-only capability and preserves the parent's broker
-ownership. Creating delegation is separate from the host integrations below;
-channel/proxy listeners already have their own consumer. A delegated reader
-still needs its host to relay results or wake its parent.
+Managed Codex and Claude channels submit messages automatically while their
+processes run. Ordinary [MCP](mcp.md) requires inbox checks; it does not wake an
+idle agent. Neither mode listens after its process exits.
 
 ## Claude Code
 
-Build `go build -o collab-mcp ./cmd/mcp`. Add `--claude-channel --auto-listen`
-to a dedicated MCP configuration for the owning session:
+Use the [dedicated config and launch command](quickstart.md#3-start-claude-code).
+It enables `--claude-channel --auto-listen` and requires interactive channel
+consent. Keep the process running.
 
-```json
-{
-  "mcpServers": {
-    "collab": {
-      "command": "/absolute/path/to/collab-mcp",
-      "args": ["--agent-id", "claude-1", "--socket", "/tmp/collab-ai.sock", "--claude-channel", "--auto-listen"]
-    }
-  }
-}
-```
-
-For this locally developed server, start an **interactive** Claude session:
-
-```sh
-claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
-  --dangerously-load-development-channels server:collab
-```
-
-Read and accept Claude's local-development consent dialog. With `--auto-listen`,
-the adapter activates when that MCP session sends `notifications/initialized`;
-Claude does not need to call `listen`. Keep that same Claude process running.
-The channel uses the session-based MCP handshake; stateless `server/discover`
-probes are rejected so clients negotiate `initialize`/`initialized`.
-
-Use `--auto-listen` only in a dedicated session configuration: any process that
-initializes that configuration attempts registration, including an inventory
-probe. Default MCP and channel mode without `--auto-listen` stay passive until
-a messaging/`listen` call. `--auto-listen` requires `--claude-channel`. A failed
-automatic registration is logged to stderr and exposed by `listener_status`;
-resolve the cause, then retry `listen` or restart. Duplicate IDs never displace
-the existing owner.
+- `--auto-listen` registers after MCP initialization. Reserve that config for the
+  owning session: even an inventory probe that initializes it attempts registration.
+- Default MCP and channels without auto-listen stay passive until a messaging or
+  `listen` call. Auto-listen requires channel mode.
+- On registration failure, inspect stderr / `listener_status`, then retry `listen`
+  or restart. Duplicate IDs never displace the owner.
+- Account/provider, host version and organization policy determine channel support.
+  The development flag does not override policy. On tested Claude 2.1.272 it is
+  ignored in `-p` mode; tools work but notifications do not. Use an interactive session.
+  This repository is not an approved production channel plugin.
 
 The adapter advertises `experimental["claude/channel"]` and emits
-`notifications/claude/channel`; it does **not** advertise permission relay.
-
-Channels are a research preview with host version, authentication/provider,
-organization policy, and per-session opt-in requirements. Current Claude docs
-permit claude.ai or Console API-key authentication, with additional managed
-organization restrictions. The development flag does not override organization
-policy. On the tested Claude Code 2.1.272, the custom development flag is ignored
-in `-p` mode: MCP tools work but the channel does not deliver. Use the interactive
-development flow above. Approved production plugins have a separate `--channels`
-flow; this repository is not an approved plugin.
-
-Claude can silently ignore a successfully written notification. Therefore
-`listening_delivery_unconfirmed` and `submitted` are submission observations,
-never claims that Claude read a message. Explicit `acknowledge` tool calls,
-confirmed by the broker, establish the acknowledgment boundary. A reply can use
-`in_reply_to` for correlation, but does not implicitly acknowledge.
+`notifications/claude/channel`, without permission relay. It requires the
+`initialize` / `initialized` handshake; stateless discovery is rejected.
+A successful notification write does not prove Claude read it. Only a broker-confirmed
+explicit acknowledgment establishes acknowledgment; replies do not imply it.
+[Claude channel requirements](https://code.claude.com/docs/en/channels).
 
 ## Codex terminal
 
-Build `go build -o collab-codex ./cmd/codex`, then launch your terminal session:
+After the [host build](quickstart.md#1-build-and-start-the-broker), start the broker,
+then choose one command:
 
 ```sh
+# New conversation
 ./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   -C /absolute/path/to/project
-```
 
-This starts the installed Codex terminal UI with `codex --remote` through a
-private Unix socket, then connects it to the managed App Server proxy. Arguments
-after `--` go to the terminal UI, including model, working directory, sandbox,
-and approval options; the launcher reserves `--remote`. Existing Codex settings
-still apply. No global configuration is changed and no TCP listener is opened.
-The temporary socket lives in a mode-0700 directory and is removed on exit.
-
-`collab-codex` is the launch command for managed sessions; the normal Codex UI
-remains the interface for your prompts, output, and approvals. Maintaining Codex
-argument compatibility is a launcher requirement: forward arguments after `--`
-unchanged and let the installed Codex CLI parse them, while keeping launcher
-options before the separator. The only reserved Codex option is `--remote`,
-which selects the proxy connection. Argument forwarding does not guarantee
-support for every Codex workflow; the session limitations below still apply.
-
-Resume an existing conversation, including one originally created with ordinary
-`codex`, or fork it into a new conversation:
-
-```sh
+# Resume a managed or ordinary Codex conversation (close the old owner first)
 ./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   resume SESSION_ID -C /absolute/path/to/project
-./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
-  resume --last -C /absolute/path/to/project
+
+# Or fork it into a new conversation
 ./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   fork SESSION_ID -C /absolute/path/to/project
 ```
 
-Codex owns session selection, history loading, and argument parsing. Close the
-previous owner before resuming a conversation here. The proxy binds the thread
-ID returned by Codex; a fork receives its own ID. Use the same broker agent ID
-to recover that inbox's durable messages, or a distinct ID for a separate agent.
+`resume --last` selects the last conversation. Use the same agent ID to recover
+its durable inbox, or a distinct ID for a separate agent.
 
-The tested Codex CLI 0.156.1 rejects permission overrides such as `--sandbox`
-and `--ask-for-approval` when resuming a remote task. Resume with the saved
-permissions; the launcher forwards those flags unchanged and does not silently
-discard them. Complete any Codex folder-trust prompt before expecting listening
-to activate. Use ordinary `codex` for commands unrelated to an interactive
-managed conversation, such as login, configuration management, or `exec`.
+| Rule | What to do |
+| --- | --- |
+| Launcher options | Before `--` |
+| Codex options | After `--`; forwarded unchanged, except reserved `--remote` |
+| Saved permissions | Codex 0.156.1 rejects remote-resume `--sandbox` / `--ask-for-approval` overrides |
+| One conversation per launcher | Exit and relaunch instead of `/new`, `/resume` or `/fork` |
+| Login/config/`exec` | Use the native `codex` command |
+| Extra control session | Use a distinct broker agent ID; it does not share conversation context |
 
-Tools come from a required, session-local `collab_runtime` MCP server, connected
-through a stdio relay and a private Unix socket to the proxy's existing listener.
-It does not open another broker connection. This runtime configuration is
-injected into start/resume/fork requests and regenerated on every launch; no
-global MCP configuration is edited. The `collab_runtime` server name is reserved;
-requests supplying `config["mcp_servers.collab_runtime"]` are rejected explicitly.
-Use its tools for managed collaboration; an independently configured manual
-collab adapter is a different connection and must not claim the same inbox ID.
-Legacy `collab_*` dynamic tools restored from older managed conversations still
-use the same listener. Resume/fork preserve saved developer instructions unless
-the caller explicitly supplies a replacement.
+The normal Codex UI handles prompts and approvals. Listening starts after successful
+start/resume/fork and any folder-trust prompt. Failed broker registration terminates
+the session; exiting stops the proxy and App Server. No running terminal/desktop
+session is attached. The CLI must support `--remote unix://PATH` (tested: 0.156.1).
 
-Start the broker first. Listening begins after a successful start, resume, or fork,
-without a broker registration prompt or `listen` call. The terminal remains the
-operator approval interface. A failed automatic registration terminates the
-managed session with an error instead of leaving apparently working comms.
-Exiting the terminal stops the proxy and its App Server child.
+For a socket in the current directory, use `--socket "$PWD/collab-ai.sock"`.
+A socket file can be stale; confirm `collab status` reports ready.
 
-For a broker socket in your current directory, pass `--socket "$PWD/collab-ai.sock"`
-(uppercase `PWD`, without an extra leading slash). The launcher checks that the
-socket path exists and is a Unix socket before opening the UI; this does not
-guarantee that a broker is still serving it. A missing or incorrect path is
-reported directly in the shell. Cancellation sends SIGTERM to Codex first so
-an npm launcher can forward shutdown to its native child, with a two-second
-fallback timeout for the launched process.
+<details>
+<summary>Runtime configuration and transport</summary>
 
-Each launcher process manages **one conversation**, started, resumed, or forked.
-To switch conversations with `/new`, `/resume`, or `/fork`, exit and launch a new
-process instead. It does not attach to a terminal already running. The CLI must
-support `--remote unix://PATH` (available in the locally tested 0.156.1).
+The CLI's `--remote` connection uses WebSocket framing over a private Unix socket
+(mode-0700 directory, removed on exit). The broker still uses UDS; no TCP listener
+or global configuration change is introduced.
+
+A required session-local `collab_runtime` MCP server relays tools to the proxy's
+existing listener, without another broker connection. Its configuration is injected
+into start/resume/fork and regenerated on launch. The server name is reserved;
+caller-supplied `config["mcp_servers.collab_runtime"]` is rejected. An independent
+manual adapter must not claim the same inbox. Legacy `collab_*` dynamic tools use
+the same listener. Resume/fork retain developer instructions unless explicitly replaced.
+
+Cancellation sends SIGTERM to Codex so npm launchers can forward it to their native
+child, with a two-second fallback timeout. Codex owns session selection, history
+loading and argument parsing; forwarding flags does not guarantee every workflow.
+
+</details>
 
 ### Codex soft cap
 
-Create a budget once, then select it by name when launching or resuming Codex:
+Create a budget once, then reuse it across launches/resumes:
 
 ```sh
 collab budget create my-task --tokens 100000
@@ -171,85 +104,60 @@ collab budget status my-task --json
 collab-codex --agent-id codex-1 --budget my-task --terminal -- resume SESSION_ID
 ```
 
-`collab budget status` shows the cap, reported tokens, remaining allocation from
-reports, overshoot, last report time and accounting errors. It works while Codex
-is running. A new budget explicitly says no usage has been reported; the displayed
-remaining amount is based on observations, not a real-time provider balance.
-An old timestamp can mean an idle session or delayed reporting; status does not
-claim to know which. No broker or model connection is needed for these commands.
+One budget supports **one managed Codex launcher**, not Claude or shared agents.
+No budget option means uncapped. The inline alternative is
+`--token-cap 100000 --budget-file /absolute/path/task-budget.json`; create its
+parent first and do not combine it with `--budget`.
 
-Budgets live in `~/.local/state/collab-ai/budgets`. Set `COLLAB_BUDGET_DIR` to the
-same absolute directory for both commands to use another location. Named budgets
-must be created explicitly; repeating `create` never resets usage or changes a
-cap. Each currently supports one managed Codex launcher, not simultaneous agents.
-Keep the files across restarts; destroying a sandbox also destroys budgets stored
-only on its root disk.
+**Soft limit, not a security boundary:** delayed/missing reports and remote work
+can overshoot without a proven maximum. Unreported subagent/auxiliary usage is not
+covered. An agent with write access can modify budget files or bypass the launcher.
+Subscription login and native approvals are unchanged.
 
-The inline form remains supported: `--token-cap 100000 --budget-file
-/absolute/path/task-budget.json`, before `--`. Create its parent directory first.
-Use either `--budget NAME` or the two inline flags; combining them is rejected.
-Omitting all budget options leaves the session uncapped. Existing subscription
-authentication and native approvals are unchanged.
+Budgets live in `~/.local/state/collab-ai/budgets`; `COLLAB_BUDGET_DIR` overrides it
+for both launcher and commands. Keep the same budget/files outside repositories.
+`create` never resets an existing budget, and exhausted budgets cannot relaunch.
+Root-disk-only budgets are lost when that disk is replaced.
 
-The supervisor records App Server `thread/tokenUsage/updated` cumulative
-`totalTokens`, once per reported thread, in a private JSON file. It does not add
-cached-input or reasoning subtotals again. These are native-client token counts,
-not dollars, subscription quota, RTK savings estimates or a provider billing audit.
-The file's `threads` values are the observed high-water marks; their sum is the
-recorded spend. A missing report is unknown usage, not evidence of zero spend.
+<details>
+<summary>Accounting, stopping and protected status</summary>
 
-Reuse the **same named budget**, or the same inline file and cap, after restarting or resuming. Duplicate reports
-never add charges. A lower reported total stops the session, since it could mean
-a counter reset; it never refunds tokens. Reported history from an ordinary resumed session
-is included; a fork's new thread ID counts separately, including any history
-Codex reports for it. The file supports one launcher at a time and refuses cap
-changes or relaunch after exhaustion. A new file deliberately starts a separate
-budget. Keep budget files outside repositories and do not delete them to resume
-the same task.
+Status reports the cap, observed spend, remaining allocation, overshoot, last report
+time and errors, without a broker/model connection. Unknown usage is not zero;
+an old timestamp can mean idle time or delayed reports. Counts are native tokens,
+not dollars, subscription balances or billing audits.
 
-At the observed limit, the proxy rejects new operator requests and peer-triggered
-turns, requests `turn/interrupt`, then ends the session after two seconds. The App
-Server process group receives SIGTERM, followed by SIGKILL after another two
-seconds if needed. The shell diagnostic shows reported usage, cap and overshoot;
-late usage received during interruption is still recorded. Durable unacknowledged
-peer messages remain recoverable through the broker. Pending work is not retried.
+The supervisor persists cumulative `thread/tokenUsage/updated.totalTokens` high-water
+marks per thread and sums them, without re-adding cached/reasoning subtotals. Duplicate
+reports do not add spend. A decreased counter stops the session without refund.
+Resumed history is counted; forked IDs count separately, including reported history.
+One launcher locks the file; cap changes are rejected. A new file is a separate budget.
 
-Malformed usage or a persistence error also stops the session. Inspect the error
-and reconcile unknown usage before starting a new budget. Accounting failures are
-saved when storage permits; a storage failure or crash can lose the latest report.
+At the observed cap, new operator requests and peer turns are rejected. The proxy
+requests `turn/interrupt`, waits two seconds, then terminates the App Server process
+group (SIGTERM, SIGKILL after another two seconds). Late reports are recorded;
+unacknowledged durable messages remain recoverable. Pending work is not retried.
+Malformed usage or persistence failure also stops the session. Reconcile unknown
+usage before starting a new budget; crashes/storage failure may lose the latest report.
+Tests are offline fixtures, not live subscription-spend validation.
 
-**This is a soft guardrail.** Delayed or absent reports, internal calls and work
-already running remotely can overshoot; there is no proven maximum overshoot.
-Unreported subagent or auxiliary usage is not covered. A local account can bypass
-the wrapper, change its files or launch detached processes; this is not a sandbox
-security boundary: an agent with the same write access can also change its own cap.
-Protecting a human-set ceiling requires enforcement and budget storage outside
-the agent's writable environment, with separate permissions; this version does
-not provide that separation. Claude supervision and shared budget splits are not yet
-available. Tests use offline protocol/process fixtures; no live subscription
-spending was used to validate the cap.
+A protected launcher can expose `--budget-status-socket /absolute/path/status.sock`.
+Its existing parent must belong to the launcher and not be group/world writable.
+Mount only that directory read-only into dev, keeping the launcher, budget and admin
+outside dev's filesystem/process access. Query with:
 
-For a separately protected launcher, `--budget-status-socket /absolute/path/status.sock`
-publishes one named budget through a read-only Unix API. The existing parent
-directory must belong to the launcher and must not be group/world writable.
-Expose only this directory to the workload, read-only; retain the launcher,
-budget files and administration outside its filesystem and process access.
-Inside the workload, `collab budget status NAME --socket /mounted/status.sock --json`
-reads that endpoint without opening local budget storage. A missing endpoint is
-an error. The socket has no create, reset, report-usage or cap-update operations.
-This is visibility only; stopping remains the protected launcher's responsibility.
-See the [offline two-container proof](budget-boundary.md) for tested cases and limits.
+```sh
+collab budget status NAME --socket /mounted/status.sock --json
+```
 
-The broker transport remains UDS; WebSocket framing here is only the CLI's local
-App Server connection. Keep the manual MCP setup for ordinary `codex` sessions
-that do not use this launcher; that setup still requires inbox checks.
+This endpoint cannot create/reset caps or report usage; a missing endpoint is an
+error, never a fallback to local storage. Protection depends on the external launcher;
+see the [experimental boundary and limitations](budget-boundary.md).
 
-A normal Codex control session can run alongside a managed session. If both
-connect to the broker, give them distinct agent IDs: each ID has exactly one
-active inbox owner. Messages delivered to the managed thread do not wake or
-update the separate control conversation. Restarting the proxy with the same
-agent ID recovers unacknowledged durable broker messages. Use `resume` to also
-recover the selected conversation's history; a new thread has no old history.
+</details>
+
+<details>
+<summary>App Server protocol, listener behavior and validation</summary>
 
 ## Codex App Server clients
 
@@ -377,3 +285,5 @@ Codex CLI 0.156.1 and the observed Claude organization-policy blocker.
 Host contracts: [Claude channels](https://code.claude.com/docs/en/channels),
 [channel reference](https://code.claude.com/docs/en/channels-reference), and
 [Codex App Server](https://learn.chatgpt.com/docs/app-server#start-a-turn).
+
+</details>

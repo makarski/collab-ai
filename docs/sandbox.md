@@ -1,316 +1,197 @@
 # Set up an Incus sandbox
 
-**Host → image → workspace → SSH.** Run these commands from the repository root.
+**Host → download image → provision → SSH → sign in.** Run host commands from
+this repository. Already provisioned? Use the [daily quick start](../README.md#set-up-a-sandbox).
 
-This setup creates an **isolated Linux workspace** with 2 CPUs, 4 GiB memory,
-a 10 GiB root disk, 10 GiB project volume, 2 GiB agent-home volume, and a 512-process limit.
-Dev has network access by default; host mounts and credentials are not supplied.
-It includes collab-ai, Codex, Claude Code, Go, Git, ripgrep and tmux. The broker
-starts automatically. [Sign in to your subscription inside dev](#sign-in-and-network-access).
-For coding, keep a working copy in the sandbox's persistent `/workspace` storage.
-[Host directory mounts](sandbox-mounts.md#where-agents-can-edit) are read-only by
-default: agents can inspect the host checkout but cannot edit it through that mount.
-
-[Install](#1-install-the-host-tools) · [Image](#2-download-the-workspace-image) ·
-[SSH](#4-ssh-into-the-workspace) · [Agent dashboard](dashboard.md#open-the-dashboard) ·
-[Stop](#stop-or-remove) · [Web UI](#incus-web-ui)
+The image includes collab-ai, Codex, Claude Code, Go, Git, tmux and Starship.
+Defaults: 2 CPUs, 4 GiB RAM, 10 GiB root disk, 10 GiB projects, 2 GiB agent home.
+Projects and agent home persist; tools live on the replaceable root disk.
 
 ## 1. Install the host tools
 
-**macOS:** install Homebrew, then run from the cloned collab-ai repository:
+**macOS** — Homebrew required:
 
 ```sh
-brew install colima incus opentofu python
+brew install colima incus opentofu python gh
 python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
 
-`plan` previews; `apply` starts a dedicated `collab-ai` Colima VM. Incus on the Mac
-is the client; its server runs inside that Linux VM. Repeat `apply` to restart it.
-Existing Docker profiles remain separate.
+This starts the dedicated `collab-ai` Colima VM running Incus. Existing Docker
+profiles stay separate. Starting the VM does **not** create the workspace.
 
-**Linux:** [install and initialize Incus](https://linuxcontainers.org/incus/docs/main/installing/)
-directly; skip Colima and the bootstrap script. Use an existing quota-capable
-storage pool, such as ZFS or Btrfs, and a user with access to the Incus socket.
-Do not reinitialize an existing server.
-
-Requirements: Colima 0.10.3+ on Mac; Python 3.9+ and OpenTofu or Terraform 1.9+
-on either platform. Commands below use `tofu`; `terraform` works too.
-The Incus provider is locked to 1.2.0. The host needs internet access for downloads.
+**Linux** — [install Incus](https://linuxcontainers.org/incus/docs/main/installing/),
+Python 3.9+, OpenTofu/Terraform 1.9+, OpenSSH and GitHub CLI. Use an existing
+quota-capable pool (ZFS/Btrfs), a managed network bridge and Incus access.
+Skip Colima; replace `colima-collab-ai:` with `local:` throughout.
+Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
 
 ## 2. Download the workspace image
 
-Choose a published tag from [workspace releases](https://github.com/makarski/collab-ai/releases).
-Replace the example tag below with that version. Until the first release is published,
-use a [development build or CI artifact](sandbox-image.md).
+Follow [Download a built image](sandbox-image.md#download-a-built-image) on the host.
+It sets `run_id` and creates `dist/workspace-$run_id/image.tfvars.json`.
+In the **same host shell**, prepare a new deployment:
 
 ```sh
-# macOS; on Linux replace colima-collab-ai with local.
-python3 scripts/sandbox-download.py --remote colima-collab-ai --release workspace-v0.1.0
 cp infra/incus/sandbox.tfvars.example infra/incus/sandbox.auto.tfvars
-cp dist/installed-workspace/image.tfvars.json infra/incus/image.auto.tfvars.json
+cp "dist/workspace-$run_id/image.tfvars.json" infra/incus/image.auto.tfvars.json
 ```
-
-The downloader selects your Incus server's architecture and verifies the image's
-SHA256. Nothing compiles locally. CI has already built and tested the image;
-dev networking is selected at provisioning time. No Docker or host Go installation is needed.
 
 Edit `sandbox.auto.tfvars`:
 
-| Setting | Value |
+| Setting | Choose |
 | --- | --- |
-| `incus_socket` | Absolute socket path printed by the Mac bootstrap; usually `/var/lib/incus/unix.socket` on Linux |
-| `storage_pool` | Existing quota-capable pool; `default` for the Colima host |
-| `dev_network` | Existing managed bridge with DHCP/DNS and outbound routing/NAT; defaults to `incusbr0` |
-| `dev_network_enabled` | Defaults to `true`; set `false` to remove dev's NIC |
+| `incus_socket` | Mac bootstrap's printed path; usually `/var/lib/incus/unix.socket` on Linux |
+| `storage_pool` | Your quota-capable pool; `default` on the Colima host |
+| `dev_network` | Existing bridge; default `incusbr0` |
+| `secured_runtime` | `true` for a separate broker/control container |
+| `dev_network_enabled` | `true` for agent login and model requests; `false` for offline dev |
 
-The generated image variables pin the artifact's absolute path and SHA256.
-Keep that artifact: provisioning verifies its checksum. For another version, use
-a new `--output` directory. [Image contents and build details](sandbox-image.md).
+Keep the downloaded image: provisioning verifies its checksum. No host Go or Docker
+is needed. [Choose tool versions / build locally](sandbox-image.md#development-builds).
+For an existing deployment, use [upgrade](sandbox-storage.md#replace-dev-retain-data) instead.
 
 ## 3. Preview and apply
-
-**Start with a fresh sandbox** for this storage layout.
-
-For separate dev and secured containers, add `secured_runtime = true` to
-`sandbox.auto.tfvars`. Stop workspace and any existing secured container before
-enabling or upgrading the layout; the apply restarts them. See [secured runtime setup](secured-runtime.md) for private
-state, host-only budget commands and lifecycle instructions. Control remains offline.
 
 ```sh
 tofu -chdir=infra/incus init
 tofu -chdir=infra/incus validate
 tofu -chdir=infra/incus plan -out=sandbox.tfplan
-```
-
-Review the plan: it creates a project, cached image, profile, container, and two
-protected dev volumes (`workspace-data` and `agent-home`).
-With `secured_runtime = true`, it also adds a secured container/profile and four
-managed volumes. Then:
-
-```sh
+# Review the plan, then create the sandbox
 tofu -chdir=infra/incus apply sandbox.tfplan
 ```
 
-An unchanged second plan should report no changes. Keep the ignored state and
-variables files; use one state per deployment. Keep these files and this operator
-checkout outside writable dev mounts. Image changes may replace the
-workspace root disk, while project and home volumes survive. Review replacement/deletion
-actions before applying. [Storage, backups and quotas](sandbox-storage.md).
+Expect a workspace and protected `workspace-data` / `agent-home` volumes.
+Control mode also creates `secured` and its private state/IPC volumes.
+An unchanged second plan should report no changes.
+
+Keep the state, variables and operator checkout **outside writable sandbox mounts**.
+Use the same state for every later apply. Both containers must be stopped before
+[control-mode changes](secured-runtime.md); do not hot-add shared mounts.
 
 ## 4. SSH into the workspace
 
-Configure access once, then use ordinary SSH in as many terminals as you need:
+On the host:
 
 ```sh
-# macOS; on Linux use --remote local.
 python3 scripts/sandbox-ssh.py --remote colima-collab-ai
 ssh -F infra/incus/ssh/config workspace
 ```
 
-You log in as **`agent`**, without sudo. Interactive shells start in `/workspace`.
-SSH travels through `incus exec`; it works even with dev networking disabled and opens no network SSH listener.
-Your host must already have Incus access and OpenSSH. The helper creates a dedicated
-local key in the ignored `infra/incus/ssh/` directory, copies only its public key,
-and pins the guest host key through Incus. It never forwards your SSH agent.
+You enter as `agent`, without sudo, in `/workspace`. The helper creates a dedicated
+host login key and copies **only its public key**. It never forwards your SSH agent.
+SSH uses `incus exec`, works offline and opens no network SSH listener.
 
-Inside the workspace:
+[Sign in below](#sign-in-and-network-access), then use the
+[README commands](../README.md#set-up-a-sandbox) to clone, start/resume and reconnect.
 
-```sh
-collab status
-dashboard
-codex --version
-claude --version
-tmux new -A -s work
-```
+| Inside an interactive SSH/tmux shell | Behavior |
+| --- | --- |
+| `codex` | Managed terminal, ID `codex-1` |
+| `claude` | Preconfigured channels, ID `claude-1` |
+| `dashboard` | Same broker's read-only terminal dashboard |
+| `command codex` / `command claude` | Native CLI for login/setup |
 
-After [signing in](#sign-in-and-network-access), launch the installed agents:
+Use one session per ID; extra sessions need separate identities. Scripts use native
+binaries, not these aliases. Ask both agents to read `/usr/local/share/collab-ai/SKILL.md`;
+it is not automatically discovered. Copy only `SKILL.md` and `references/` when
+installing that skill elsewhere.
 
-```sh
-codex
-claude
-```
-
-Open each in its own SSH terminal or tmux pane. `exit` closes a shell; tmux keeps
-sessions alive across disconnects. No agents launch automatically. The collaboration
-skill and its references are installed at `/usr/local/share/collab-ai/`.
-Ask either agent to read `/usr/local/share/collab-ai/SKILL.md` for the interaction
-contract. This location is not automatically discovered by the agents. To install
-the skill into a project, copy only `SKILL.md` and `references/` into its
-`collab-ai` skill folder; leave `tools.lock.json` and `build-source.json` behind.
-
-Interactive `agent` shells alias `codex` to the managed `collab-codex` terminal
-(ID `codex-1`) and `claude` to channels with `/etc/collab-ai/claude-mcp.json`
-(ID `claude-1`). Both use the sandbox broker. Arguments still work, for example
-`codex resume SESSION_ID` and `claude --resume`. Claude requires channel consent
-and an account that permits channels. One active session owns each ID; additional
-sessions need distinct IDs and explicit launcher/configuration commands.
-Use `command codex` or `command claude` for the native CLI, including login/setup.
-Aliases apply to interactive SSH and Bash/tmux shells; scripts use native binaries.
-New images include [Starship](https://starship.rs/guide/) for the Bash prompt.
-Customize `~/.config/starship.toml`; it persists in the agent-home volume.
-Existing containers need an [image update](sandbox-storage.md#replace-dev-retain-data).
-`dashboard` opens `collab dashboard` in either an interactive dev shell or a control
-shell. It queries the same broker without starting another broker or database.
-
-If a replaced workspace has a new host key, the helper refuses it: verify the
-replacement, remove `infra/incus/ssh/known_hosts`, then rerun the helper.
-Setup replaces the single operator public key; multiple terminals share it.
+Starship settings go in persistent `~/.config/starship.toml`. Older containers need
+an [image update](sandbox-storage.md#replace-dev-retain-data).
 
 ## Sign in and network access
 
-**Dev is online by default; control has no NIC.** The selected managed Incus
-bridge supplies DHCP/DNS and its configured outbound routing/NAT. This is general
-network access, including reachable host/LAN services, not a provider-domain
-allowlist. No port forwards are added. Bridge and host firewall rules determine
-who can reach services you start in dev; NAT alone is not an ingress firewall.
-
-If you provision another project on the same Incus server, select a different
-managed bridge with `dev_network`: two instances named `workspace` cannot share
-the same bridge's managed DNS. The provisioning module uses an existing bridge;
-it does not create or reconfigure your host network.
-
-For Codex subscription login, run **inside your dev SSH shell**:
+Inside the container:
 
 ```sh
 command codex login --device-auth
 command codex login status
-codex
+command claude auth login
 ```
 
-Open the supplied verification URL on your Mac/Linux host and enter the code.
-Enable device-code login in your ChatGPT security settings or workspace permissions
-if required. `command` bypasses the interactive collaboration alias for setup.
-Browser login to `localhost:1455` cannot reach the container: that address refers
-to the browser's machine, and sandbox SSH forwarding stays disabled. See
-[OpenAI's device-login guide](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
-For Claude, run `command claude auth login` and follow its terminal instructions;
-the installed CLI defaults to Claude subscription login. Credentials saved under
-`/home/agent` survive container replacement; they are not copied from your host.
+Follow the CLI instructions in your host browser. Enable Codex device login in
+your account/workspace if required. `localhost:1455` in your browser points to the
+host, not the container; use [device login](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
+Claude channels also require consent and account/organization support.
+Credentials saved in `/home/agent` persist; host credentials are not imported.
 
-**Opt out:** set `dev_network_enabled = false` in your deployment's
-`sandbox.auto.tfvars` (or edit the same key in its JSON variables file), then
-review and apply:
-
-```sh
-tofu -chdir=infra/incus plan -out=sandbox.tfplan
-tofu -chdir=infra/incus apply sandbox.tfplan
-```
-
-Use the same checkout/state that provisioned the deployment. The apply removes
-dev's NIC and interrupts its network connections. Set `true` and apply again to
-restore access. Offline mode keeps SSH, broker communication and the dashboard
-available; subscription login and model requests need networking.
+**Dev is online by default; control has no NIC.** To disable dev networking, set
+`dev_network_enabled = false` in the existing deployment variables and repeat
+plan/apply. This interrupts network connections; SSH and the broker still work.
+Set `true` and apply to restore access. For another project on the same server,
+select a different bridge: instances named `workspace` cannot share its managed DNS.
 
 ## Status and recovery
 
-| Name | macOS | Linux |
-| --- | --- | --- |
-| Host VM | `collab-ai` | Not needed |
-| Incus remote (server) | `colima-collab-ai:` | `local:` |
-| Incus project | `collab-ai` | `collab-ai` |
-| Container | `workspace` | `workspace` |
+Run on the host (Linux: `local:`):
 
-**Keep the colon on the remote.** `collab-ai:` is not the Mac remote name.
-`incus remote list` shows registered connections. No default-remote switch is needed.
+```sh
+incus --project collab-ai list colima-collab-ai:
+```
 
-Run the command for your platform:
+Expect `workspace` (and optional `secured`) to be `RUNNING`; allow a few seconds
+for the broker. **Keep the colon.** The remote is `colima-collab-ai:`, not `collab-ai:`.
 
-| Action | macOS | Linux |
-| --- | --- | --- |
-| List projects | `incus project list colima-collab-ai:` | `incus project list local:` |
-| List containers | `incus --project collab-ai list colima-collab-ai:` | `incus --project collab-ai list local:` |
-| Recovery shell (root) | `incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh` | `incus --project collab-ai exec local:workspace -- /bin/sh` |
-
-Expect `workspace` to be `RUNNING` with an IP address. `ip -brief link` inside it
-should show `eth0` and loopback. With `dev_network_enabled = false`, only loopback remains.
-After starting it, allow a few seconds for the broker to become ready.
-
-- **Remote missing on Mac:** check `colima list`, then rerun the host bootstrap.
-  Colima removes its remote when the VM stops and recreates it on startup.
-- **Empty container list:** check the project list first. An empty table can also
-  mean the project is missing. Complete steps 2–3 to create it.
-- **Workspace stopped:** start it below. Host and container power states are separate.
+| Problem | Action |
+| --- | --- |
+| Remote missing | Check `colima list`; rerun `sandbox-host.py apply` |
+| Empty list / missing project | Check `incus project list colima-collab-ai:`; complete steps 2–3 |
+| SSH host key changed | Follow the [replacement procedure](sandbox-storage.md#replace-dev-retain-data) |
+| Need a recovery shell | `incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh` (root) |
 
 ## Stop or remove
 
-These commands retain the workspace's data. With secured mode enabled,
-[stop or start both runtimes](secured-runtime.md#status-stop-and-restart).
+On the host; these retain data:
 
-| Action | macOS | Linux |
-| --- | --- | --- |
-| Stop workspace | `incus --project collab-ai stop colima-collab-ai:workspace` | `incus --project collab-ai stop local:workspace` |
-| Start workspace | `incus --project collab-ai start colima-collab-ai:workspace` | `incus --project collab-ai start local:workspace` |
-| Stop dedicated host | `colima stop collab-ai` | Stop the workspace only |
+```sh
+incus --project collab-ai stop colima-collab-ai:workspace
+incus --project collab-ai stop colima-collab-ai:secured  # only in control mode
+colima stop collab-ai                                 # macOS only
+```
 
-On Mac, restart the host with `python3 scripts/sandbox-host.py apply`, then start
-the workspace. Incus boot autostart is disabled.
-
-**To keep the workspace stopped across applies**, set `running = false` in
-`sandbox.auto.tfvars`, then repeat step 3. An apply with `running = true` starts
-it again, even if you stopped it manually.
-
-**To delete the workspace and its data**, first back up what you need and follow
-[explicit storage removal](sandbox-storage.md#deliberate-removal). An ordinary
-destroy plan is blocked by the persistent volumes' deletion guard. The host VM
-and shared storage pool are retained.
+Use the [daily block](../README.md#set-up-a-sandbox) to restart. Containers do not
+autostart with the VM. Set `running = false` in deployment variables to keep them
+stopped across applies; otherwise an apply may start them.
+For deletion, follow [back up and remove](sandbox-storage.md#deliberate-removal).
 
 ## Incus web UI
 
-Run this **on your host**, with the Incus server running. On Mac, start it with
-`python3 scripts/sandbox-host.py apply` if needed. The bootstrap does not open a browser.
-
-| macOS | Linux |
-| --- | --- |
-| `incus webui colima-collab-ai:` | `incus webui local:` |
-
-Open the exact localhost URL printed by the command if your browser does not
-open automatically. Its port and login token are temporary; keep the URL private.
-Keep the terminal running; Ctrl+C closes the UI proxy without stopping containers.
-Select project **`collab-ai`**, then instance **`workspace`** to inspect its state,
-resources, logs and console. If the project or instance is missing, complete
-steps 2–3; starting Colima alone does not provision a workspace.
-
-The proxy uses your existing Incus access. No public HTTPS listener, workspace NIC
-or browser certificate setup is required for this local command.
-[Incus web UI command](https://linuxcontainers.org/incus/docs/main/reference/manpages/incus/webui/).
-
-**UI assets missing?** They belong on the Linux **server**, outside the workspace.
-The tested Colima host already includes `incus-ui-canonical`; the Mac client alone
-does not supply it. On Debian/Ubuntu servers using the
-[Zabbly package repository](https://github.com/zabbly/incus#other-packages), install it with:
+On the host, with Incus running:
 
 ```sh
-# macOS: install inside the dedicated Colima VM, only if missing.
-colima ssh --profile collab-ai -- sudo apt-get update
-colima ssh --profile collab-ai -- sudo apt-get install incus-ui-canonical
-
-# Linux: run on the Incus server, only if missing.
-sudo apt-get update
-sudo apt-get install incus-ui-canonical
+incus webui colima-collab-ai:  # Linux: incus webui local:
 ```
 
-If the package cannot be found, follow your Incus distributor's UI installation
-instructions; these commands assume its package repository is already configured.
-If `webui` is an unknown command, update the host's Incus client to a release that
-provides it. On Mac: `brew upgrade incus`.
+Open the printed URL, select project `collab-ai`, and keep the command running.
+The URL contains a temporary login token; keep it private. Ctrl+C closes the UI
+proxy without stopping containers. Use OpenTofu for managed changes to avoid drift.
 
-Use the UI to inspect; apply managed changes through Terraform/OpenTofu to avoid
-drift. For Codex and Claude connections, use the separate
-[collaboration dashboard over SSH](dashboard.md#open-the-dashboard). Incus resource
-limits do not enforce token caps.
+If `webui` is unknown, update the Incus client (`brew upgrade incus` on Mac).
+Missing UI assets belong on the **Incus server**, not in the workspace.
+On Debian/Ubuntu with the [Zabbly repository](https://github.com/zabbly/incus#other-packages):
+
+```sh
+# Mac: install in the dedicated VM only if missing
+colima ssh --profile collab-ai -- sudo apt-get update
+colima ssh --profile collab-ai -- sudo apt-get install incus-ui-canonical
+# Linux: run apt-get update/install incus-ui-canonical on the Incus server
+```
+
+For other distributions, use their Incus UI package instructions.
+[Agent dashboard](dashboard.md) is a separate terminal UI.
 
 ## Security: can agents execute code on my host?
 
-Agent commands run inside the container, including scripts read from host mounts.
-No host shell, sudo or SSH-agent forwarding is provided.
+Commands run inside the container, including scripts from host mounts. No host
+shell, sudo or SSH-agent forwarding is provided. Writable mounts allow changes
+that **you or host automation may later execute**; review those changes.
 
-Writable mounts let agents change files that **you or host automation may later
-execute**. Review those changes. Host credentials, admin sockets or reachable
-command-running services can also provide host access; dev networking is on.
-
-Isolation is not absolute: containers share the Linux host kernel (Colima's VM
-kernel on Mac). Keep it patched. [Incus security](https://linuxcontainers.org/incus/docs/main/explanation/security/).
+Dev has general network access, including reachable host/LAN services—not a provider
+allowlist. No port forwards are added; NAT is not an ingress firewall. Keep host
+credentials and administrative sockets out. Containers share the Linux server's
+kernel (Colima's VM on Mac), so isolation is not absolute.
+[Incus security](https://linuxcontainers.org/incus/docs/main/explanation/security/).
 
 <details>
 <summary>Isolation, repeatability, and validation details</summary>
