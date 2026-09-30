@@ -57,25 +57,16 @@ Run on the **host**, from the repository root. Exit agents and [back up](#back-u
 first. Projects and agent home survive; processes and tmux sessions do not.
 Standalone broker history is lost on replacement; control-mode history persists.
 
-For an upgrade, follow [Download a built image](sandbox-image.md#download-a-built-image).
-It creates `dist/workspace-RUN_ID/image.tfvars.json` on your host. Replace
-`image_file` and `image_fingerprint` in your existing deployment variables with
-that file's values. Keep its image directory. Skip this step to reprovision with
-the current image.
-
-Use the directory containing your **existing `terraform.tfstate` and variables**,
-including a separate operator checkout if used. Do not initialize a new deployment.
-On Linux, use `local:` and `--remote local`.
+For an upgrade, [download the new image](sandbox-image.md#download-a-built-image)
+first. In the same host shell (Linux: use `local:`):
 
 ```sh
-deployment_dir=infra/incus  # change to your existing operator state directory
-
 incus --project collab-ai stop colima-collab-ai:workspace
 incus --project collab-ai stop colima-collab-ai:secured  # only in control mode
-tofu -chdir="$deployment_dir" plan -replace=incus_instance.workspace -out=upgrade.tfplan
 
-# Review: container/image changes are expected; data-volume deletion is not
-tofu -chdir="$deployment_dir" apply upgrade.tfplan
+python3 scripts/sandbox-provision.py plan --image-dir "dist/workspace-$run_id" --replace
+# Review the plan; persistent data volumes must be retained
+python3 scripts/sandbox-provision.py apply
 incus --project collab-ai list colima-collab-ai:
 
 # Only after successful replacement: renew SSH host-key trust
@@ -84,6 +75,10 @@ python3 scripts/sandbox-ssh.py --remote colima-collab-ai
 ssh -F infra/incus/ssh/config workspace collab status
 ssh -F infra/incus/ssh/config workspace
 ```
+
+The helper remembers the image and state directory; no `cd` or `deployment_dir`
+variable is needed. Omit `--image-dir` to reuse the selected image.
+[State and interrupted runs](sandbox-operator.md).
 
 Both containers must be stopped for a control-mode image update. With `running = true`,
 apply starts them again. Your private login key stays on the host. For custom SSH
@@ -96,12 +91,12 @@ that would delete or replace the dev volumes, including a full destroy. Changing
 the project or storage pool must not silently replace them.
 
 After backing up and deciding to delete the data, change that literal to `false`
-in the configuration used by this deployment. Then review and apply a destroy plan:
+in the deployment directory printed by the helper. Then review and apply a destroy plan:
 
 ```sh
-tofu -chdir=infra/incus plan -destroy -out=destroy.tfplan
+python3 scripts/sandbox-provision.py plan --destroy
 # This deletes the containers and their managed volumes, including dev data.
-tofu -chdir=infra/incus apply destroy.tfplan
+python3 scripts/sandbox-provision.py apply
 ```
 
 Restore the guard to `true` before creating another deployment. The host VM and

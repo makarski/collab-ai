@@ -16,3 +16,8 @@ collab-ai.db-*
 __pycache__/
 /dist/
 /infra/incus/ssh/
+
+# Host-only provisioning metadata. Never package into agent images.
+/infra/incus/operator-*.json
+/infra/incus/operator.auto.tfvars.json
+/infra/incus/.operator.lock

@@ -91,6 +91,8 @@ jobs:
           sudo env "PATH=$PATH" python3 scripts/sandbox-smoke.py --remote local --image-dir dist/installed --mount-check --secured-check --network-check
       - name: Prove offline controller and dev boundaries
         run: sudo env "PATH=$PATH" python3 scripts/sandbox-boundary.py --remote local --image-dir dist/installed
+      - name: Prove containerized provisioning and host-state recovery
+        run: sudo --preserve-env=PATH python3 scripts/sandbox-operator-smoke.py --remote local
       - name: Upload tested release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
