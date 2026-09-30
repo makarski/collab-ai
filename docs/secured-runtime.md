@@ -1,41 +1,19 @@
-# Control runtime setup (offline)
+# Separate control runtime
 
-Use a workspace image built from this revision or later. For an existing deployment,
-stop workspace and any existing secured container first (Linux: use `local:`):
-
-```sh
-incus --project collab-ai stop colima-collab-ai:workspace
-# If secured already exists:
-incus --project collab-ai stop colima-collab-ai:secured
-```
-
-Then add `secured_runtime = true` to `infra/incus/sandbox.auto.tfvars` and follow
-[plan and apply](sandbox.md#3-preview-and-apply). The apply starts both containers
-when `running = true`. Fresh installations can enable this option directly.
-Enabling the layout preserves dev volumes. Images may replace the dev root disk;
-`/workspace` and `/home/agent` survive. This storage layout supports fresh deployments only.
-
-An apply-time host preflight rejects enabling/upgrading the layout while either container is running.
-Incus hot-added read-only mounts can be remounted writable by container root;
-the broker, status and executor mounts must be present at boot. Keep both containers
-stopped after a failed apply, then retry. Do not hot-add these mounts.
-
-| Runtime | Purpose | Access |
+| Container | Runs | Network |
 | --- | --- | --- |
-| `workspace` (dev) | Codex/Claude adapters, repositories and builds running as `agent` | Unprivileged SSH; selected host mounts |
-| `secured` (control) | One collaboration broker and SQLite database; operator dashboard | Human administration through host Incus |
+| `workspace` | Codex, Claude and project code as `agent` | Online by default |
+| `secured` | One broker, SQLite, operator dashboard and private state | Offline |
 
-Both containers are unprivileged and have separate UID mappings. Control is
-offline; dev has network access unless `dev_network_enabled = false`.
-Secured adds 1 CPU, 2 GiB RAM, a root disk of `disk_gib`, 1 GiB private state,
-and three 16 MiB IPC volumes. Existing instance names are retained to avoid a
-destructive rename. With this mode enabled, the workspace's standalone broker
-does not start. Both dev adapters and the control dashboard use the same broker.
+Set `secured_runtime = true` in your deployment variables and follow
+[plan/apply](sandbox.md#3-preview-and-apply). Existing containers must both be stopped;
+preflight rejects live upgrades. Keep them stopped after a failed apply and retry.
+Shared mounts must be present at boot, not hot-added.
 
-**Control remains offline.** No credentials are provisioned. Sign in from dev
-using the [subscription login guide](sandbox.md#sign-in-and-network-access).
-The existing experimental protected Codex launcher is retained below;
-ordinary dev agents do not gain protected accounting by sharing its broker.
+Control adds 1 CPU, 2 GiB RAM, a `disk_gib` root disk, 1 GiB private state and three
+16 MiB IPC volumes. Dev's local broker is disabled; persistent projects/home remain
+in dev. [Upgrade and retention](sandbox-storage.md#replace-dev-retain-data).
+**Sharing the broker does not give ordinary dev agents protected token caps.**
 
 ## Shared broker and dashboard
 
@@ -69,6 +47,23 @@ The only active collaboration database is
 The old workspace database is left untouched and is **not merged** into control.
 Export any needed workspace history before replacing its root disk. The control
 database survives broker crashes and control-container replacement.
+
+## Status, stop and restart
+
+On the host (Linux: `local:`):
+
+```sh
+incus --project collab-ai list colima-collab-ai:
+incus --project collab-ai stop colima-collab-ai:workspace colima-collab-ai:secured
+incus --project collab-ai start colima-collab-ai:secured colima-collab-ai:workspace
+```
+
+Set `running = false` to keep both stopped across applies; boot autostart is disabled.
+Private state survives container replacement. Disabling control or changing project/pool
+can remove its volumes; use [explicit removal](sandbox-storage.md#deliberate-removal).
+
+<details>
+<summary>Experimental protected launcher — protocol clients only, no subscription login or terminal resume</summary>
 
 ## Experimental protected Codex launcher
 
@@ -150,25 +145,11 @@ fallback. This startup check does not monitor later executor disconnects, which
 remain native tool errors under the session's soft cap. The supervisor
 [stops native clients on failure](budget-boundary.md#supervisor-failure).
 
-## Status, stop and restart
 
-```sh
-# macOS; Linux: use local: instead.
-incus --project collab-ai list colima-collab-ai:
-incus --project collab-ai stop colima-collab-ai:workspace colima-collab-ai:secured
-incus --project collab-ai start colima-collab-ai:secured colima-collab-ai:workspace
-```
+</details>
 
-Set `running = false` and apply to keep **both** containers stopped across applies.
-Set it back to `true` and apply to restart. Boot autostart is disabled. The Incus
-web UI shows both containers under project `collab-ai`.
-
-Private state survives restarts and replacement of the secured root disk.
-Changing an image replaces the dev root disk but retains its workspace and agent-home volumes.
-Setting `secured_runtime = false`, changing the project/pool, or applying a destroy
-plan can delete the custom volumes and their budgets: review deletions carefully.
-The [destroy procedure](sandbox.md#stop-or-remove) now includes both runtimes and
-volumes. Persistent dev volumes block destruction until their deletion guard is explicitly disabled. The procedure retains the host VM and shared storage pool.
+<details>
+<summary>Validation and host requirements</summary>
 
 ## Validation
 
@@ -198,3 +179,5 @@ The storage pool/kernel must support Incus ID-mapped custom volumes
 ([`security.shifted`](https://linuxcontainers.org/incus/docs/main/reference/storage_zfs/#storage-volume-configuration));
 ZFS requires 2.2+ for idmaps. Unsupported hosts should fail provisioning rather
 than sharing the containers' identities or using world-writable IPC directories.
+
+</details>

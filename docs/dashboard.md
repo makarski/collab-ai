@@ -1,46 +1,25 @@
 # Operator dashboard
 
-The Bubble Tea dashboard shows **both Codex and Claude connections and pending
-inboxes**. It runs in a terminal; collab-ai does not serve a browser dashboard.
-For containers and resource usage, open the separate [Incus web UI](sandbox.md#incus-web-ui).
+A read-only terminal view of agent connections and pending messages.
+Prompts and approvals stay in agent terminals. For containers, use the
+[Incus browser UI](sandbox.md#incus-web-ui).
 
 ## Open the dashboard
 
-**Sandbox (macOS or Linux):** complete the [SSH setup](sandbox.md#4-ssh-into-the-workspace),
-then run from the repository root on your host:
+From a sandbox shell, run `dashboard`. Or from your host checkout:
 
 ```sh
 ssh -t -F infra/incus/ssh/config workspace collab dashboard
 ```
 
-The `-t` allocates the terminal Bubble Tea needs. From an existing sandbox shell,
-run `collab dashboard`. The binary is already installed and the broker starts at
-boot. Press `q` to close the dashboard; the workspace and agents keep running.
-
-**Host broker:** build once, then watch without repeating `collab status`:
+For a host broker (after the [host setup](quickstart.md)):
 
 ```sh
-go build -o collab ./cmd/collab
-./collab dashboard
-./collab dashboard --socket /path/to/collab-ai.sock --interval 2s --timeout 3s
+./collab dashboard --socket /tmp/collab-ai.sock
 ```
 
-The socket defaults to `COLLAB_SOCKET_PATH`, then `/tmp/collab-ai.sock`.
-The dashboard requires interactive stdin and stdout. For a pipe, script, or log,
-use `collab status` or `collab status --json`. Set `NO_COLOR=1` for plain rendering.
-
-## Agent terminals and token caps
-
-The dashboard observes collaboration; prompts, output and approval requests stay
-in each agent's terminal. Open another SSH terminal or tmux pane for
-[`collab-codex --terminal` and Claude Code](sandbox.md#4-ssh-into-the-workspace).
-The sandbox currently stays offline, so live model sessions are unavailable.
-
-The dashboard has no token accounting or budget controls yet.
-[`collab budget`](host-integration.md#codex-soft-cap) creates named soft caps and
-reports usage; `collab-codex --budget NAME` applies one to a managed session.
-Shared budgets and Claude supervision are
-not implemented. Incus CPU, memory and disk limits do not limit model tokens.
+`q` closes only the dashboard. It needs an interactive terminal; scripts should
+use `collab status --json`. `NO_COLOR=1` disables color.
 
 ## Controls
 
@@ -57,50 +36,37 @@ not implemented. Incus CPU, memory and disk limits do not limit model tokens.
 | `?` | Open or close help |
 | `q` / Ctrl+C | Quit the dashboard |
 
-On wide terminals, the selected row's details appear alongside the roster.
-On narrower terminals, Enter opens them. Selection follows the same agent and
-session across refreshes, rather than a row number. If that row disappears, the
-nearest remaining row is selected. The filter applies to either tab; the state
-filter applies only to sessions. Terminals smaller than 35 columns or 12 rows
-show a resize hint, while quit and refresh controls remain available.
+Enter opens full details on narrow screens. Filters and selection survive refreshes.
 
 ## What the screen means
 
-The header shows the latest request's broker health and socket reachability.
-The roster and counts belong to the displayed, timestamped snapshot. Refreshes
-run asynchronously, with **at most one status request in flight**. The default
-delay is two seconds after a request completes; `--interval` accepts 1s–1m.
-Each request has a three-second timeout by default; `--timeout` must be greater
-than zero and no more than 30s. Manual refresh cannot overlap an active request.
+| Display | Meaning |
+| --- | --- |
+| Connected | Broker connection exists; does not prove the model is listening |
+| Pending | Recipient deliveries awaiting explicit acknowledgment, including offline agents |
+| Stale session | Historical owner without a recorded disconnect |
+| **STALE** snapshot | Retained or old observations; check the timestamp/error |
+| Unavailable / truncated | Missing information; do not interpret it as zero |
 
-After a failed or unsupported response, the last snapshot stays visible with a
-**STALE** label. A snapshot also becomes stale when its broker timestamp is older
-than the refresh interval plus request timeout. A degraded response replaces old
-observations with the available live registry and explicitly unavailable metrics.
-Enter opens details including the full bounded error, history availability, and
-list limits. Refresh continues so a restarted or repaired broker can recover.
+Refresh defaults to two seconds after each request, with a three-second timeout.
+Override with `--interval 2s --timeout 3s` (interval 1s–1m, timeout >0–30s).
+Only one request runs at a time; refresh continues after failure.
+[Status field definitions](status.md).
 
-Session states describe transport ownership, historical disconnects, and stale
-history—not whether a model is thinking, idle, or listening. A stale historical
-session differs from a STALE retained snapshot. Last inbound activity is a broker
-frame observation, not model activity. Legacy delivery counts remain unavailable.
+## Agent terminals and token caps
 
-**Pending inboxes** lists counts once per logical agent ID, including offline
-recipients. These counts are not duplicated across historical session rows.
-Only explicit, committed agent acknowledgment removes pending delivery; a reply,
-adapter receipt, or host submission alone does not. The aggregate total covers
-all pending recipient deliveries, even when the recipient list is truncated.
-Truncated lists may omit identities; absence is not proof of zero pending work
-or an offline agent. See the [status contract](status.md) for precise semantics.
+No token accounting or cap controls are built into the dashboard yet.
+Use [named Codex budgets](host-integration.md#codex-soft-cap). Claude/shared budgets
+are not supported. Incus resource limits do not limit model tokens.
 
 ## Read-only boundary
 
-The dashboard uses the existing status client and Unix socket. It never opens
-SQLite, registers an agent, reads message bodies, consumes an inbox, acknowledges
-delivery, or allocates a message sequence. Closing it cancels outstanding I/O
-and restores the terminal; the broker and agent processes keep running.
-Peer-supplied identifiers and errors are escaped before rendering. Long errors
-are bounded and explicitly marked as truncated; color is never the only indicator.
+The dashboard never reads message bodies or SQLite, registers an agent, consumes
+messages or acknowledges delivery. It escapes peer-supplied text and restores the
+terminal on exit. It does not stop the broker or agents.
+
+<details>
+<summary>Validation record</summary>
 
 ## Recorded validation
 
@@ -117,3 +83,5 @@ The full race suite and vet passed. Automated tests cover cancellation and obsol
 responses, timeout/recovery, selection and filtering, null/truncated observations,
 terminal sizes, escaping, and real-broker non-interference. No live user inbox was
 used for this validation.
+
+</details>

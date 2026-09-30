@@ -1,6 +1,6 @@
 # Broker wire protocol
 
-[Back to the README](../README.md#documentation). This reference covers clients that
+[Back to the README](../README.md#reference-and-contributing). This reference covers clients that
 connect directly to the broker; agent setup is in the [quick start](../README.md#run-on-your-host).
 
 Newline-delimited JSON, one object per line. Messaging connections start with a
@@ -108,4 +108,3 @@ Message sequence allocation resumes across broker restarts via `MAX(messages.seq
 Welcome frames also consume sequence numbers, but are not persisted; a trailing
 welcome sequence can therefore be reused after a restart. Do not use welcome
 sequences as durable replay cursors.
-
