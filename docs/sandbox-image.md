@@ -69,10 +69,9 @@ exported workspace artifact. Updating the lock is an explicit reviewed change.
 
 The output contains `workspace.tar.gz`, its source/tool manifest,
 `image.tfvars.json`, and architecture-specific files under `release/`.
-Copy the variables file to `infra/incus/image.auto.tfvars.json`
-and review a new Terraform/OpenTofu plan. Replacing the workspace replaces its root disk; project and agent-home volumes
-are retained. Other root-disk files, including the standalone broker database,
-are not retained. Use a fresh sandbox for this storage layout.
+For a new deployment, copy the variables file to `infra/incus/image.auto.tfvars.json`.
+For an existing container, follow [upgrade or reprovision](sandbox-storage.md#replace-dev-retain-data)
+to keep the deployment state and persistent data.
 
 Provisioning is pinned to the finished image checksum. Rebuilding is not promised
 to be bit-for-bit identical: Ubuntu packages resolve at build time and image

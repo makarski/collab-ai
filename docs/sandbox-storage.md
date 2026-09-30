@@ -63,18 +63,46 @@ for operator-managed backups. Retention is not a substitute for backup.
 
 ## Replace dev, retain data
 
-Review the replacement plan against the existing state:
+Run on the **host**, from the repository root. Exit agents and [back up](#back-up-and-restore)
+first. Projects and agent home survive; processes and tmux sessions do not.
+Standalone broker history is lost on replacement; control-mode history persists.
+
+For an upgrade, download a [tested CI artifact](sandbox-image.md#ci-and-releases):
 
 ```sh
-tofu -chdir=infra/incus plan -replace=incus_instance.workspace -out=replace.tfplan
-tofu -chdir=infra/incus apply replace.tfplan
+python3 scripts/sandbox-download.py --remote colima-collab-ai \
+  --from-dir /path/to/extracted-artifact --output dist/workspace-upgrade
 ```
 
-The plan should replace only the dev container, not either data volume. After the
-verified replacement, renew SSH trust explicitly: remove the old
-`infra/incus/ssh/known_hosts`, then rerun `sandbox-ssh.py`. The private operator key
-stays on the host; the helper installs its public key into the new root disk.
-Running processes and tmux sessions do not survive container replacement.
+Replace `image_file` and `image_fingerprint` in your existing deployment variables
+with the values from `dist/workspace-upgrade/image.tfvars.json`. Keep the image.
+Skip this step to reprovision with the current image.
+
+Use the directory containing your **existing `terraform.tfstate` and variables**,
+including a separate operator checkout if used. Do not initialize a new deployment.
+On Linux, use `local:` and `--remote local`.
+
+```sh
+deployment_dir=infra/incus  # change to your existing operator state directory
+
+incus --project collab-ai stop colima-collab-ai:workspace
+incus --project collab-ai stop colima-collab-ai:secured  # only in control mode
+tofu -chdir="$deployment_dir" plan -replace=incus_instance.workspace -out=upgrade.tfplan
+
+# Review: container/image changes are expected; data-volume deletion is not
+tofu -chdir="$deployment_dir" apply upgrade.tfplan
+incus --project collab-ai list colima-collab-ai:
+
+# Only after successful replacement: renew SSH host-key trust
+mv infra/incus/ssh/known_hosts infra/incus/ssh/known_hosts.before-upgrade
+python3 scripts/sandbox-ssh.py --remote colima-collab-ai
+ssh -F infra/incus/ssh/config workspace collab status
+ssh -F infra/incus/ssh/config workspace
+```
+
+Both containers must be stopped for a control-mode image update. With `running = true`,
+apply starts them again. Your private login key stays on the host. For custom SSH
+state, adjust the paths and pass `--state-dir` to the helper. **Do not destroy to upgrade.**
 
 ## Deliberate removal
 

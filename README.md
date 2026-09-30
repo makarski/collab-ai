@@ -103,6 +103,7 @@ Host memory/sessions are not imported; start with a handoff for existing work.
 
 [SSH and terminals](docs/sandbox.md#4-ssh-into-the-workspace) ·
 [Persistent data and backups](docs/sandbox-storage.md) ·
+[Upgrade or reprovision](docs/sandbox-storage.md#replace-dev-retain-data) ·
 [Mount host directories](docs/sandbox-mounts.md) ·
 [Shared control runtime](docs/secured-runtime.md) ·
 [Stop, restart, or remove](docs/sandbox.md#stop-or-remove) ·
