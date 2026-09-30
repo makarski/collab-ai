@@ -23,6 +23,7 @@ done
 codex --version
 codex app-server --help >/dev/null
 claude --version
+starship --version
 addgroup --gid 1001 agent
 adduser --uid 1001 --gid 1001 --disabled-password --gecos '' agent
 addgroup --gid 1002 broker
@@ -51,6 +52,8 @@ printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/p
 install -m 0644 infra/image/collab-agent-aliases.sh /etc/profile.d/collab-agent-aliases.sh
 # Login shells read profile.d; non-login Bash shells (including tmux) read bash.bashrc.
 printf '\n. /etc/profile.d/collab-agent-aliases.sh\n' >>/etc/bash.bashrc
+install -m 0644 infra/image/collab-starship.sh /etc/profile.d/collab-starship.sh
+printf '\n. /etc/profile.d/collab-starship.sh\n' >>/etc/bash.bashrc
 systemctl disable ssh.service ssh.socket || true
 systemctl mask ssh.service ssh.socket
 systemctl enable collab-broker.service collab-secured-setup.service

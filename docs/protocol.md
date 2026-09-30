@@ -1,7 +1,7 @@
 # Broker wire protocol
 
 [Back to the README](../README.md#documentation). This reference covers clients that
-connect directly to the broker; agent setup is in the [quick start](../README.md#run).
+connect directly to the broker; agent setup is in the [quick start](../README.md#run-on-your-host).
 
 Newline-delimited JSON, one object per line. Messaging connections start with a
 hello; the separate one-shot [`status` request](status.md#wire-and-compatibility)

@@ -31,6 +31,7 @@ def check_versions(ssh, lock):
         "codex --version": f"codex-cli {lock['codex_version']}\n",
         "claude --version": f"{lock['claude_version']} (Claude Code)",
         "go version": f"go version go{lock['go_version']} ",
+        "starship --version": f"starship {lock['starship_version']}\n",
     }
     for command, expected in commands.items():
         output = run(ssh + [command], capture_output=True, text=True).stdout
@@ -51,7 +52,8 @@ def check_agent_aliases(ssh, lock):
     # Exercise installed login and non-login shell startup, without model requests.
     for flags in ("-ic", "-lic"):
         command = ('test "$(type -t codex)" = alias && test "$(type -t claude)" = alias && '
-                   'test "$(type -t dashboard)" = alias && codex --version && claude --version')
+                   'test "$(type -t dashboard)" = alias && '
+                   'test "${STARSHIP_SHELL-}" = bash && codex --version && claude --version')
         result = run(ssh + ["bash", flags, "'" + command + "'"], capture_output=True, text=True)
         if f"codex-cli {lock['codex_version']}" not in result.stdout or \
                 f"{lock['claude_version']} (Claude Code)" not in result.stdout:

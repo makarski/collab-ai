@@ -8,7 +8,7 @@ This is the ordinary host setup. For the proposed two-container layout, see the
 [Diagram source (PlantUML)](assets/host-integration.puml)
 
 For a first installation, follow the [step-by-step setup](quickstart.md).
-The [README](../README.md#run) keeps everyday launch, resume, fork, and status
+The [README](../README.md#run-on-your-host) keeps everyday launch, resume, fork, and status
 commands handy.
 
 The default MCP adapter remains a manual inbox. Two opt-in integrations can

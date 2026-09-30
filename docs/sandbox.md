@@ -147,6 +147,9 @@ and an account that permits channels. One active session owns each ID; additiona
 sessions need distinct IDs and explicit launcher/configuration commands.
 Use `command codex` or `command claude` for the native CLI, including login/setup.
 Aliases apply to interactive SSH and Bash/tmux shells; scripts use native binaries.
+New images include [Starship](https://starship.rs/guide/) for the Bash prompt.
+Customize `~/.config/starship.toml`; it persists in the agent-home volume.
+Existing containers need an [image update](sandbox-storage.md#replace-dev-retain-data).
 `dashboard` opens `collab dashboard` in either an interactive dev shell or a control
 shell. It queries the same broker without starting another broker or database.
 
