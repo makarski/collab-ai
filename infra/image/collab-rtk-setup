@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Initialize RTK once, as agent, after its persistent home is mounted."""
+
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+def initialize(home):
+    marker = home / ".local/state/collab-ai/rtk-initialized"
+    if marker.exists():
+        return  # Preserve subsequent user edits and opt-outs across replacements.
+    for relative in (".codex", ".claude", ".local/share/rtk"):
+        (home / relative).mkdir(mode=0o700, parents=True, exist_ok=True)
+    env = dict(os.environ, HOME=str(home), CODEX_HOME=str(home / ".codex"),
+               RTK_TELEMETRY_DISABLED="1")
+    for options in (("--codex",), ("--auto-patch",)):
+        subprocess.run(["/usr/local/bin/rtk", "init", "-g", *options],
+                       env=env, cwd=home, stdin=subprocess.DEVNULL, check=True)
+    marker.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    marker.write_text("RTK hooks initialized; existing configuration is now user-owned.\n")
+
+
+if __name__ == "__main__":
+    if os.getuid() != 1001:
+        sys.exit("collab-rtk-setup must run as the sandbox agent (uid 1001)")
+    os.umask(0o077)
+    initialize(Path.home())

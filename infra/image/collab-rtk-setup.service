@@ -1,0 +1,19 @@
+[Unit]
+Description=Initialize RTK hooks in the persistent agent home
+Requires=collab-workspace-setup.service
+After=collab-workspace-setup.service
+Before=multi-user.target
+ConditionPathIsMountPoint=/home/agent
+
+[Service]
+Type=oneshot
+User=agent
+Group=agent
+Environment=HOME=/home/agent
+WorkingDirectory=/home/agent
+UMask=0077
+ExecStart=/usr/local/bin/collab-rtk-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

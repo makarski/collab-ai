@@ -54,6 +54,7 @@ codex                         # new managed Codex conversation
 # claude                      # Claude with collaboration channels enabled
 # claude --resume             # resume Claude
 # dashboard                   # broker status and agent inboxes
+# rtk gain                    # estimated shell-output token savings
 
 # Disconnect: Ctrl+B then D detaches tmux; exit leaves SSH
 exit
