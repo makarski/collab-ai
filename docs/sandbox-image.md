@@ -88,15 +88,45 @@ persistence, dev replacement with retained data, SSH re-pinning and deletion pro
 The smoke test also enables dev networking, checks DHCP and access to the bridge's
 DNS service, then removes the NIC with the offline opt-out. Control stays offline.
 
-PRs and main builds produce Actions artifacts retained for seven days. Once this
-workflow is on main, **Run workflow** also accepts an app ref and exact tool versions.
-These development runs do not publish releases. Download and extract the artifact
-for your architecture, then install it locally:
+PRs and main builds produce downloadable image bundles (GitHub calls these
+**artifacts**), retained for seven days. Each contains a prebuilt Linux container
+image (`.tar.gz`) and its version/checksum manifest (`.json`). No compilation is needed.
+
+### Download a built image
+
+Run on your **host**, from the repository root, with GitHub CLI (`gh`) installed
+and signed in. Start the Incus host first. Select a successful CI run for the
+commit you want; for a PR, replace `--branch main` with its branch name.
 
 ```sh
+# List builds, then paste the chosen run's ID when prompted
+gh run list --repo makarski/collab-ai --workflow CI --branch main --status success --limit 5
+printf 'CI run ID: '
+read -r run_id
+
+# Apple Silicon / ARM64 server; use amd64 for an x86-64 server
+gh run download "$run_id" --repo makarski/collab-ai \
+  --name workspace-linux-arm64 --dir "dist/ci-image-$run_id"
+
+# Verify and prepare the downloaded image; Linux: --remote local
 python3 scripts/sandbox-download.py --remote colima-collab-ai \
-  --from-dir /path/to/extracted-artifact --output dist/installed-workspace
+  --from-dir "dist/ci-image-$run_id" --output "dist/workspace-$run_id"
 ```
+
+Both directories are **on your host**:
+
+- `dist/ci-image-RUN_ID`: files downloaded and extracted by `gh`; input to the verifier.
+- `dist/workspace-RUN_ID`: verified image plus `image.tfvars.json`; input to provisioning.
+
+The output directory must be new. Keep it: provisioning references the image there.
+Downloading does not replace a container. Continue with
+[new provisioning](sandbox.md#3-preview-and-apply) or [upgrade](sandbox-storage.md#replace-dev-retain-data),
+using the generated `image.tfvars.json` for the selected run.
+
+### Publish a release
+
+**Run workflow** accepts an app ref and exact tool versions; these development runs
+do not publish releases.
 
 Maintainers publish by pushing a `workspace-vX.Y.Z` tag at the reviewed commit.
 Only after checks and both image tests pass does CI create a GitHub Release with

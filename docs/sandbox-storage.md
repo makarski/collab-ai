@@ -67,16 +67,11 @@ Run on the **host**, from the repository root. Exit agents and [back up](#back-u
 first. Projects and agent home survive; processes and tmux sessions do not.
 Standalone broker history is lost on replacement; control-mode history persists.
 
-For an upgrade, download a [tested CI artifact](sandbox-image.md#ci-and-releases):
-
-```sh
-python3 scripts/sandbox-download.py --remote colima-collab-ai \
-  --from-dir /path/to/extracted-artifact --output dist/workspace-upgrade
-```
-
-Replace `image_file` and `image_fingerprint` in your existing deployment variables
-with the values from `dist/workspace-upgrade/image.tfvars.json`. Keep the image.
-Skip this step to reprovision with the current image.
+For an upgrade, follow [Download a built image](sandbox-image.md#download-a-built-image).
+It creates `dist/workspace-RUN_ID/image.tfvars.json` on your host. Replace
+`image_file` and `image_fingerprint` in your existing deployment variables with
+that file's values. Keep its image directory. Skip this step to reprovision with
+the current image.
 
 Use the directory containing your **existing `terraform.tfstate` and variables**,
 including a separate operator checkout if used. Do not initialize a new deployment.
