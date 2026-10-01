@@ -77,7 +77,8 @@ an [image update](sandbox-storage.md#replace-dev-retain-data).
 **RTK reduces shell output** through Codex/Claude hooks, configured on first boot.
 Approve the RTK hook if Codex prompts. `rtk gain` shows estimated output savings,
 not provider billing or a token cap. History stays in `~/.local/share/rtk/` across
-container replacement; the `codex` alias grants that directory write access.
+container replacement; `/etc/codex/config.toml` grants it workspace-write access
+through the App Server. User/project configuration can override that default.
 Existing settings are preserved; telemetry is not enabled. To opt out, run
 `rtk init -g --codex --uninstall` and `rtk init -g --uninstall --auto-patch`, then restart agents.
 

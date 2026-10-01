@@ -32,7 +32,8 @@ addgroup --gid 1003 collab-clients
 adduser --uid 1002 --gid 1002 --disabled-password --gecos '' --no-create-home --home /nonexistent --shell /usr/sbin/nologin broker
 usermod -aG collab-clients agent
 install -d -o agent -g agent /workspace /var/lib/collab-ai
-install -d /etc/collab-ai /etc/ssh/authorized_keys /usr/local/share/collab-ai
+install -d /etc/collab-ai /etc/codex /etc/ssh/authorized_keys /usr/local/share/collab-ai
+install -m 0644 infra/image/codex-config.toml /etc/codex/config.toml
 cp infra/image/tools.lock.json /usr/local/share/collab-ai/
 cp build-source.json /usr/local/share/collab-ai/
 bash infra/image/install-skill.sh docs/skills/collab-ai /usr/local/share/collab-ai
