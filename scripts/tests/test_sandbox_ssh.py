@@ -18,6 +18,8 @@ class SSHTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "host key changed"):
                 ssh.pin_host_key(known_hosts, "ssh-ed25519 BBBB")
             self.assertEqual(known_hosts.read_text(), "collab-workspace ssh-ed25519 AAAA\n")
+            ssh.pin_host_key(known_hosts, "ssh-ed25519 BBBB", refresh=True)
+            self.assertEqual(known_hosts.read_text(), "collab-workspace ssh-ed25519 BBBB\n")
 
     def test_state_cannot_be_reused_for_another_endpoint(self):
         with tempfile.TemporaryDirectory() as directory:

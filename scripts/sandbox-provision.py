@@ -13,6 +13,8 @@ import sys
 from sandbox_operator_config import deployment_directory, remember
 from sandbox_operator_workflow import run_operation
 from sandbox_operator_recovery import recover
+from sandbox_releases import release_tag, repository
+from sandbox_rollout import rollout
 
 
 def identifier(value):
@@ -23,19 +25,26 @@ def identifier(value):
 
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["plan", "apply", "recover"])
+    parser.add_argument("action", choices=["rollout", "plan", "apply", "recover"])
     parser.add_argument("--remote", default="colima-collab-ai" if platform.system() == "Darwin" else "local")
     parser.add_argument("--image-dir", type=Path, help="Verified workspace image directory; remembered after first selection")
     parser.add_argument("--state-dir", type=Path, help="Select an existing operator checkout once; otherwise discover it")
     parser.add_argument("--project", default="collab-ai", type=identifier)
     parser.add_argument("--storage-pool", default="default", type=identifier)
     parser.add_argument("--network", default="incusbr0", type=identifier)
+    parser.add_argument("--release", type=release_tag, help="Rollout release tag; defaults to latest")
+    parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
+    parser.add_argument("--ssh-state-dir", type=Path, default=Path(__file__).resolve().parents[1] / "infra/incus/ssh")
     changes = parser.add_mutually_exclusive_group()
     changes.add_argument("--replace", action="store_true", help="Plan replacement of the dev container")
     changes.add_argument("--destroy", action="store_true", help="Explicitly plan deletion; volume guards must be removed first")
     args = parser.parse_args()
     if args.action != "plan" and any((args.replace, args.destroy)):
         parser.error("--replace and --destroy are plan options; apply uses the saved plan")
+    if args.release:
+        if args.action != "rollout" or args.image_dir:
+            parser.error("--release is for rollout and cannot be combined with --image-dir")
+    args.release = args.release or "latest"
     return args
 
 
@@ -46,7 +55,7 @@ def main():
     metadata = json.loads(subprocess.check_output(["incus", "query", args.remote + ":/1.0"]))
     directory = deployment_directory(args.state_dir, args.project)
     remember(directory, args.project)
-    operation = recover if args.action == "recover" else run_operation
+    operation = {"recover": recover, "rollout": rollout}.get(args.action, run_operation)
     operation(args, directory, metadata["environment"])
 
 

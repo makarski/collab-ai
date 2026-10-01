@@ -61,7 +61,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -103,7 +103,7 @@ jobs:
           retention-days: 7
 
   release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/workspace-v')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/workspace-v'))
     needs: [checks, images]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -120,6 +120,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            RELEASE_TAG="workspace-v0.0.0-build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          fi
           [[ "$RELEASE_TAG" =~ ^workspace-v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
           gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" \
-            --verify-tag --title "$RELEASE_TAG" --generate-notes
+            --target "$GITHUB_SHA" --draft --title "$RELEASE_TAG" --generate-notes
+          # Keep incomplete uploads out of latest. Published assets are never overwritten.
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

@@ -102,7 +102,7 @@ def provisioning_files(directory):
 
 def image_selection(directory, requested):
     path = image_variables(directory, requested)
-    data = json.loads(path.read_text())
+    data = read_image_variables(path)
     image = Path(data["image_file"])
     if image.is_symlink() or not image.is_absolute():
         raise ValueError("Image must be an absolute, non-symlinked file")
@@ -110,6 +110,13 @@ def image_selection(directory, requested):
     if digest != data["image_fingerprint"]:
         raise ValueError("Workspace image checksum mismatch")
     return image, digest, path
+
+
+def read_image_variables(path):
+    if not path.is_file():
+        raise ValueError(f"No verified image at {path.parent}. Run sandbox-download.py first, "
+                         "then pass its printed image directory with --image-dir.")
+    return json.loads(path.read_text())
 
 
 def image_variables(directory, requested):
@@ -125,7 +132,7 @@ def existing_image_variables(directory):
     choices = [candidate for candidate in directory.glob("*.auto.tfvars.json")
                if contains_image(candidate)]
     if len(choices) != 1:
-        raise ValueError("Select the downloaded image once with --image-dir dist/workspace-RUN_ID")
+        raise ValueError("Run sandbox-provision.py rollout, or select a verified image with --image-dir")
     return choices[0]
 
 

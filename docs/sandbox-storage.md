@@ -57,32 +57,22 @@ Run on the **host**, from the repository root. Exit agents and [back up](#back-u
 first. Projects and agent home survive; processes and tmux sessions do not.
 Standalone broker history is lost on replacement; control-mode history persists.
 
-For an upgrade, [download the new image](sandbox-image.md#download-a-built-image)
-first. In the same host shell (Linux: use `local:`):
+With Incus running, run from the repository root:
 
 ```sh
-incus --project collab-ai stop colima-collab-ai:workspace
-incus --project collab-ai stop colima-collab-ai:secured  # only in control mode
-
-python3 scripts/sandbox-provision.py plan --image-dir "dist/workspace-$run_id" --replace
-# Review the plan; persistent data volumes must be retained
-python3 scripts/sandbox-provision.py apply
-incus --project collab-ai list colima-collab-ai:
-
-# Only after successful replacement: renew SSH host-key trust
-mv infra/incus/ssh/known_hosts infra/incus/ssh/known_hosts.before-upgrade
-python3 scripts/sandbox-ssh.py --remote colima-collab-ai
+python3 scripts/sandbox-provision.py rollout
 ssh -F infra/incus/ssh/config workspace collab status
 ssh -F infra/incus/ssh/config workspace
 ```
 
-The helper remembers the image and state directory; no `cd` or `deployment_dir`
-variable is needed. Omit `--image-dir` to reuse the selected image.
-[State and interrupted runs](sandbox-operator.md).
+This downloads `latest`, verifies it before stopping containers, replaces the runtime,
+and refreshes SSH trust through Incus. Your private login key stays on the host.
+Add `--release workspace-vX.Y.Z` to pin a version or `--image-dir dist/workspace-dev`
+for a local build. Custom SSH state: `--ssh-state-dir DIRECTORY`.
 
-Both containers must be stopped for a control-mode image update. With `running = true`,
-apply starts them again. Your private login key stays on the host. For custom SSH
-state, adjust the paths and pass `--state-dir` to the helper. **Do not destroy to upgrade.**
+Existing settings are retained, including `running = false`. On failure, inspect the
+error before restarting; [state recovery](sandbox-operator.md) may be required.
+**Do not destroy to upgrade.**
 
 ## Deliberate removal
 

@@ -15,6 +15,7 @@ import sandbox_network_checks
 import sandbox_secured_checks
 import sandbox_storage_checks
 import sandbox_workspace_checks
+import sandbox_rollout_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,7 @@ def check_deployment(args, directory, project, manifest):
     sandbox_storage_checks.verify(args, directory, project)
     if args.network_check:
         sandbox_network_checks.verify(args, directory, project)
+    sandbox_rollout_checks.verify(args, directory, project)
 
 
 def main():

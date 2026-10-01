@@ -7,7 +7,7 @@
 
 New helper deployments enable this by default. For an existing standalone sandbox,
 set `secured_runtime = true` in its deployment variables and follow
-[plan/apply](sandbox.md#3-preview-and-apply). Existing containers must both be stopped;
+[plan/apply](sandbox.md#2-install-or-upgrade). Existing containers must both be stopped;
 preflight rejects live upgrades. Keep them stopped after a failed apply and retry.
 Shared mounts must be present at boot, not hot-added.
 
@@ -18,7 +18,7 @@ in dev. [Upgrade and retention](sandbox-storage.md#replace-dev-retain-data).
 
 ## Shared broker and dashboard
 
-After [SSH setup](sandbox.md#4-ssh-into-the-workspace), inspect the broker from dev:
+After [SSH setup](sandbox.md#3-ssh-into-the-workspace), inspect the broker from dev:
 
 ```sh
 ssh -F infra/incus/ssh/config workspace collab status
