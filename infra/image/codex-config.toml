@@ -1,0 +1,4 @@
+# Read by the local App Server; --add-dir is rejected by the remote terminal.
+# User/project configuration can override this workspace-write default.
+[sandbox_workspace_write]
+writable_roots = ["/home/agent/.local/share/rtk"]

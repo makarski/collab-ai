@@ -52,6 +52,7 @@ skinparam {
 actor "You · host terminals" as Human
 
 rectangle "workspace · dev container\nNetwork access by default · opt-out available" as Dev {
+    component "=Read-only dashboard\ncollab dashboard · collab status\nAgent connections and pending messages" as Dashboard <<HumanControl>>
     component "=Codex\nTerminal + collab-codex\nManaged proxy / listener" as Codex <<Dev>>
     component "=Claude Code\nTerminal + collab-mcp\nMCP over stdin / stdout" as Claude <<Dev>>
     component "=Persistent workspace\n/workspace · independent Incus volume\nOptional: selected host directory\nMac host mounts: read-only\n--\nSandbox data owned by agent (1001:1001)\nLinux writes: dedicated host-sharing account\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
@@ -60,26 +61,25 @@ rectangle "workspace · dev container\nNetwork access by default · opt-out avai
 }
 
 rectangle "secured · control container\nOffline · no network interface" as Control {
-    component "=Human controls\ncollab dashboard · collab status\nOperator settings stay here" as Dashboard <<HumanControl>>
     component "=One collab-ai broker\nCreates / listens on broker.sock\nOnly process accessing SQLite" as Broker <<Control>>
     database "=One collaboration SQLite database\nPrivate persistent volume\nNever mounted in dev" as DB <<Control>>
 }
 
 Human -down-> Codex : SSH · prompts / output
 Human -down-> Claude : SSH · prompts / output
-Human -down-> Dashboard : Host-administered terminal
+Human -down-> Dashboard : SSH · terminal status
 
 Codex -down-> Socket : Broker protocol
 Claude -down-> Socket : Broker protocol
 Socket -[hidden]down-> Project
 Project -[hidden]down-> AgentHome
 
-Dashboard -down-> Broker : Queries via the same local UDS
+Dashboard -down-> Socket : Read-only status requests
 Broker <-left-> Socket : Same shared Incus volume\n/mnt/collab-ipc\nREAD-WRITE mount in control
 Broker -down-> DB : Read / write
 
 legend bottom
-    <back:#e7f5eb> Agents in dev </back>   <back:#e3efff> Services in control </back>   <back:#fce4f0> One shared Unix socket </back>   <back:#fff3b0> Human controls </back>
+    <back:#e7f5eb> Agents in dev </back>   <back:#e3efff> Services in control </back>   <back:#fce4f0> One shared Unix socket </back>   <back:#fff3b0> Read-only dashboard </back>
     Directory: broker:collab-clients, 0750. Socket: broker:collab-clients, 0660.
     Broker UID 1002 / client GID 1003 are mapped by the shifted IPC volume; directory mounted at boot.
     Read-only mount protects the socket path. It does not prevent sending socket requests.

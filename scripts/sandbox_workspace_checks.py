@@ -79,6 +79,8 @@ def check_workspace(args, directory, project, manifest):
         stdin=subprocess.DEVNULL)
     wait_for_broker(ssh)
     check_agent_aliases(ssh, manifest["tools"])
+    startup = (ROOT / "scripts/codex/startup.py").read_text()
+    run(ssh + ["python3 -"], input=startup, text=True, timeout=40)
     sandbox_rtk_checks.verify(ssh)
     run(ssh + ["touch /workspace/restart-check"])
     run(["incus", "--project", project, "stop", target])

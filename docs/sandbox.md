@@ -77,13 +77,14 @@ an [image update](sandbox-storage.md#replace-dev-retain-data).
 **RTK reduces shell output** through Codex/Claude hooks, configured on first boot.
 Approve the RTK hook if Codex prompts. `rtk gain` shows estimated output savings,
 not provider billing or a token cap. History stays in `~/.local/share/rtk/` across
-container replacement; the `codex` alias grants that directory write access.
+container replacement; `/etc/codex/config.toml` grants it workspace-write access
+through the App Server. User/project configuration can override that default.
 Existing settings are preserved; telemetry is not enabled. To opt out, run
 `rtk init -g --codex --uninstall` and `rtk init -g --uninstall --auto-patch`, then restart agents.
 
 ## Sign in and network access
 
-Inside the container:
+Before starting agents, sign in inside the container:
 
 ```sh
 command codex login --device-auth
@@ -92,8 +93,10 @@ command claude auth login
 ```
 
 Follow the CLI instructions in your host browser. Enable Codex device login in
-your account/workspace if required. `localhost:1455` in your browser points to the
-host, not the container; use [device login](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
+your account/workspace if required. If the browser fails at `localhost:1455`, exit
+the Codex sign-in screen and run `command codex login --device-auth` above.
+SSH forwarding is disabled; [device login](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+avoids the host-to-container callback.
 Claude channels also require consent and account/organization support.
 Credentials saved in `/home/agent` persist; host credentials are not imported.
 

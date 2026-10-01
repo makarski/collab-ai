@@ -2,8 +2,8 @@
 
 | Container | Runs | Network |
 | --- | --- | --- |
-| `workspace` | Codex, Claude and project code as `agent` | Online by default |
-| `secured` | One broker, SQLite, operator dashboard and private state | Offline |
+| `workspace` | Codex, Claude, project code and read-only dashboard as `agent` | Online by default |
+| `secured` | One broker, SQLite and private control state | Offline |
 
 New helper deployments enable this by default. For an existing standalone sandbox,
 set `secured_runtime = true` in its deployment variables and follow
@@ -18,17 +18,15 @@ in dev. [Upgrade and retention](sandbox-storage.md#replace-dev-retain-data).
 
 ## Shared broker and dashboard
 
-After [SSH setup](sandbox.md#3-ssh-into-the-workspace), inspect the broker from dev:
+After [SSH setup](sandbox.md#3-ssh-into-the-workspace), run from your host:
 
 ```sh
 ssh -F infra/incus/ssh/config workspace collab status
+ssh -t -F infra/incus/ssh/config workspace collab dashboard
 ```
 
-Open the operator dashboard in control (Linux: replace `colima-collab-ai:` with `local:`):
-
-```sh
-incus --project collab-ai exec colima-collab-ai:secured -t -- collab dashboard
-```
+Both clients run in dev and query the broker through the shared socket.
+The dashboard has no database access or cap/settings controls.
 
 The shared socket is `/mnt/collab-ipc/broker.sock`. Existing `/tmp/collab-ai.sock`
 defaults are root-owned aliases, so `collab-codex`, `collab-mcp`, and the installed

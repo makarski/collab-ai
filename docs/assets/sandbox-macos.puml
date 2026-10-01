@@ -40,7 +40,6 @@ rectangle "Incus project: collab-ai" as Project {
     component Secured <<Secured>> [
         =secured · control (optional)
         One broker + SQLite database
-        Operator dashboard
         --
         Private persistent state
         No network interface
@@ -51,6 +50,7 @@ rectangle "Incus project: collab-ai" as Project {
         Commands run as unprivileged agent
         --
         Codex + Claude adapters
+        Read-only dashboard
         Selected host mounts optional
         Network access enabled by default
     ]

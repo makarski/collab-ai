@@ -47,7 +47,8 @@ ssh -F infra/incus/ssh/config workspace collab status
 ssh -F infra/incus/ssh/config workspace
 
 # CONTAINER: all commands below until exit run inside your SSH session
-# First use only: sign in, following each CLI's instructions
+# First use only: uncomment to sign in before starting agents
+# Codex: open the printed URL on your host and enter the device code
 # command codex login --device-auth
 # command claude auth login
 
@@ -102,11 +103,12 @@ terminals. [Controls](docs/dashboard.md) · [UI help](docs/sandbox.md#incus-web-
 
 ## How it fits together
 
-With `secured_runtime = true`, Codex and Claude run in **workspace**; **secured**
-owns one broker and SQLite database. The shared Unix socket connects them.
+With `secured_runtime = true`, Codex, Claude and the read-only dashboard run in
+**workspace**; **secured** owns one broker and SQLite database.
+The shared Unix socket connects them.
 `/workspace` and `/home/agent` persist across container replacement.
 
-![Codex and Claude in dev connect through a shared Unix socket to the broker and SQLite in control.](docs/assets/architecture.svg)
+![Codex, Claude and the read-only dashboard in workspace connect through a shared Unix socket to the broker and SQLite in secured.](docs/assets/architecture.svg)
 
 [Architecture source](docs/assets/architecture.puml) · [Control setup](docs/secured-runtime.md)
 
