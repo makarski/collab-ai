@@ -35,11 +35,12 @@ def check_versions(ssh, lock):
         "go version": f"go version go{lock['go_version']} ",
         "starship --version": f"starship {lock['starship_version']}\n",
         "rtk --version": f"rtk {lock['rtk_version']}\n",
+        "gh --version": "gh version ",
     }
     for command, expected in commands.items():
         output = run(ssh + [command], capture_output=True, text=True).stdout
         if not output.startswith(expected):
-            raise ValueError(f"Installed version differs from the manifest: {command}")
+            raise ValueError(f"Unexpected installed tool version: {command}")
 
 
 def check_offline_image(execute):

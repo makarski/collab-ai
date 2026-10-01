@@ -51,6 +51,7 @@ ssh -F infra/incus/ssh/config workspace
 # Codex: open the printed URL on your host and enter the device code
 # command codex login --device-auth
 # command claude auth login
+# gh auth login --web --git-protocol https  # optional GitHub CLI login
 
 # First use only: clone if you have not already done so
 # git clone https://github.com/makarski/collab-ai.git /workspace/collab-ai

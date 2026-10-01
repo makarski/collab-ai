@@ -9,6 +9,8 @@ sessions need separately configured identities; do not bypass a duplicate owner.
 `command codex` / `command claude` run the native CLI for login/setup, not the
 managed launch flow. `dashboard` is an interactive alias; in non-interactive
 shells use `collab dashboard` (with a TTY) or `collab status --json`.
+`gh` is preinstalled but needs its own login; connector access does not imply
+CLI authentication. Use `gh auth status` to check; never import host credentials.
 
 RTK is preinstalled; hooks rewrite supported shell commands for both agents.
 Use `rtk proxy <command>` when exact output is needed. `rtk gain` estimates shell

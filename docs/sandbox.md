@@ -122,6 +122,10 @@ avoids the host-to-container callback.
 Claude channels also require consent and account/organization support.
 Credentials saved in `/home/agent` persist; host credentials are not imported.
 
+`gh` is preinstalled. For GitHub CLI access, run `gh auth login --web --git-protocol https`
+inside workspace and follow the printed browser instructions. Check with
+`gh auth status`. A GitHub MCP connector login does not authenticate `gh`.
+
 **Dev is online by default; control has no NIC.** To disable dev networking, set
 `dev_network_enabled = false` in the existing deployment variables and repeat
 plan/apply. This interrupts network connections; SSH and the broker still work.

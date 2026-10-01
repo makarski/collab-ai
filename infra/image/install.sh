@@ -7,7 +7,7 @@ export DEBIAN_FRONTEND=noninteractive
 printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
 apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update
-apt-get install -y --no-install-recommends ca-certificates curl python3 git \
+apt-get install -y --no-install-recommends ca-certificates curl python3 git gh \
     openssh-server ripgrep tmux less locales
 bash /root/build/infra/image/install-docker.sh
 python3 /root/build/infra/image/install-tools.py
@@ -26,6 +26,7 @@ codex app-server --help >/dev/null
 claude --version
 starship --version
 rtk --version
+gh --version
 addgroup --gid 1001 agent
 adduser --uid 1001 --gid 1001 --disabled-password --gecos '' agent
 addgroup --gid 1002 broker
