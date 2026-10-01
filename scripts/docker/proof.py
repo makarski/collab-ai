@@ -50,10 +50,11 @@ def check_runtime():
 def check_codex_sandbox():
     with tempfile.TemporaryDirectory(dir="/workspace") as allowed, \
             tempfile.TemporaryDirectory(dir=Path.home()) as outside:
-        script = ("from pathlib import Path; import sys\n"
+        script = ("from pathlib import Path; import errno, sys\n"
                   "Path('allowed').touch()\n"
                   "try: Path(sys.argv[1]).touch()\n"
-                  "except PermissionError: sys.exit(0)\n"
+                  "except OSError as error:\n"
+                  " sys.exit(0 if error.errno in (errno.EACCES, errno.EPERM, errno.EROFS) else 1)\n"
                   "sys.exit('Codex sandbox permitted a write outside workspace')\n")
         run("codex", "sandbox", "-P", ":workspace", "-C", allowed, "--",
             "python3", "-c", script, str(Path(outside) / "denied"))
