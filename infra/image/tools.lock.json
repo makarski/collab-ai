@@ -15,7 +15,11 @@
       "claude_platform": "linux-arm64",
       "claude_sha256": "346d294f0103d6fc0de11ac953579b5c62dfa90698a4cfc486b6f927c615e697",
       "rtk_target": "aarch64-unknown-linux-gnu",
-      "rtk_sha256": "d1cc49dfa2cd443fc32625444b59fe616b6c80478cca210985118347174dd758"
+      "rtk_sha256": "d1cc49dfa2cd443fc32625444b59fe616b6c80478cca210985118347174dd758",
+      "node_arch": "arm64",
+      "node_sha256": "724282c3b43aec998aa9527380465b45d229e021b58035f5f4f63095eabfe5d5",
+      "codescene_arch": "aarch64",
+      "codescene_sha256": "8ca6119b2d5fb9f2219276d348e841619aafc847f53a10d39e5c242b14100208"
     },
     "x86_64": {
       "base_image": "a4f3be59e3082311939e194f9b69ded49785979aafb4bcb7ef58b2506104c61b",
@@ -28,8 +32,14 @@
       "claude_platform": "linux-x64",
       "claude_sha256": "1859583ce32920595c61ef868bee52e1b1594f7486db209935e01f1e5e804ae2",
       "rtk_target": "x86_64-unknown-linux-musl",
-      "rtk_sha256": "bc2b8902b0d9c796c82ef45f16ae2307e17757afeca5ee156235a3dc7bda5f89"
+      "rtk_sha256": "bc2b8902b0d9c796c82ef45f16ae2307e17757afeca5ee156235a3dc7bda5f89",
+      "node_arch": "x64",
+      "node_sha256": "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff",
+      "codescene_arch": "amd64",
+      "codescene_sha256": "f82c48068f45c2563798297d2122ec913c38b9cba9adc9078c97d228d3d6afb1"
     }
   },
-  "rtk_version": "0.50.0"
+  "rtk_version": "0.50.0",
+  "node_version": "24.21.0",
+  "codescene_version": "1.5.6"
 }

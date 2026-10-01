@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Store a CodeScene PAT for headless use without putting it in shell history."""
+
+import getpass
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+
+def save_token(directory, token):
+    if not token.strip():
+        raise ValueError("Token cannot be empty")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / "config.json"
+    if path.is_symlink():
+        raise ValueError("Refusing symlinked CodeScene config")
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data["access_token"] = token.strip()
+    with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            json.dump(data, output)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    if not sys.stdin.isatty():
+        sys.exit("Run collab-codescene-login in your interactive sandbox terminal.")
+    config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "codehealth-mcp"
+    config = Path(os.environ.get("CS_CONFIG_DIR", config))
+    try:
+        save_token(config, getpass.getpass("CodeScene access token (hidden): "))
+    except (OSError, ValueError) as error:
+        sys.exit(f"CodeScene setup failed: {error}")
+    print("CodeScene credential saved. Restart your agents to use it.")

@@ -104,6 +104,20 @@ AppArmor restrictions. `secured` keeps nesting disabled and has no Docker daemon
 Stop/start Docker with `systemctl --user stop docker` / `systemctl --user start docker`.
 To keep it off after restart, use `systemctl --user disable --now docker`.
 
+## Bundled MCP tools
+
+Both agents get CodeScene and Playwright automatically; inspect them with `/mcp`.
+Playwright includes headless Chromium with its browser sandbox enabled. Each
+connection has separate, temporary cookies; `localhost` means the workspace.
+
+For CodeScene, create a [personal access token](https://codescene.io/users/me/pat),
+then run `collab-codescene-login` inside workspace before starting agents. The
+hidden prompt saves it privately in persistent agent home. No host login is copied.
+Analysis requires a valid CodeScene account/license; installation does not provide one.
+
+These MCPs run as `agent` inside workspace, outside the agents' shell-command
+sandbox. They receive no Incus admin socket. GitHub uses the installed `gh` CLI.
+
 ## Sign in and network access
 
 Before starting agents, sign in inside the container:

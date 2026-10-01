@@ -9,6 +9,7 @@ import time
 import sandbox_skill_checks
 import sandbox_rtk_checks
 import sandbox_docker_checks
+import sandbox_mcp_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,7 @@ def check_versions(ssh, lock):
         "starship --version": f"starship {lock['starship_version']}\n",
         "rtk --version": f"rtk {lock['rtk_version']}\n",
         "gh --version": "gh version ",
+        "node --version": f"v{lock['node_version']}\n",
     }
     for command, expected in commands.items():
         output = run(ssh + [command], capture_output=True, text=True).stdout
@@ -85,6 +87,7 @@ def check_workspace(args, directory, project, manifest):
     run(ssh + ["python3 -"], input=startup, text=True, timeout=40)
     sandbox_rtk_checks.verify(ssh)
     sandbox_docker_checks.verify(ssh, create=True)
+    sandbox_mcp_checks.verify(ssh)
     run(ssh + ["touch /workspace/restart-check"])
     run(["incus", "--project", project, "stop", target])
     run(["incus", "--project", project, "start", target])

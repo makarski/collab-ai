@@ -1,22 +1,10 @@
 """Install only checksum-pinned native tool distributions, inside the builder."""
 
-import hashlib
 import json
 from pathlib import Path
 import platform
-import subprocess
 import tempfile
-import urllib.request
-
-
-def download(url, checksum, destination):
-    digest = hashlib.sha256()
-    with urllib.request.urlopen(url, timeout=120) as response, destination.open("wb") as out:
-        while chunk := response.read(1024 * 1024):
-            digest.update(chunk)
-            out.write(chunk)
-    if digest.hexdigest() != checksum:
-        raise ValueError(f"SHA256 mismatch for {url}")
+from tool_download import download, extract
 
 
 def main():
@@ -44,13 +32,6 @@ def main():
         download(f"https://github.com/rtk-ai/rtk/releases/download/v{lock['rtk_version']}/"
                  f"rtk-{arch['rtk_target']}.tar.gz", arch["rtk_sha256"], archive)
         extract(archive, "/usr/local/bin")
-
-
-def extract(archive, destination):
-    # Vendor archive UIDs can match the agent account. Keep installed code owned
-    # by the root installer and apply its umask, rather than trusting archive modes.
-    subprocess.run(["tar", "--no-same-owner", "--no-same-permissions", "-xzf", str(archive),
-                    "-C", destination], check=True, umask=0o022)
 
 
 if __name__ == "__main__":

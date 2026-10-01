@@ -52,6 +52,7 @@ ssh -F infra/incus/ssh/config workspace
 # command codex login --device-auth
 # command claude auth login
 # gh auth login --web --git-protocol https  # optional GitHub CLI login
+# collab-codescene-login                  # optional CodeScene token; hidden prompt
 
 # First use only: clone if you have not already done so
 # git clone https://github.com/makarski/collab-ai.git /workspace/collab-ai
@@ -85,6 +86,7 @@ Both agents should read `/usr/local/share/collab-ai/SKILL.md`.
 
 [Mount directories](docs/sandbox-mounts.md) ·
 [Docker and Compose](docs/sandbox.md#docker-and-compose) ·
+[Bundled MCP tools](docs/sandbox.md#bundled-mcp-tools) ·
 [Upgrade or reprovision](docs/sandbox-storage.md#replace-dev-retain-data) ·
 [Back up](docs/sandbox-storage.md#back-up-and-restore) ·
 [Stop or remove](docs/sandbox.md#stop-or-remove)

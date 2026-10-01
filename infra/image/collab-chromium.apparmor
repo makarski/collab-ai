@@ -1,0 +1,7 @@
+abi <abi/4.0>,
+include <tunables/global>
+
+# Allow Chromium's own user-namespace sandbox inside the Incus workspace.
+profile collab-chromium /opt/collab-mcp/browsers/chromium-*/chrome-linux*/chrome flags=(unconfined) {
+  userns,
+}

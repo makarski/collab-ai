@@ -44,6 +44,11 @@ cp infra/image/tools.lock.json /usr/local/share/collab-ai/
 cp build-source.json /usr/local/share/collab-ai/
 bash infra/image/install-skill.sh docs/skills/collab-ai /usr/local/share/collab-ai
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
+python3 infra/image/install-mcp-tools.py
+install -m 0755 infra/image/collab-playwright infra/image/collab-codescene-login /usr/local/bin/
+install -m 0644 infra/image/collab-chromium.apparmor /etc/apparmor.d/collab-chromium
+cs-mcp --version
+collab-playwright --version
 cp infra/image/sshd_config /etc/ssh/sshd_config.collab-ai
 cp infra/image/collab-broker.service infra/image/collab-secured-setup.service /etc/systemd/system/
 cp infra/image/collab-secured-broker.service infra/image/collab-dev-setup.service \
@@ -83,7 +88,7 @@ rm -f /etc/ssh/ssh_host_* /var/lib/dbus/machine-id
 truncate -s 0 /etc/machine-id
 go clean -cache -modcache -testcache
 apt-get clean
-rm -rf /var/lib/apt/lists/* /root/.cache /root/.codex /root/.claude /root/.ssh
+rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /root/.codex /root/.claude /root/.ssh
 rm -f /root/.claude.json /root/.bash_history /usr/sbin/policy-rc.d
 find /var/log -type f -exec truncate -s 0 {} +
 rm -rf /root/build /root/source.tar /tmp/* /var/tmp/*
