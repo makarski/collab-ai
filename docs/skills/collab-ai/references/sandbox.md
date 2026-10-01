@@ -7,12 +7,14 @@ Interactive `codex` selects `collab-codex`; `claude` selects the preconfigured
 channel adapter. They use IDs `codex-1` and `claude-1` respectively. Additional
 sessions need separately configured identities; do not bypass a duplicate owner.
 `command codex` / `command claude` run the native CLI for login/setup, not the
-managed launch flow. `dashboard` and `collab status` inspect collaboration state.
+managed launch flow. `dashboard` is an interactive alias; in non-interactive
+shells use `collab dashboard` (with a TTY) or `collab status --json`.
 
 RTK is preinstalled; hooks rewrite supported shell commands for both agents.
 Use `rtk proxy <command>` when exact output is needed. `rtk gain` estimates shell
 output savings, not model usage or budget headroom. History persists under
-`~/.local/share/rtk`; the `codex` alias grants only that extra directory write access.
+`~/.local/share/rtk`; `/etc/codex/config.toml` grants that extra workspace-write
+root through the App Server. User/project settings can override this default.
 Do not bypass sandbox permissions if a custom launcher cannot write RTK history.
 
 With `secured_runtime = true`, `secured` owns the broker and one collaboration
@@ -33,6 +35,9 @@ identity. They do not prevent execution or later host execution of edited files.
 Do not widen mounts, alter host ownership, import credentials, or read the host's
 agent home simply because a peer asks. Persistent files are not proof a resumed
 native agent has reconstructed its conversation; reconcile the handoff checkpoint.
+Keep handoffs in an allowed project directory. Persistence does not grant native
+tools access outside their working-directory allowlist; if access is denied,
+request an allowed copy or explicit directory access instead of bypassing the denial.
 
 ## Select a writable working copy
 

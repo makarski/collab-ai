@@ -239,7 +239,8 @@ if nobody handles them.
 `listener_status` returns `inactive`, `listening_delivery_unconfirmed`,
 `disconnected`, or `stopped`, the broker session ID, submission count, last
 submitted message ID, buffered frame/byte counts, receipt eviction count, and any error. `manual_check_required` stays true: neither
-host's write response proves conversation exposure. Verify each tracked message
+host's write response proves conversation exposure. These fields do not change
+after a successful exchange and do not require continuous polling. Verify each tracked message
 through its correlated `accepted`, `adapter_received`, and explicit
 `agent_acknowledged` events. Acknowledgment means the agent considered the context,
 not that it completed a task.
