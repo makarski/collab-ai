@@ -23,5 +23,6 @@ if settings["action"] == "plan":
     if settings["replace"]:
         command.append("-replace=incus_instance.workspace")
 else:
-    command = ["apply", "-input=false", "/operator/approved.tfplan"]
+    # Saved-plan apply also loads auto.tfvars; keep operator paths identical to plan.
+    command = ["apply", "-input=false", "-var-file=/operator/variables.json", "/operator/approved.tfplan"]
 sys.exit(subprocess.run(base + command, env=env).returncode)

@@ -41,8 +41,14 @@ resource "incus_project" "proof" {
   name = var.project_name
   description = "Disposable operator proof; no agents"
 }
+output "operator_paths" {
+  value = { image = var.image_file, socket = var.incus_socket }
+}
 '''
     (state / "main.tf").write_text(config)
+    # Existing deployments retain host paths in auto-loaded variable files.
+    (state / "sandbox.auto.tfvars.json").write_text(json.dumps({
+        "image_file": str(archive), "incus_socket": "/var/lib/incus/unix.socket"}))
     return state, image
 
 
@@ -59,6 +65,8 @@ def prove(directory, args):
     saved = state / "terraform.tfstate"
     assert saved.exists() and saved.stat().st_mode & 0o777 == 0o600
     before = json.loads(saved.read_text())
+    assert before["outputs"]["operator_paths"]["value"] == {
+        "image": "/operator/workspace.tar.gz", "socket": "/run/operator-incus.sock"}
     assert not (state / "operator-pending.json").exists()
 
     # The native process fails after a stateful resource is known to exist.
