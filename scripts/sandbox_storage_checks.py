@@ -6,6 +6,7 @@ import sys
 
 from sandbox_secured_checks import Deployment, run, denied
 import sandbox_rtk_checks
+import sandbox_docker_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +33,8 @@ def check_data(deployment):
               f"assert all(Path(name).read_text() == {CONTENTS!r} for name in {FILES!r})\n"
               "assert '# retention-proof' in Path('/home/agent/.profile').read_text()\n")
     run(deployment.execute("workspace", "runuser", "-u", "agent", "--", "python3", "-c", script))
-    for path, mode in (("/workspace", "750"), ("/home/agent", "700")):
+    for path, mode in (("/workspace", "750"), ("/home/agent", "700"),
+                       ("/var/lib/collab-ai-docker", "700")):
         observed = run(deployment.execute("workspace", "stat", "-c", "%a %u %g", path)).strip()
         if observed != f"{mode} 1001 1001":
             raise ValueError(f"Unsafe persistent volume ownership: {path}: {observed}")
@@ -89,6 +91,7 @@ def check_ssh_replacement(args, directory, project):
     run(command)
     run(["ssh", "-F", str(ssh / "config"), "workspace", "test -f /workspace/persistence-proof/repository.txt"])
     sandbox_rtk_checks.verify(["ssh", "-F", str(ssh / "config"), "workspace"])
+    sandbox_docker_checks.verify(["ssh", "-F", str(ssh / "config"), "workspace"])
 
 
 def allow_test_teardown(directory, project):

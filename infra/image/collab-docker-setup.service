@@ -1,0 +1,20 @@
+[Unit]
+Description=Initialize rootless Docker in the persistent agent home
+Requires=collab-docker-session.service
+After=collab-docker-session.service
+ConditionPathIsMountPoint=/var/lib/collab-ai-docker
+
+[Service]
+Type=oneshot
+User=agent
+Group=agent
+Environment=HOME=/home/agent
+Environment=XDG_RUNTIME_DIR=/run/user/1001
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus
+WorkingDirectory=/home/agent
+UMask=0077
+ExecStart=/usr/local/bin/collab-docker-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+[Unit]
+Description=Start the workspace agent user manager for rootless Docker
+Requires=collab-workspace-setup.service
+After=collab-workspace-setup.service apparmor.service
+ConditionPathIsMountPoint=/var/lib/collab-ai-docker
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/loginctl enable-linger agent
+ExecStart=/usr/bin/systemctl start user@1001.service
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

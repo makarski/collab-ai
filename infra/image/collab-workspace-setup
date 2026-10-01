@@ -20,7 +20,8 @@ def seed_home(home, skeleton, uid, gid):
 
 def initialize():
     account = pwd.getpwnam("agent")
-    for path, mode in ((Path("/workspace"), 0o750), (Path("/home/agent"), 0o700)):
+    for path, mode in ((Path("/workspace"), 0o750), (Path("/home/agent"), 0o700),
+                       (Path("/var/lib/collab-ai-docker"), 0o700)):
         if path.is_symlink() or not path.is_mount():
             raise ValueError(f"Expected an Incus volume at {path}")
         # Never recurse into stored repositories or agent-controlled home paths.

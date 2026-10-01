@@ -82,6 +82,28 @@ through the App Server. User/project configuration can override that default.
 Existing settings are preserved; telemetry is not enabled. To opt out, run
 `rtk init -g --codex --uninstall` and `rtk init -g --uninstall --auto-patch`, then restart agents.
 
+## Docker and Compose
+
+Docker Engine, Compose and Buildx are preinstalled. In `workspace`:
+
+```sh
+docker info                  # Security Options includes rootless
+docker compose up -d         # from your project with compose.yaml
+docker compose down          # keeps named volumes; -v deletes them
+systemctl --user status docker
+```
+
+The daemon runs as `agent`; its socket is `/run/user/1001/docker.sock`. No host
+Docker socket or Docker-group root access is provided. Colima stays on the Mac.
+Docker data persists on its own [10 GiB volume](sandbox-storage.md).
+Published ports belong to `workspace`, not your host's localhost.
+
+Dev enables Incus nesting and a larger isolated UID range. Packaged AppArmor
+profiles allow Docker and Codex's Bubblewrap namespaces without disabling host
+AppArmor restrictions. `secured` keeps nesting disabled and has no Docker daemon.
+Stop/start Docker with `systemctl --user stop docker` / `systemctl --user start docker`.
+To keep it off after restart, use `systemctl --user disable --now docker`.
+
 ## Sign in and network access
 
 Before starting agents, sign in inside the container:

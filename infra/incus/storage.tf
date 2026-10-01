@@ -18,10 +18,21 @@ variable "agent_home_gib" {
   }
 }
 
+variable "docker_gib" {
+  description = "Persistent rootless Docker images, containers and volumes; mounted only in dev."
+  type        = number
+  default     = 10
+  validation {
+    condition     = var.docker_gib >= 1 && var.docker_gib <= 100 && floor(var.docker_gib) == var.docker_gib
+    error_message = "docker_gib must be an integer from 1 through 100."
+  }
+}
+
 locals {
   dev_storage = {
     workspace = { name = "workspace-data", path = "/workspace", size = var.workspace_gib }
     home      = { name = "agent-home", path = "/home/agent", size = var.agent_home_gib }
+    docker    = { name = "docker-data", path = "/var/lib/collab-ai-docker", size = var.docker_gib }
   }
 }
 

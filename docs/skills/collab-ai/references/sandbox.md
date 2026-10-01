@@ -17,6 +17,14 @@ output savings, not model usage or budget headroom. History persists under
 root through the App Server. User/project settings can override this default.
 Do not bypass sandbox permissions if a custom launcher cannot write RTK history.
 
+Docker, Compose and Buildx run inside `workspace` using the rootless `agent`
+daemon. Use `docker` / `docker compose`; never switch to a host Docker socket,
+enable a rootful daemon or grant Docker-group access. Docker data persists under
+`/var/lib/collab-ai-docker`; published ports are inside workspace, not host localhost.
+Codex's command sandbox is an inner boundary: approved escalation remains inside
+Incus, but do not describe it as sandboxed command execution. Report namespace
+failures rather than silently disabling sandboxing.
+
 With `secured_runtime = true`, `secured` owns the broker and one collaboration
 SQLite database. Dev connects through `/mnt/collab-ipc/broker.sock`, also reachable
 via `/tmp/collab-ai.sock`. The socket directory is mounted read-only in dev: clients
