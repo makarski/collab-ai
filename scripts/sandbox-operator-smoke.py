@@ -61,12 +61,14 @@ def invoke(directory, args, action, extra=()):
 
 def prove(directory, args):
     state, image = setup(directory, args.project)
-    invoke(directory, args, "rollout", ["--image-dir", str(image)]).check_returncode()
+    invoke(directory, args, "plan", ["--image-dir", str(image)]).check_returncode()
+    invoke(directory, args, "apply").check_returncode()
     saved = state / "terraform.tfstate"
     assert saved.exists() and saved.stat().st_mode & 0o777 == 0o600
     before = json.loads(saved.read_text())
     assert before["outputs"]["operator_paths"]["value"] == {
-        "image": "/operator/workspace.tar.gz", "socket": "/run/operator-incus.sock"}
+        "image": f"/operator/workspace-{hashlib.sha256((image / 'workspace.tar.gz').read_bytes()).hexdigest()}.tar.gz",
+        "socket": "/run/operator-incus.sock"}
     assert not (state / "operator-pending.json").exists()
 
     # The native process fails after a stateful resource is known to exist.

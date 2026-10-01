@@ -77,10 +77,11 @@ class StateTests(unittest.TestCase):
 
 class PlanTests(unittest.TestCase):
     def test_data_volume_replacement_is_rejected(self):
-        plan = {"resource_changes": [{"type": "incus_storage_volume", "change": {
-            "before": {"name": "agent-home"}, "actions": ["delete", "create"]}}]}
-        with self.assertRaisesRegex(ValueError, "persistent data"):
-            validate_plan(plan, Path("/host/state"), Path("/host/operator"))
+        for name in ("workspace-data", "agent-home", "secured-state", "docker-data"):
+            plan = {"resource_changes": [{"type": "incus_storage_volume", "change": {
+                "before": {"name": name}, "actions": ["delete", "create"]}}]}
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "persistent data"):
+                validate_plan(plan, Path("/host/state"), Path("/host/operator"))
 
     def test_sharing_parent_of_operator_state_is_rejected(self):
         plan = {"planned_values": {"root_module": {"resources": [{"type": "incus_profile", "values": {

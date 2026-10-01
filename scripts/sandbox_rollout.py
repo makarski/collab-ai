@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 from sandbox_operator_config import ROOT, image_selection, state_project
 from sandbox_operator_state import deployment_lock
+from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
 
@@ -71,6 +72,7 @@ def rollout(args, directory, server):
         selected.image_dir = args.image_dir or download_release(server["architectures"][0], args.release, args.repo)
         selected.image_dir = selected.image_dir.resolve()
         image_selection(directory, selected.image_dir)
+        refresh_recipe(directory)
         print("Rolling out workspace; persistent volumes are protected by plan validation.", flush=True)
         stop_managed(args, names)
         selected.action, selected.replace, selected.destroy = "plan", True, False

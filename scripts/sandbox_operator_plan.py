@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-PROTECTED_VOLUMES = {"workspace-data", "agent-home", "secured-state"}
+PROTECTED_VOLUMES = {"workspace-data", "agent-home", "secured-state", "docker-data"}
 
 
 def validate_plan(plan, directory, operator_home, allow_destroy=False):
