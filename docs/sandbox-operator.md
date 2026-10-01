@@ -24,6 +24,9 @@ The helper prints and remembers the state directory. New deployments use
 Existing Git worktree state is discovered without moving it. Ambiguous matches need
 one `--state-dir` selection. Keep the entire state directory and selected image.
 
+`rollout` refreshes provisioning code from your checkout, backing up old copies.
+Your `.tfvars` settings, state and SSH keys stay in place.
+
 State writes go directly to the host over an authenticated private connection,
 with atomic writes, backups and a deployment lock. Plans are bound to their inputs,
 image and Incus server; changed inputs require a new plan. Use this helper consistently,

@@ -83,6 +83,7 @@ def prepare(args, directory, server):
 
 def stage(operator, temporary, prepared, token):
     args = prepared.args
+    image_path = f"/operator/workspace-{prepared.fingerprint}.tar.gz"
     for name, content in prepared.files.items():
         source = temporary / name
         private_write(source, content)
@@ -92,13 +93,13 @@ def stage(operator, temporary, prepared, token):
     operator.push(backend, "/operator/config/operator-backend.tf.json")
     variables = temporary / "variables.json"
     write_json(variables, {"incus_socket": "/run/operator-incus.sock", "project_name": args.project,
-                          "image_file": "/operator/workspace.tar.gz", "image_fingerprint": prepared.fingerprint})
+                          "image_file": image_path, "image_fingerprint": prepared.fingerprint})
     operator.push(variables, "/operator/variables.json")
     settings = temporary / "settings.json"
     write_json(settings, {"token": token, "action": args.action, "replace": args.replace, "destroy": args.destroy})
     operator.push(settings, "/operator/settings.json")
     operator.push(ROOT / "infra/operator/run.py", "/operator/run.py")
-    operator.push(prepared.image, "/operator/workspace.tar.gz")
+    operator.push(prepared.image, image_path)
     if args.action == "apply":
         operator.push(prepared.directory / PLAN, "/operator/approved.tfplan")
 
