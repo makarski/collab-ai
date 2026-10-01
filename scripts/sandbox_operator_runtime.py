@@ -4,11 +4,11 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
-import urllib.request
 import uuid
 import zipfile
 
 from sandbox_operator_config import ROOT
+from sandbox_operator_download import download_archive
 
 
 class Operator:
@@ -54,8 +54,7 @@ class Operator:
         item = lock["architectures"][self.server["architectures"][0]]
         url = f"https://github.com/opentofu/opentofu/releases/download/v{lock['tofu_version']}/{item['archive']}"
         archive = temporary / "tofu.zip"
-        with urllib.request.urlopen(url, timeout=120) as response:
-            archive.write_bytes(response.read())
+        archive.write_bytes(download_archive(url))
         if hashlib.sha256(archive.read_bytes()).hexdigest() != item["sha256"]:
             raise ValueError("OpenTofu archive checksum mismatch")
         binary = temporary / "tofu"
