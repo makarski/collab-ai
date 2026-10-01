@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import urllib.request
+import zipfile
 
 from sandbox_versions import fingerprint
 
@@ -24,8 +25,9 @@ def asset_name(architecture):
     return f"collab-ai-workspace-linux-{ARCHITECTURES[architecture]}"
 
 
-def image_variables(directory, digest):
-    values = {"image_file": str((directory / "workspace.tar.gz").resolve()), "image_fingerprint": digest}
+def image_variables(directory, digest, image_directory=None):
+    image = (image_directory or directory) / "workspace.tar.gz"
+    values = {"image_file": str(image.resolve()), "image_fingerprint": digest}
     (directory / "image.tfvars.json").write_text(json.dumps(values, indent=2) + "\n")
 
 
@@ -40,6 +42,16 @@ def release_assets(directory, manifest):
 def fetch(url, destination):
     with urllib.request.urlopen(url, timeout=120) as response, destination.open("xb") as output:
         shutil.copyfileobj(response, output, length=1024 * 1024)
+
+
+def from_zip(archive, name, destination):
+    # Copy only the two exact expected assets; never extract archive paths.
+    with zipfile.ZipFile(archive) as bundle:
+        matches = [item for item in bundle.infolist() if item.filename == name]
+        if len(matches) != 1:
+            raise ValueError(f"Expected exactly one {name} in {archive}; select the matching architecture ZIP")
+        with bundle.open(matches[0]) as source, destination.open("xb") as output:
+            shutil.copyfileobj(source, output, length=1024 * 1024)
 
 
 def install_artifact(output, architecture, obtain):

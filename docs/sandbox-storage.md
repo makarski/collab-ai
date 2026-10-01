@@ -58,13 +58,13 @@ first. Projects and agent home survive; processes and tmux sessions do not.
 Standalone broker history is lost on replacement; control-mode history persists.
 
 For an upgrade, [download the new image](sandbox-image.md#download-a-built-image)
-first. In the same host shell (Linux: use `local:`):
+first. On the host, from the repository root (Linux: use `local:`):
 
 ```sh
 incus --project collab-ai stop colima-collab-ai:workspace
 incus --project collab-ai stop colima-collab-ai:secured  # only in control mode
 
-python3 scripts/sandbox-provision.py plan --image-dir "dist/workspace-$run_id" --replace
+python3 scripts/sandbox-provision.py plan --image-dir dist/images/current --replace
 # Review the plan; persistent data volumes must be retained
 python3 scripts/sandbox-provision.py apply
 incus --project collab-ai list colima-collab-ai:

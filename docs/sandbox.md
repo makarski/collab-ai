@@ -12,7 +12,7 @@ Projects and agent home persist; tools live on the replaceable root disk.
 **macOS** — Homebrew required:
 
 ```sh
-brew install colima incus python gh
+brew install colima incus python git
 python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
@@ -21,7 +21,7 @@ This starts the dedicated `collab-ai` Colima VM running Incus. Existing Docker
 profiles stay separate. Starting the VM does **not** create the workspace.
 
 **Linux** — [install Incus](https://linuxcontainers.org/incus/docs/main/installing/),
-Python 3.9+, OpenSSH and GitHub CLI. Use an existing
+Python 3.9+, Git and OpenSSH. Use an existing
 quota-capable pool (ZFS/Btrfs), a managed network bridge and Incus access.
 Skip Colima; replace `colima-collab-ai:` with `local:` throughout.
 Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
@@ -29,15 +29,16 @@ Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
 ## 2. Download the workspace image
 
 Follow [Download a built image](sandbox-image.md#download-a-built-image) on the host.
-It sets `run_id` and creates `dist/workspace-$run_id/`. Keep that directory.
+Download the ZIP in your browser, then run the Python helper. GitHub CLI is optional.
+The verified image is available at `dist/images/current`.
 For an existing deployment, use [upgrade](sandbox-storage.md#replace-dev-retain-data).
 
 ## 3. Preview and apply
 
-In the same host shell:
+From the repository root on your host:
 
 ```sh
-python3 scripts/sandbox-provision.py plan --image-dir "dist/workspace-$run_id"
+python3 scripts/sandbox-provision.py plan --image-dir dist/images/current
 # Review the printed plan, then:
 python3 scripts/sandbox-provision.py apply
 ```

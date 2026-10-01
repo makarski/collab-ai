@@ -3,13 +3,13 @@
 Run from the repository on your host:
 
 ```sh
-python3 scripts/sandbox-provision.py plan --image-dir "dist/workspace-$run_id"
+python3 scripts/sandbox-provision.py plan --image-dir dist/images/current
 # Review, then apply the saved plan:
 python3 scripts/sandbox-provision.py apply
 ```
 
-`run_id` comes from [downloading an image](sandbox-image.md#download-a-built-image).
-Later plans reuse it unless you pass another `--image-dir`. `--replace` rebuilds dev;
+Prepare an image with the [download helper](sandbox-image.md#download-a-built-image) first.
+Later plans reuse the selected image unless you pass another `--image-dir`. `--replace` rebuilds dev;
 `--destroy` is only for [deliberate removal](sandbox-storage.md#deliberate-removal).
 
 ## What stays where

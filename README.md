@@ -15,6 +15,9 @@
 disposable container; no host Terraform/OpenTofu install is needed. Dev has network access; optional
 control stays offline. Host credentials and conversations are not imported.
 
+**Host prerequisites:** Python, Git, OpenSSH and Incus; macOS also needs Colima.
+[Install commands and image download](docs/sandbox.md#1-install-the-host-tools). `gh` is optional.
+
 Run host commands from your provisioning checkout. On Linux, skip Colima commands
 and use `local:` / `--remote local`. For host mounts, see the
 [`mounts.json` example](docs/sandbox-mounts.md#choose-directories).

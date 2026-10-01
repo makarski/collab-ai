@@ -6,34 +6,39 @@ No local compilation is needed. CI downloads expire after seven days.
 
 ## Download a built image
 
-Run on your **host**, from the repository root, with GitHub CLI (`gh`) installed
-and signed in. Start the Incus host first. Select a successful CI run for the
-commit you want; for a PR, replace `--branch main` with its branch name.
+**Needs:** Python 3.9+, a running Incus host, and a GitHub account signed in in your
+browser. **GitHub CLI (`gh`) is optional.** Run commands from this repository on your host.
+
+1. Open [successful main builds](https://github.com/makarski/collab-ai/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess) and select the newest completed build.
+2. Under **Artifacts**, download **workspace-linux-arm64** for Apple Silicon/ARM64,
+   or **workspace-linux-amd64** for Intel/AMD Linux. Keep the ZIP as downloaded.
+3. Prepare it (use the actual filename if your browser added a suffix):
 
 ```sh
-# List builds, then paste the chosen run's ID when prompted
-gh run list --repo makarski/collab-ai --workflow CI --branch main --status success --limit 5
-printf 'CI run ID: '
-read -r run_id
-
-# Apple Silicon / ARM64 server; use amd64 for an x86-64 server
-gh run download "$run_id" --repo makarski/collab-ai \
-  --name workspace-linux-arm64 --dir "dist/ci-image-$run_id"
-
-# Verify and prepare the downloaded image; Linux: --remote local
-python3 scripts/sandbox-download.py --remote colima-collab-ai \
-  --from-dir "dist/ci-image-$run_id" --output "dist/workspace-$run_id"
+python3 scripts/sandbox-download.py --from-zip ~/Downloads/workspace-linux-arm64.zip
 ```
 
-Both directories are **on your host**:
+Mac selects `colima-collab-ai`; Linux selects `local`. The helper checks the server's
+architecture and image checksum. It keeps each image separately under `dist/images/`
+and updates `dist/images/current` only after verification. Keep that directory.
+Repeating the command is safe; previously selected image files are not overwritten.
 
-- `dist/ci-image-RUN_ID`: files downloaded and extracted by `gh`; input to the verifier.
-- `dist/workspace-RUN_ID`: verified image plus `image.tfvars.json`; input to provisioning.
+Continue with [first setup](sandbox.md#3-preview-and-apply) or
+[upgrade](sandbox-storage.md#replace-dev-retain-data). Both use the same path:
+`--image-dir dist/images/current`. No build ID or shell variable is needed.
 
-The output directory must be new. Keep it: provisioning references the image there.
-Downloading does not replace a container. Continue with
-[new provisioning](sandbox.md#2-download-the-workspace-image) or [upgrade](sandbox-storage.md#replace-dev-retain-data),
-using the generated `image.tfvars.json` for the selected run.
+CI downloads expire after seven days and require [GitHub sign-in](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
+If there is no downloadable image, select another successful build or use a development build below.
+
+<details>
+<summary>Other download methods</summary>
+
+- Already extracted a bundle? Use `--from-dir /path/to/extracted-bundle` instead of `--from-zip`.
+- Published version available? Use `--release workspace-vX.Y.Z`; public releases need no GitHub CLI or sign-in.
+- Prefer `gh`? [Install GitHub CLI](https://cli.github.com/) and run `gh auth login` first. Its download command extracts the bundle; then use `--from-dir`.
+- `--remote NAME` overrides the Incus remote. `--output NEW_DIRECTORY` bypasses the default image cache.
+
+</details>
 
 ## What is installed
 
@@ -42,6 +47,7 @@ using the generated `image.tfvars.json` for the selected run.
 | `broker`, `collab-codex`, `collab-mcp`, `collab` | Compiled from the selected app source inside the image; Go tests run first |
 | Codex 0.156.1, Claude Code 2.1.283 | Official native distributions, verified against committed SHA256 checksums |
 | Go 1.25.14 | Official archive, checksum verified; available for workspace development |
+| RTK 0.50.0 | Checksum-pinned binary; Codex/Claude hooks and persistent usage history |
 | Starship 1.26.0 | Checksum-pinned native release; enabled in interactive agent Bash shells |
 | Git, ripgrep, tmux, OpenSSH, Python | Ubuntu 24.04 packages |
 | Claude collaboration config | `/etc/collab-ai/claude-mcp.json` |
@@ -84,7 +90,7 @@ own project on failure. After a forced kill, inspect the printed project before
 removing it; Incus 6.0 LTS requires deleting its instances/images before the project.
 
 Output: `workspace.tar.gz`, manifest, `image.tfvars.json` and release files.
-Use the variables for [initial setup](sandbox.md#2-download-the-workspace-image)
+Pass its output directory with `--image-dir` for [initial setup](sandbox.md#2-download-the-workspace-image)
 or [upgrade](sandbox-storage.md#replace-dev-retain-data). Keep the exported image;
 upstream may prune pinned base images. Rebuilds are not bit-identical: OS packages
 resolve at build time and metadata includes timestamps. OS versions are recorded.
@@ -101,5 +107,4 @@ image tests must pass. Releases use committed pins, contain both architectures,
 and never overwrite an existing release.
 
 For a [published release](https://github.com/makarski/collab-ai/releases), use
-`sandbox-download.py --remote REMOTE --release TAG --output NEW_DIRECTORY` instead
-of the CI download above. Keep the verified image for later provisioning.
+`sandbox-download.py --release TAG` instead of the browser ZIP above. Keep the verified image for later provisioning.
