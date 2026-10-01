@@ -21,7 +21,7 @@ class Client:
         for key in ("CS_ACCESS_TOKEN", "CS_OAUTH_TOKEN"):
             env.pop(key, None)
         self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, env=env, cwd="/workspace", start_new_session=True)
+            env=env, cwd="/workspace", start_new_session=True)
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
         self.pending = b""
@@ -132,8 +132,9 @@ def browser_proof(stack, config, home):
 
 
 def set_session_cookie(browser):
-    cookie = browser.tool("browser_evaluate", {
-        "function": "() => { document.cookie = 'proof=one'; return document.cookie; }"})
+    browser.tool("browser_evaluate", {
+        "function": "() => { document.cookie = 'proof=one'; }"})
+    cookie = browser.tool("browser_evaluate", {"function": "() => document.cookie"})
     if "proof=one" not in cookie:
         raise ValueError("First browser did not retain its session cookie")
 
