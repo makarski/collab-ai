@@ -8,6 +8,7 @@ import time
 
 import sandbox_skill_checks
 import sandbox_rtk_checks
+import sandbox_docker_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,11 +35,12 @@ def check_versions(ssh, lock):
         "go version": f"go version go{lock['go_version']} ",
         "starship --version": f"starship {lock['starship_version']}\n",
         "rtk --version": f"rtk {lock['rtk_version']}\n",
+        "gh --version": "gh version ",
     }
     for command, expected in commands.items():
         output = run(ssh + [command], capture_output=True, text=True).stdout
         if not output.startswith(expected):
-            raise ValueError(f"Installed version differs from the manifest: {command}")
+            raise ValueError(f"Unexpected installed tool version: {command}")
 
 
 def check_offline_image(execute):
@@ -82,9 +84,11 @@ def check_workspace(args, directory, project, manifest):
     startup = (ROOT / "scripts/codex/startup.py").read_text()
     run(ssh + ["python3 -"], input=startup, text=True, timeout=40)
     sandbox_rtk_checks.verify(ssh)
+    sandbox_docker_checks.verify(ssh, create=True)
     run(ssh + ["touch /workspace/restart-check"])
     run(["incus", "--project", project, "stop", target])
     run(["incus", "--project", project, "start", target])
     wait_for_broker(ssh)
     run(ssh + ["test -f /workspace/restart-check"])
     sandbox_rtk_checks.verify(ssh)
+    sandbox_docker_checks.verify(ssh)

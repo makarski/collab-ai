@@ -1,6 +1,6 @@
 {
   "go_version": "1.25.14",
-  "codex_version": "0.156.1",
+  "codex_version": "0.159.3",
   "claude_version": "2.1.283",
   "starship_version": "1.26.0",
   "architectures": {
@@ -11,7 +11,7 @@
       "starship_sha256": "dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b",
       "go_sha256": "9bf234ea70ffec9347fdf6b22ce4add51717d3386a38a441e8c8743fceb5eaee",
       "codex_target": "aarch64-unknown-linux-musl",
-      "codex_sha256": "fdd47ed6aade0360796fd3f6f95a45096f327c15e19e8c7339f9dc5633041786",
+      "codex_sha256": "20b7d673cf2b64b6c6208fa4fda06feb9dac0572da9987294b48cde1dab9d001",
       "claude_platform": "linux-arm64",
       "claude_sha256": "346d294f0103d6fc0de11ac953579b5c62dfa90698a4cfc486b6f927c615e697",
       "rtk_target": "aarch64-unknown-linux-gnu",
@@ -24,7 +24,7 @@
       "starship_sha256": "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3",
       "go_sha256": "a21ae5633a269bcd7e90cf767e48225633795e99d831742cbf3397064fee7712",
       "codex_target": "x86_64-unknown-linux-musl",
-      "codex_sha256": "8b711520beddf385467b8da4d2c93736637c6ba1e46811cf0d8606b7c490b6f6",
+      "codex_sha256": "3930f31ac5fca861ea3e444e2683f261190d96b63fba58e0a40a879174369cdf",
       "claude_platform": "linux-x64",
       "claude_sha256": "1859583ce32920595c61ef868bee52e1b1594f7486db209935e01f1e5e804ae2",
       "rtk_target": "x86_64-unknown-linux-musl",

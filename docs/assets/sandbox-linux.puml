@@ -50,10 +50,11 @@ rectangle "Incus project: collab-ai" as Project {
         --
         Codex + Claude adapters
         Read-only dashboard
+        Rootless Docker + Compose
         Selected host mounts optional
         Network access enabled by default
     ]
-    folder "Persistent dev volumes\n/workspace · /home/agent\nRetained when dev is replaced" as Data <<Workspace>>
+    folder "Persistent dev volumes\n/workspace · /home/agent\n/var/lib/collab-ai-docker\nRetained when dev is replaced" as Data <<Workspace>>
     Workspace -down-> Data
 }
 Secured -down-> Workspace : Shared broker socket (UDS)\nRead-only mount in workspace

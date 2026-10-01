@@ -6,6 +6,7 @@ import sys
 
 from sandbox_secured_checks import Deployment, run, denied
 import sandbox_rtk_checks
+import sandbox_docker_checks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,11 +33,19 @@ def check_data(deployment):
               f"assert all(Path(name).read_text() == {CONTENTS!r} for name in {FILES!r})\n"
               "assert '# retention-proof' in Path('/home/agent/.profile').read_text()\n")
     run(deployment.execute("workspace", "runuser", "-u", "agent", "--", "python3", "-c", script))
-    for path, mode in (("/workspace", "750"), ("/home/agent", "700")):
-        observed = run(deployment.execute("workspace", "stat", "-c", "%a %u %g", path)).strip()
-        if observed != f"{mode} 1001 1001":
-            raise ValueError(f"Unsafe persistent volume ownership: {path}: {observed}")
+    check_volume_ownership(deployment)
     denied(deployment.execute("workspace", "cat", FILES[1], uid=65534))
+    denied(deployment.execute("workspace", "ls", "/var/lib/collab-ai-docker", uid=65534))
+
+
+def check_volume_ownership(deployment):
+    # Docker changes its data-root to 0710 at startup: only the agent's own
+    # group gains traversal, with no group read/write or access for others.
+    for path, modes in (("/workspace", ("750",)), ("/home/agent", ("700",)),
+                        ("/var/lib/collab-ai-docker", ("700", "710"))):
+        observed = run(deployment.execute("workspace", "stat", "-c", "%a %u %g", path)).strip()
+        if observed not in {f"{mode} 1001 1001" for mode in modes}:
+            raise ValueError(f"Unsafe persistent volume ownership: {path}: {observed}")
 
 
 def verify(args, directory, project):
@@ -89,6 +98,7 @@ def check_ssh_replacement(args, directory, project):
     run(command)
     run(["ssh", "-F", str(ssh / "config"), "workspace", "test -f /workspace/persistence-proof/repository.txt"])
     sandbox_rtk_checks.verify(["ssh", "-F", str(ssh / "config"), "workspace"])
+    sandbox_docker_checks.verify(["ssh", "-F", str(ssh / "config"), "workspace"])
 
 
 def allow_test_teardown(directory, project):

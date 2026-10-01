@@ -15,18 +15,21 @@ run "offline_workspace" {
       incus_project.sandbox.config["restricted.devices.nic"] == "managed" &&
       incus_project.sandbox.config["restricted.devices.proxy"] == "block" &&
       incus_project.sandbox.config["restricted.devices.disk"] == "managed" &&
-      incus_project.sandbox.config["restricted.containers.privilege"] == "isolated"
+      incus_project.sandbox.config["restricted.containers.privilege"] == "isolated" &&
+      incus_project.sandbox.config["restricted.containers.nesting"] == "allow" &&
+      incus_project.sandbox.config["restricted.containers.lowlevel"] == "allow"
     )
     error_message = "The project must restrict network selection, host bind mounts and privileged containers."
   }
 
   assert {
     condition = (
-      length(incus_profile.sandbox.device) == 3 &&
+      length(incus_profile.sandbox.device) == 4 &&
       alltrue([for device in incus_profile.sandbox.device : device.type == "disk" && device.properties.pool == "default"]) &&
       one([for device in incus_profile.sandbox.device : device if device.name == "root"]).properties.size == "10GiB" &&
       one([for device in incus_profile.sandbox.device : device if device.name == "workspace-data"]).properties.path == "/workspace" &&
       one([for device in incus_profile.sandbox.device : device if device.name == "agent-home"]).properties.path == "/home/agent" &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "docker-data"]).properties.path == "/var/lib/collab-ai-docker" &&
       alltrue([for volume in incus_storage_volume.dev_data : volume.config["security.shifted"] == "false"])
     )
     error_message = "Dev must have only a bounded root disk and private workspace/home volumes, with no host path or NIC."
@@ -36,7 +39,8 @@ run "offline_workspace" {
     condition = (
       incus_profile.sandbox.config["security.privileged"] == "false" &&
       incus_profile.sandbox.config["security.idmap.isolated"] == "true" &&
-      incus_profile.sandbox.config["security.nesting"] == "false" &&
+      incus_profile.sandbox.config["security.nesting"] == "true" &&
+      incus_profile.sandbox.config["security.idmap.size"] == "131072" &&
       incus_profile.sandbox.config["security.guestapi"] == "false" &&
       incus_profile.sandbox.config["boot.autostart"] == "false" &&
       incus_profile.sandbox.config["limits.processes"] == "512" &&
@@ -57,6 +61,7 @@ run "configured_limits_and_stop" {
     disk_gib       = 12
     workspace_gib  = 20
     agent_home_gib = 4
+    docker_gib     = 12
     running        = false
   }
   assert {
@@ -66,6 +71,7 @@ run "configured_limits_and_stop" {
       one([for device in incus_profile.sandbox.device : device if device.name == "root"]).properties.size == "12GiB" &&
       incus_storage_volume.dev_data["workspace"].config["size"] == "20GiB" &&
       incus_storage_volume.dev_data["home"].config["size"] == "4GiB" &&
+      incus_storage_volume.dev_data["docker"].config["size"] == "12GiB" &&
       incus_instance.workspace.running == false
     )
     error_message = "Changing resources or desired power state must affect the planned workspace."
@@ -134,8 +140,9 @@ run "reject_unbounded_resources" {
     disk_gib       = 0
     workspace_gib  = 0
     agent_home_gib = 101
+    docker_gib     = 0
   }
-  expect_failures = [var.cpu_count, var.memory_gib, var.disk_gib, var.workspace_gib, var.agent_home_gib]
+  expect_failures = [var.cpu_count, var.memory_gib, var.disk_gib, var.workspace_gib, var.agent_home_gib, var.docker_gib]
 }
 
 run "selected_host_mounts" {
@@ -264,6 +271,7 @@ run "secured_runtime" {
       length(incus_instance.secured[0].profiles) == 1 &&
       one(incus_instance.secured[0].profiles) == incus_profile.secured[0].name &&
       incus_profile.secured[0].config["security.idmap.isolated"] == "true" &&
+      incus_profile.secured[0].config["security.nesting"] == "false" &&
       !contains(keys(incus_profile.secured[0].config), "raw.idmap")
     )
     error_message = "Secured must have its own isolated identity/profile and follow the desired power state."

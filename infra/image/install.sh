@@ -7,8 +7,9 @@ export DEBIAN_FRONTEND=noninteractive
 printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
 apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update
-apt-get install -y --no-install-recommends ca-certificates curl python3 git \
+apt-get install -y --no-install-recommends ca-certificates curl python3 git gh \
     openssh-server ripgrep tmux less locales
+bash /root/build/infra/image/install-docker.sh
 python3 /root/build/infra/image/install-tools.py
 export PATH="/usr/local/go/bin:$PATH" GOTOOLCHAIN=local CGO_ENABLED=0
 cd /root/build
@@ -25,12 +26,17 @@ codex app-server --help >/dev/null
 claude --version
 starship --version
 rtk --version
+gh --version
 addgroup --gid 1001 agent
 adduser --uid 1001 --gid 1001 --disabled-password --gecos '' agent
 addgroup --gid 1002 broker
 addgroup --gid 1003 collab-clients
 adduser --uid 1002 --gid 1002 --disabled-password --gecos '' --no-create-home --home /nonexistent --shell /usr/sbin/nologin broker
 usermod -aG collab-clients agent
+# Keep subordinate IDs inside the workspace's 131072-ID Incus mapping.
+sed -i '/^agent:/d' /etc/subuid /etc/subgid
+printf 'agent:65536:65536\n' >>/etc/subuid
+printf 'agent:65536:65536\n' >>/etc/subgid
 install -d -o agent -g agent /workspace /var/lib/collab-ai
 install -d /etc/collab-ai /etc/codex /etc/ssh/authorized_keys /usr/local/share/collab-ai
 install -m 0644 infra/image/codex-config.toml /etc/codex/config.toml
@@ -50,6 +56,10 @@ install -m 0755 infra/image/collab-broker-setup /usr/local/bin/collab-broker-set
 install -m 0755 infra/image/collab-workspace-setup /usr/local/bin/collab-workspace-setup
 install -m 0755 infra/image/collab-rtk-setup /usr/local/bin/collab-rtk-setup
 install -m 0644 infra/image/collab-rtk-setup.service /etc/systemd/system/
+install -m 0755 infra/image/collab-docker-setup /usr/local/bin/collab-docker-setup
+install -m 0644 infra/image/collab-docker-{session,setup}.service /etc/systemd/system/
+install -d /etc/systemd/system/user@1001.service.d
+install -m 0644 infra/image/collab-user-workspace.conf /etc/systemd/system/user@1001.service.d/
 printf 'd /run/sshd 0755 root root -\n' >/etc/tmpfiles.d/collab-ssh.conf
 printf 'DISABLE_UPDATES=1\nDISABLE_AUTOUPDATER=1\n' >>/etc/environment
 printf 'export DISABLE_UPDATES=1 DISABLE_AUTOUPDATER=1\ncd /workspace\n' >/etc/profile.d/collab-ai.sh
@@ -65,6 +75,7 @@ systemctl enable collab-secured-broker.service collab-dev-executor.socket
 systemctl enable collab-client-setup.service
 systemctl enable collab-workspace-setup.service
 systemctl enable collab-rtk-setup.service
+systemctl enable collab-docker-session.service collab-docker-setup.service
 dpkg-query -W >/usr/local/share/collab-ai/os-packages.txt
 
 # Images must not share SSH host keys, machine identities, credentials or state.

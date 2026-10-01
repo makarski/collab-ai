@@ -28,8 +28,11 @@ resource "incus_project" "sandbox" {
     "features.storage.volumes"        = "true"
     "restricted"                      = "true"
     "restricted.containers.privilege" = "isolated"
-    "restricted.containers.nesting"   = "block"
-    "restricted.devices.disk"         = length(var.host_mounts) > 0 ? "allow" : "managed"
+    "restricted.containers.nesting"   = "allow"
+    # Explicit idmap.size is needed for the rootless Docker subordinate IDs.
+    # Only the host operator can change instance settings; no Incus API in dev.
+    "restricted.containers.lowlevel" = "allow"
+    "restricted.devices.disk"        = length(var.host_mounts) > 0 ? "allow" : "managed"
     # Keep this allowlist stable when removing the dev NIC, so Incus can validate
     # the existing profile while Terraform applies the offline opt-out.
     "restricted.devices.nic"     = "managed"
@@ -91,8 +94,9 @@ resource "incus_profile" "sandbox" {
 
   config = merge({
     "security.privileged"     = "false"
-    "security.nesting"        = "false"
+    "security.nesting"        = "true"
     "security.idmap.isolated" = "true"
+    "security.idmap.size"     = "131072"
     "security.guestapi"       = "false"
     "boot.autostart"          = "false"
     "limits.cpu"              = tostring(var.cpu_count)

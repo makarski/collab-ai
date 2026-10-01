@@ -9,6 +9,8 @@ sessions need separately configured identities; do not bypass a duplicate owner.
 `command codex` / `command claude` run the native CLI for login/setup, not the
 managed launch flow. `dashboard` is an interactive alias; in non-interactive
 shells use `collab dashboard` (with a TTY) or `collab status --json`.
+`gh` is preinstalled but needs its own login; connector access does not imply
+CLI authentication. Use `gh auth status` to check; never import host credentials.
 
 RTK is preinstalled; hooks rewrite supported shell commands for both agents.
 Use `rtk proxy <command>` when exact output is needed. `rtk gain` estimates shell
@@ -16,6 +18,14 @@ output savings, not model usage or budget headroom. History persists under
 `~/.local/share/rtk`; `/etc/codex/config.toml` grants that extra workspace-write
 root through the App Server. User/project settings can override this default.
 Do not bypass sandbox permissions if a custom launcher cannot write RTK history.
+
+Docker, Compose and Buildx run inside `workspace` using the rootless `agent`
+daemon. Use `docker` / `docker compose`; never switch to a host Docker socket,
+enable a rootful daemon or grant Docker-group access. Docker data persists under
+`/var/lib/collab-ai-docker`; published ports are inside workspace, not host localhost.
+Codex's command sandbox is an inner boundary: approved escalation remains inside
+Incus, but do not describe it as sandboxed command execution. Report namespace
+failures rather than silently disabling sandboxing.
 
 With `secured_runtime = true`, `secured` owns the broker and one collaboration
 SQLite database. Dev connects through `/mnt/collab-ipc/broker.sock`, also reachable

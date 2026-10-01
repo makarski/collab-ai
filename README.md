@@ -51,6 +51,7 @@ ssh -F infra/incus/ssh/config workspace
 # Codex: open the printed URL on your host and enter the device code
 # command codex login --device-auth
 # command claude auth login
+# gh auth login --web --git-protocol https  # optional GitHub CLI login
 
 # First use only: clone if you have not already done so
 # git clone https://github.com/makarski/collab-ai.git /workspace/collab-ai
@@ -66,6 +67,8 @@ codex                         # new managed Codex conversation
 # claude --resume             # resume Claude
 # dashboard                   # broker status and agent inboxes
 # rtk gain                    # estimated shell-output token savings
+# docker info                 # rootless Docker inside workspace
+# docker compose up -d        # run your project's compose.yaml
 
 # Disconnect: Ctrl+B then D detaches tmux; exit leaves SSH
 exit
@@ -81,6 +84,7 @@ need distinct agent IDs. [Login help](docs/sandbox.md#sign-in-and-network-access
 Both agents should read `/usr/local/share/collab-ai/SKILL.md`.
 
 [Mount directories](docs/sandbox-mounts.md) ·
+[Docker and Compose](docs/sandbox.md#docker-and-compose) ·
 [Upgrade or reprovision](docs/sandbox-storage.md#replace-dev-retain-data) ·
 [Back up](docs/sandbox-storage.md#back-up-and-restore) ·
 [Stop or remove](docs/sandbox.md#stop-or-remove)

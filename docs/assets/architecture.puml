@@ -55,7 +55,7 @@ rectangle "workspace · dev container\nNetwork access by default · opt-out avai
     component "=Read-only dashboard\ncollab dashboard · collab status\nAgent connections and pending messages" as Dashboard <<HumanControl>>
     component "=Codex\nTerminal + collab-codex\nManaged proxy / listener" as Codex <<Dev>>
     component "=Claude Code\nTerminal + collab-mcp\nMCP over stdin / stdout" as Claude <<Dev>>
-    component "=Persistent workspace\n/workspace · independent Incus volume\nOptional: selected host directory\nMac host mounts: read-only\n--\nSandbox data owned by agent (1001:1001)\nLinux writes: dedicated host-sharing account\nRun shell commands, builds and tests inside dev" as Project <<Dev>>
+    component "=Persistent workspace\n/workspace · independent Incus volume\nOptional: selected host directory\nMac host mounts: read-only\n--\nSandbox data owned by agent (1001:1001)\nLinux writes: dedicated host-sharing account\nShell commands, builds and tests inside dev\nRootless Docker + Compose as agent\nDocker data: separate persistent Incus volume" as Project <<Dev>>
     file "=Persistent agent home\n/home/agent on a separate Incus volume\nSurvives container replacement\nCodex + Claude settings, skills, memory and sessions\n--\nAgents update sandbox-owned state\nSelected host-state import tooling · future\nNo live host-home sync" as AgentHome <<Storage>>
     file "=broker.sock · Unix socket\n/mnt/collab-ipc/broker.sock\nDirectory mounted READ-ONLY in dev\nOwner: broker · group: collab-clients\nSocket mode: 0660\n--\nClients may connect and send requests\nCannot replace or remove the socket" as Socket <<Socket>>
 }
@@ -84,7 +84,7 @@ legend bottom
     Broker UID 1002 / client GID 1003 are mapped by the shifted IPC volume; directory mounted at boot.
     Read-only mount protects the socket path. It does not prevent sending socket requests.
     Dev clients share access; this does not isolate Codex from Claude or other code running as their user.
-    Workspace and agent-home volumes survive replacement; Terraform blocks their deletion until explicitly allowed.
+    Workspace, agent-home and Docker volumes survive replacement; Terraform blocks their deletion until explicitly allowed.
     Host mounts do not prevent execution. Writable sharing allows changes to host scripts and configuration.
     Host-state import remains future work. File retention is not a resume guarantee.
 endlegend
