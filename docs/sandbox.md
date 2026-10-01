@@ -84,7 +84,7 @@ Existing settings are preserved; telemetry is not enabled. To opt out, run
 
 ## Sign in and network access
 
-Inside the container:
+Before starting agents, sign in inside the container:
 
 ```sh
 command codex login --device-auth
@@ -93,8 +93,10 @@ command claude auth login
 ```
 
 Follow the CLI instructions in your host browser. Enable Codex device login in
-your account/workspace if required. `localhost:1455` in your browser points to the
-host, not the container; use [device login](https://learn.chatgpt.com/docs/auth#login-on-headless-devices).
+your account/workspace if required. If the browser fails at `localhost:1455`, exit
+the Codex sign-in screen and run `command codex login --device-auth` above.
+SSH forwarding is disabled; [device login](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+avoids the host-to-container callback.
 Claude channels also require consent and account/organization support.
 Credentials saved in `/home/agent` persist; host credentials are not imported.
 

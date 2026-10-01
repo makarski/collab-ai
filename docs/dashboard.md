@@ -6,7 +6,9 @@ Prompts and approvals stay in agent terminals. For containers, use the
 
 ## Open the dashboard
 
-From a sandbox shell, run `dashboard`. Or from your host checkout:
+With the secured runtime enabled, the dashboard runs in `workspace` and queries
+the broker in `secured` through the shared socket. From a sandbox shell, run
+`dashboard`. Or from your host checkout:
 
 ```sh
 ssh -t -F infra/incus/ssh/config workspace collab dashboard
