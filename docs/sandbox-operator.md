@@ -1,14 +1,15 @@
 # Provision without host Terraform
 
-Run from the repository on your host:
+For automatic download and deployment, run `python3 scripts/sandbox-provision.py rollout`.
+To preview changes separately, run from the repository on your host:
 
 ```sh
+python3 scripts/sandbox-download.py --release latest
 python3 scripts/sandbox-provision.py plan --image-dir dist/images/current
 # Review, then apply the saved plan:
 python3 scripts/sandbox-provision.py apply
 ```
 
-Prepare an image with the [download helper](sandbox-image.md#download-a-built-image) first.
 Later plans reuse the selected image unless you pass another `--image-dir`. `--replace` rebuilds dev;
 `--destroy` is only for [deliberate removal](sandbox-storage.md#deliberate-removal).
 

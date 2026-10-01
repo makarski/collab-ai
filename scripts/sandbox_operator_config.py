@@ -132,7 +132,7 @@ def existing_image_variables(directory):
     choices = [candidate for candidate in directory.glob("*.auto.tfvars.json")
                if contains_image(candidate)]
     if len(choices) != 1:
-        raise ValueError("Select the downloaded image once with --image-dir dist/workspace-RUN_ID")
+        raise ValueError("Run sandbox-provision.py rollout, or select a verified image with --image-dir")
     return choices[0]
 
 

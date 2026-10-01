@@ -1,42 +1,32 @@
 # Workspace images
 
-A downloadable image bundle (GitHub calls it an **artifact**) contains the prebuilt
-Linux container (`.tar.gz`) and its version/checksum manifest (`.json`).
-No local compilation is needed. CI downloads expire after seven days.
-
 ## Download a built image
 
-**Needs:** Python 3.9+, a running Incus host, and a GitHub account signed in in your
-browser. **GitHub CLI (`gh`) is optional.** Run commands from this repository on your host.
-
-1. Open [successful main builds](https://github.com/makarski/collab-ai/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess) and select the newest completed build.
-2. Under **Artifacts**, download **workspace-linux-arm64** for Apple Silicon/ARM64,
-   or **workspace-linux-amd64** for Intel/AMD Linux. Keep the ZIP as downloaded.
-3. Prepare it (use the actual filename if your browser added a suffix):
+Run on the host with Incus running:
 
 ```sh
-python3 scripts/sandbox-download.py --from-zip ~/Downloads/workspace-linux-arm64.zip
+# Download, verify, provision/upgrade and configure SSH
+python3 scripts/sandbox-provision.py rollout
+# Or pin a published version
+# python3 scripts/sandbox-provision.py rollout --release workspace-vX.Y.Z
 ```
 
-Mac selects `colima-collab-ai`; Linux selects `local`. The helper checks the server's
-architecture and image checksum. It keeps each image separately under `dist/images/`
-and updates `dist/images/current` only after verification. Keep that directory.
-Repeating the command is safe; previously selected image files are not overwritten.
-
-Continue with [first setup](sandbox.md#3-preview-and-apply) or
-[upgrade](sandbox-storage.md#replace-dev-retain-data). Both use the same path:
-`--image-dir dist/images/current`. No build ID or shell variable is needed.
-
-CI downloads expire after seven days and require [GitHub sign-in](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
-If there is no downloadable image, select another successful build or use a development build below.
+Defaults to `latest`; macOS uses `colima-collab-ai`, Linux uses `local`.
+No GitHub CLI, login or manual download. The script selects the server architecture,
+resolves one release tag, verifies its checksum, and imports the container archive.
+[First setup](sandbox.md) · [Upgrade and retained data](sandbox-storage.md#replace-dev-retain-data).
 
 <details>
-<summary>Other download methods</summary>
+<summary>Download only or use a local build</summary>
 
-- Already extracted a bundle? Use `--from-dir /path/to/extracted-bundle` instead of `--from-zip`.
-- Published version available? Use `--release workspace-vX.Y.Z`; public releases need no GitHub CLI or sign-in.
-- Prefer `gh`? [Install GitHub CLI](https://cli.github.com/) and run `gh auth login` first. Its download command extracts the bundle; then use `--from-dir`.
-- `--remote NAME` overrides the Incus remote. `--output NEW_DIRECTORY` bypasses the default image cache.
+`sandbox-download.py --release latest` downloads without provisioning; explicit tags
+also work. Verified images stay under `dist/images/`; `current` selects the latest
+download without overwriting older images. Keep the cache for future provisioning.
+
+For a local image, use `sandbox-provision.py rollout --image-dir dist/workspace-dev`.
+The download helper also accepts extracted CI assets (`--from-dir`) or an existing
+artifact ZIP (`--from-zip`). CI artifacts expire after seven days and require GitHub
+sign-in; public releases do not. `--output NEW_DIRECTORY` selects an explicit cache location.
 
 </details>
 
@@ -90,7 +80,7 @@ own project on failure. After a forced kill, inspect the printed project before
 removing it; Incus 6.0 LTS requires deleting its instances/images before the project.
 
 Output: `workspace.tar.gz`, manifest, `image.tfvars.json` and release files.
-Pass its output directory with `--image-dir` for [initial setup](sandbox.md#2-download-the-workspace-image)
+Pass its output directory with `--image-dir` for [initial setup](sandbox.md#2-install-or-upgrade)
 or [upgrade](sandbox-storage.md#replace-dev-retain-data). Keep the exported image;
 upstream may prune pinned base images. Rebuilds are not bit-identical: OS packages
 resolve at build time and metadata includes timestamps. OS versions are recorded.
@@ -101,10 +91,11 @@ resolve at build time and metadata includes timestamps. OS versions are recorded
 image tests: provisioning, SSH, installed tools, broker, persistence, replacement,
 network opt-out and control boundaries. Tests use no credentials or model requests.
 
-**Run workflow** accepts source/tool overrides without publishing a release.
-Maintainers publish by tagging a reviewed commit `workspace-vX.Y.Z`; checks and both
-image tests must pass. Releases use committed pins, contain both architectures,
-and never overwrite an existing release.
+Successful pushes to `main` publish both architectures under a unique
+`workspace-v0.0.0-build.RUN.ATTEMPT` tag and make that release `latest`.
+Explicit `workspace-vX.Y.Z` tags publish versioned releases too. Publication happens
+only after all checks and both image builds pass; incomplete uploads stay in draft.
+Published assets are never overwritten. `latest` becomes available after the first
+successful main release build.
 
-For a [published release](https://github.com/makarski/collab-ai/releases), use
-`sandbox-download.py --release TAG` instead of the browser ZIP above. Keep the verified image for later provisioning.
+**Run workflow** accepts development source/tool overrides without publishing.

@@ -1,6 +1,6 @@
 # Set up an Incus sandbox
 
-**Host → download image → provision → SSH → sign in.** Run host commands from
+**Start Incus → rollout → SSH → sign in.** Run host commands from
 this repository. Already provisioned? Use the [daily quick start](../README.md#set-up-a-sandbox).
 
 The image includes collab-ai, Codex, Claude Code, Go, Git, tmux, Starship and RTK.
@@ -26,44 +26,29 @@ quota-capable pool (ZFS/Btrfs), a managed network bridge and Incus access.
 Skip Colima; replace `colima-collab-ai:` with `local:` throughout.
 Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
 
-## 2. Download the workspace image
+## 2. Install or upgrade
 
-Follow [Download a built image](sandbox-image.md#download-a-built-image) on the host.
-Download the ZIP in your browser, then run the Python helper. GitHub CLI is optional.
-The verified image is available at `dist/images/current`.
-For an existing deployment, use [upgrade](sandbox-storage.md#replace-dev-retain-data).
-
-## 3. Preview and apply
-
-From the repository root on your host:
+Run from this repository on your host. Exit agents before upgrading:
 
 ```sh
-python3 scripts/sandbox-provision.py plan --image-dir dist/images/current
-# Review the printed plan, then:
-python3 scripts/sandbox-provision.py apply
+python3 scripts/sandbox-provision.py rollout
 ```
 
-No host Terraform/OpenTofu installation is needed. The helper runs pinned OpenTofu
-in a disposable operator container. **New deployments default to dev plus offline
-control.** Use `--storage-pool` / `--network` for a non-default Incus pool/bridge.
+Downloads the latest tested release for your server, verifies it, stops existing
+containers, then provisions and configures SSH. No GitHub CLI, browser download,
+or host Terraform/OpenTofu install. To select a version, add `--release workspace-vX.Y.Z`.
+Projects and agent home persist; active processes end. [Back up before upgrading](sandbox-storage.md#back-up-and-restore).
 
-State, backup, settings and saved plans stay on the host, normally under
-`~/.local/state/collab-ai/operator/collab-ai/`. The command prints the actual path
-and remembers it. Existing repository/worktree state is discovered; multiple matches
-require one explicit `--state-dir` selection. It never adopts an existing Incus
-project using empty state. Host mounts that expose operator state are rejected.
+New deployments include dev and offline control. State and settings stay on the host;
+the script prints and remembers their directory. Existing settings are preserved.
+Use `--storage-pool` / `--network` for a non-default Incus pool/bridge.
+[Settings, plan preview and recovery](sandbox-operator.md).
 
-Edit the printed directory's `operator.auto.tfvars.json` for settings such as
-`dev_network_enabled`, `running`, or `secured_runtime`, then plan/apply again.
-Existing deployments keep their existing variable files. Both containers must be
-stopped before control-mode updates. [Provisioning and recovery](sandbox-operator.md).
-
-## 4. SSH into the workspace
+## 3. SSH into the workspace
 
 On the host:
 
 ```sh
-python3 scripts/sandbox-ssh.py --remote colima-collab-ai
 ssh -F infra/incus/ssh/config workspace
 ```
 
@@ -132,7 +117,7 @@ for the broker. **Keep the colon.** The remote is `colima-collab-ai:`, not `coll
 | Problem | Action |
 | --- | --- |
 | Remote missing | Check `colima list`; rerun `sandbox-host.py apply` |
-| Empty list / missing project | Check `incus project list colima-collab-ai:`; complete steps 2–3 |
+| Empty list / missing project | Check `incus project list colima-collab-ai:`; run step 2 |
 | SSH host key changed | Follow the [replacement procedure](sandbox-storage.md#replace-dev-retain-data) |
 | Need a recovery shell | `incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh` (root) |
 

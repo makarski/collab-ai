@@ -55,8 +55,7 @@ def invoke(directory, args, action, extra=()):
 
 def prove(directory, args):
     state, image = setup(directory, args.project)
-    invoke(directory, args, "plan", ["--image-dir", str(image)]).check_returncode()
-    invoke(directory, args, "apply").check_returncode()
+    invoke(directory, args, "rollout", ["--image-dir", str(image)]).check_returncode()
     saved = state / "terraform.tfstate"
     assert saved.exists() and saved.stat().st_mode & 0o777 == 0o600
     before = json.loads(saved.read_text())

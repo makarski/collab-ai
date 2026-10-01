@@ -44,12 +44,13 @@ def check_state_files(directory):
             raise ValueError(f"Refusing symlinked SSH state: {name}")
 
 
-def pin_host_key(destination, public_key):
+def pin_host_key(destination, public_key, refresh=False):
     fields = public_key.split()
     if len(fields) < 2 or fields[0] != "ssh-ed25519":
         raise ValueError("Incus did not return an Ed25519 SSH host key")
     expected = f"collab-workspace {fields[0]} {fields[1]}\n"
-    if destination.exists() and destination.read_text() != expected:
+    changed = destination.exists() and destination.read_text() != expected
+    if changed and not refresh:
         raise ValueError(f"SSH host key changed. Verify the workspace replacement, then remove {destination} and rerun setup.")
     destination.write_text(expected)
 
@@ -95,7 +96,7 @@ def setup(args):
     host_key = run(execute + ["cat", "/etc/ssh/ssh_host_ed25519_key.pub"],
                    capture_output=True, text=True).stdout
     # Obtain trust from the already-authenticated Incus endpoint, never ssh-keyscan.
-    pin_host_key(directory / "known_hosts", host_key)
+    pin_host_key(directory / "known_hosts", host_key, getattr(args, "refresh_host_key", False))
     identity = directory / "id_ed25519"
     if not identity.exists():
         run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "collab-workspace", "-f", str(identity)])

@@ -105,40 +105,44 @@ def stage(operator, temporary, prepared, token):
 
 def run_operation(args, directory, server):
     with deployment_lock(directory):
-        prepared = prepare(args, directory, server)
-        operator = Operator(args.remote, server, args.storage_pool, args.network)
-        write_json(directory / PENDING, {"project": operator.project, "remote": args.remote,
-                                        "action": args.action, "server": server["certificate_fingerprint"],
-                                        "deployment_project": args.project})
-        print(f"Host state: {directory / 'terraform.tfstate'}", flush=True)
-        apply_started = False
-        completed = False
-        try:
-            operator.create()
-            with ExitStack() as stack:
-                temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="collab-operator-")))
-                operator.install(temporary)
-                backend = stack.enter_context(state_server(directory))
-                address = stack.enter_context(state_connection(backend.server_port, args.remote))
-                stage(operator, temporary, prepared, backend.store.token)
-                operator.connect(address)
-                apply_started = args.action == "apply"
-                try:
-                    operator.execute("python3", "/operator/run.py")
-                except BaseException:
-                    if apply_started:
-                        operator.run("stop", operator.target, "--force")
-                    raise
-                complete_operation(operator, temporary, prepared)
-                completed = True
-        finally:
-            if apply_started and not completed:
-                print(f"Apply interrupted/failed. Host state is retained at {directory}. "
-                      f"Operator {operator.project} is retained. Run sandbox-provision.py recover "
-                      "to reconcile emergency state before retrying.", flush=True)
-            else:
-                operator.cleanup()
-                (directory / PENDING).unlink()
+        run_locked_operation(args, directory, server)
+
+
+def run_locked_operation(args, directory, server):
+    prepared = prepare(args, directory, server)
+    operator = Operator(args.remote, server, args.storage_pool, args.network)
+    write_json(directory / PENDING, {"project": operator.project, "remote": args.remote,
+                                    "action": args.action, "server": server["certificate_fingerprint"],
+                                    "deployment_project": args.project})
+    print(f"Host state: {directory / 'terraform.tfstate'}", flush=True)
+    apply_started = False
+    completed = False
+    try:
+        operator.create()
+        with ExitStack() as stack:
+            temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="collab-operator-")))
+            operator.install(temporary)
+            backend = stack.enter_context(state_server(directory))
+            address = stack.enter_context(state_connection(backend.server_port, args.remote))
+            stage(operator, temporary, prepared, backend.store.token)
+            operator.connect(address)
+            apply_started = args.action == "apply"
+            try:
+                operator.execute("python3", "/operator/run.py")
+            except BaseException:
+                if apply_started:
+                    operator.run("stop", operator.target, "--force")
+                raise
+            complete_operation(operator, temporary, prepared)
+            completed = True
+    finally:
+        if apply_started and not completed:
+            print(f"Apply interrupted/failed. Host state is retained at {directory}. "
+                  f"Operator {operator.project} is retained. Run sandbox-provision.py recover "
+                  "to reconcile emergency state before retrying.", flush=True)
+        else:
+            operator.cleanup()
+            (directory / PENDING).unlink()
 
 
 def complete_operation(operator, temporary, prepared):
@@ -155,6 +159,9 @@ def complete_operation(operator, temporary, prepared):
     private_write(directory / PLAN, plan.read_bytes())
     prepared.identity["plan_sha256"] = file_sha(directory / PLAN)
     write_json(directory / IDENTITY, prepared.identity)
+    if getattr(args, "automatic", False):
+        print("Plan validated; applying rollout.", flush=True)
+        return
     command = ["python3", "scripts/sandbox-provision.py", "apply", "--project", args.project,
                "--remote", args.remote, "--storage-pool", args.storage_pool, "--network", args.network]
     print("Plan saved. Review it above, then run: " + shlex.join(command), flush=True)

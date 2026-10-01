@@ -5,36 +5,23 @@ import argparse
 import json
 from pathlib import Path
 import platform
-import re
 import shlex
 import shutil
 import subprocess
 import sys
-from urllib.parse import quote
 import zipfile
 
-from sandbox_artifacts import fetch, from_zip
+from sandbox_artifacts import from_zip
 from sandbox_image_cache import prepare_image
-
-
-def release_tag(value):
-    if not re.fullmatch(r"workspace-v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?", value):
-        raise argparse.ArgumentTypeError("Select a published workspace-vX.Y.Z tag; moving aliases are not supported")
-    return value
-
-
-def repository(value):
-    if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", value):
-        raise argparse.ArgumentTypeError("Use OWNER/REPOSITORY")
-    return value
+from sandbox_releases import download_release, release_tag, repository
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", default="colima-collab-ai" if platform.system() == "Darwin" else "local",
                         help="Incus remote name; defaults to colima-collab-ai on Mac, local on Linux")
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--release", type=release_tag)
+    source = parser.add_mutually_exclusive_group(required=False)
+    source.add_argument("--release", type=release_tag, default="latest")
     source.add_argument("--from-dir", type=Path, help="Directory of extracted CI release assets")
     source.add_argument("--from-zip", type=Path, help="CI image ZIP downloaded in a browser; no extraction needed")
     parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
@@ -50,9 +37,11 @@ def main():
     elif args.from_dir:
         obtain = lambda name, target: shutil.copyfile(args.from_dir / name, target)
     else:
-        base = f"https://github.com/{args.repo}/releases/download/{quote(args.release, safe='')}/"
-        obtain = lambda name, target: fetch(base + name, target)
-    output, manifest = prepare_image(architecture, obtain, args.output)
+        output = download_release(architecture, args.release, args.repo, args.output)
+        manifest = json.loads((output / "manifest.json").read_text())
+        obtain = None
+    if obtain is not None:
+        output, manifest = prepare_image(architecture, obtain, args.output)
     print(f"Verified {architecture} image: {manifest['image_fingerprint']}")
     print(f"Image variables: {output / 'image.tfvars.json'}")
     command = ["python3", "scripts/sandbox-provision.py", "plan", "--image-dir", str(output),
