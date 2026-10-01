@@ -122,13 +122,20 @@ def browser_proof(stack, config, home):
         raise ValueError("Browser navigation tool missing")
     if "Collab browser proof" not in first.tool("browser_navigate", {"url": url}):
         raise ValueError("Bundled browser did not reach the local app")
-    first.tool("browser_evaluate", {"function": "() => { document.cookie = 'proof=one'; return document.cookie; }"})
+    set_session_cookie(first)
     second, _ = client(stack, [config["command"], *config["args"]], home)
     second.tool("browser_navigate", {"url": url})
     if "proof=one" in second.tool("browser_evaluate", {"function": "() => document.cookie"}):
         raise ValueError("Parallel agent browsers shared cookies")
     first.tool("browser_close", {})
     second.tool("browser_close", {})
+
+
+def set_session_cookie(browser):
+    cookie = browser.tool("browser_evaluate", {
+        "function": "() => { document.cookie = 'proof=one'; return document.cookie; }"})
+    if "proof=one" not in cookie:
+        raise ValueError("First browser did not retain its session cookie")
 
 
 def verify():
