@@ -6,7 +6,7 @@ Dev data lives on three Incus volumes, mounted only in `workspace`:
 | --- | --- | --- | --- |
 | `workspace-data` | `/workspace` | 10 GiB (`workspace_gib`) | `agent:agent`, directory `0750` |
 | `agent-home` | `/home/agent` | 2 GiB (`agent_home_gib`) | `agent:agent`, directory `0700` |
-| `docker-data` | `/var/lib/collab-ai-docker` | 10 GiB (`docker_gib`) | Root directory `agent:agent`, `0700`; Docker manages contents |
+| `docker-data` | `/var/lib/collab-ai-docker` | 10 GiB (`docker_gib`) | `agent:agent`; `0700` initially, Docker sets `0710`; no access for others |
 
 These volumes survive restart and replacement. Both agents share the home;
 existing settings are preserved. Stored sessions do not prove native resume across
