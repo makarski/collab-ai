@@ -36,6 +36,7 @@ sign-in; public releases do not. `--output NEW_DIRECTORY` selects an explicit ca
 | --- | --- |
 | `broker`, `collab-codex`, `collab-mcp`, `collab` | Compiled from the selected app source inside the image; Go tests run first |
 | Codex 0.159.3, Claude Code 2.1.283 | Official native distributions, verified against committed SHA256 checksums |
+| CodeScene MCP, Playwright + Chromium | Preconfigured for both agents; pinned native downloads and npm lockfile |
 | Go 1.25.14 | Official archive, checksum verified; available for workspace development |
 | RTK 0.50.0 | Checksum-pinned binary; Codex/Claude hooks and persistent usage history |
 | Starship 1.26.0 | Checksum-pinned native release; enabled in interactive agent Bash shells |

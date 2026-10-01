@@ -12,6 +12,13 @@ shells use `collab dashboard` (with a TTY) or `collab status --json`.
 `gh` is preinstalled but needs its own login; connector access does not imply
 CLI authentication. Use `gh auth status` to check; never import host credentials.
 
+CodeScene and Playwright MCPs are preconfigured for both agents. CodeScene needs
+the user's own token via `collab-codescene-login`; never request tokens in chat.
+Report missing authentication instead of claiming an analysis passed. Playwright
+uses sandboxed headless Chromium and separate temporary browser sessions; local
+app URLs refer to workspace. Do not disable its browser sandbox to hide a failure.
+Both MCP processes run as `agent` inside Incus, outside the shell-command sandbox.
+
 RTK is preinstalled; hooks rewrite supported shell commands for both agents.
 Use `rtk proxy <command>` when exact output is needed. `rtk gain` estimates shell
 output savings, not model usage or budget headroom. History persists under

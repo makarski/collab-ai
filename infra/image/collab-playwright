@@ -1,0 +1,3 @@
+#!/bin/sh
+exec /usr/local/bin/node /opt/collab-mcp/node_modules/@playwright/mcp/cli.js \
+    --headless --isolated --sandbox --executable-path /usr/local/bin/collab-chromium "$@"

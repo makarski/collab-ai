@@ -1,0 +1,8 @@
+{
+  "name": "collab-ai-mcp-bundle",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@playwright/mcp": "0.0.83"
+  }
+}

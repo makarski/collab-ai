@@ -1,0 +1,10 @@
+{
+  "codescene": {
+    "command": "/usr/local/bin/cs-mcp",
+    "args": []
+  },
+  "playwright": {
+    "command": "/usr/local/bin/collab-playwright",
+    "args": []
+  }
+}

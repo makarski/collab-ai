@@ -101,7 +101,8 @@ resource "incus_profile" "sandbox" {
     "boot.autostart"          = "false"
     "limits.cpu"              = tostring(var.cpu_count)
     "limits.memory"           = "${var.memory_gib}GiB"
-    "limits.processes"        = "512"
+    # Linux counts threads here too; two agents and their browsers exceed 512.
+    "limits.processes" = "2048"
   }, local.mount_profile_config)
 
   # No proxy or inherited default profile. Control never receives this dev NIC.

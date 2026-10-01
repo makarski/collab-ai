@@ -68,7 +68,7 @@ def resolve_lock(path, architecture, args):
             arch[f"{tool}_sha256"] = resolve(selected, arch)
         lock[f"{tool}_version"] = selected
         fingerprint(arch[f"{tool}_sha256"])
-    for tool in ("starship", "rtk"):
+    for tool in ("starship", "rtk", "node", "codescene"):
         lock[f"{tool}_version"] = version(lock[f"{tool}_version"])
         fingerprint(arch[f"{tool}_sha256"])
     arch["base_image"] = fingerprint(getattr(args, "base_image", None) or arch["base_image"])

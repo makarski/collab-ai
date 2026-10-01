@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "infra/image"))
 
 
 def module(name, path):
@@ -64,7 +65,7 @@ class ImageTests(unittest.TestCase):
 
     def test_download_rejects_wrong_content_before_installation(self):
         with tempfile.TemporaryDirectory() as directory:
-            with patch.object(installer.urllib.request, "urlopen", return_value=io.BytesIO(b"wrong")):
+            with patch("tool_download.urllib.request.urlopen", return_value=io.BytesIO(b"wrong")):
                 with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
                     installer.download("https://example.invalid/tool", "0" * 64, Path(directory) / "tool")
 

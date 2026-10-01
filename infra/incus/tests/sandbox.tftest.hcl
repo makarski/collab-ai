@@ -43,7 +43,7 @@ run "offline_workspace" {
       incus_profile.sandbox.config["security.idmap.size"] == "131072" &&
       incus_profile.sandbox.config["security.guestapi"] == "false" &&
       incus_profile.sandbox.config["boot.autostart"] == "false" &&
-      incus_profile.sandbox.config["limits.processes"] == "512" &&
+      incus_profile.sandbox.config["limits.processes"] == "2048" &&
       length(incus_instance.workspace.profiles) == 1 &&
       one(incus_instance.workspace.profiles) == incus_profile.sandbox.name &&
       incus_instance.workspace.ephemeral == false &&
