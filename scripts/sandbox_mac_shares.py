@@ -9,6 +9,7 @@ import subprocess
 
 from sandbox_mounts import canonical_source, validated_readonly, validate_mount_shape, validate_mount_set
 from sandbox_share_identity import require
+from sandbox_share_install import install_commands
 
 
 def validate_mounts(manifest):
@@ -56,9 +57,11 @@ def validate_groups(account, group):
     user = account.pw_name
     require(group.gr_name == user and set(group.gr_mem).issubset({user}),
             "Sharing requires a private same-name primary group")
-    # everyone (12) is implicit on macOS; staff/admin/wheel are not allowed.
-    if set(os.getgrouplist(user, account.pw_gid)) - {account.pw_gid, 12}:
-        raise ValueError("Sharing account has additional groups")
+    # macOS adds implicit groups even to daemon users. The installed helper
+    # clears them all before serving; reject administrative membership outright.
+    groups = set(os.getgrouplist(user, account.pw_gid))
+    if groups.intersection({0, 20, 80}):
+        raise ValueError("Sharing account belongs to wheel, staff or admin")
 
 
 def validate_unique(account):
@@ -125,9 +128,8 @@ def access_rights(readonly):
 
 
 def setup(mounts, user):
-    commands = account_commands(user)
-    if commands:
-        subprocess.run(["sudo", "-v"], check=True)
+    commands = account_commands(user) + install_commands()
+    subprocess.run(["sudo", "-v"], check=True)
     for command in commands:
         subprocess.run(command, check=True)
     identity(user)

@@ -37,5 +37,6 @@ def server_command(source, readonly, user=None):
     if readonly:
         command.append("-R")
     if user:
-        command = ["sudo", "-n", "-u", user, "--", *command]
+        command = ["sudo", "-n", "--", "/usr/bin/python3", "-I",
+                   "/Library/Application Support/collab-ai/sharing/host.py", user, str(source), str(readonly).lower()]
     return command

@@ -1,6 +1,7 @@
 """Disposable hosted-macOS CI proof of the real account and inherited ACLs."""
 
 import os
+import json
 from pathlib import Path
 import platform
 import pwd
@@ -13,6 +14,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sandbox_mac_shares import identity, setup
 from sandbox_sftp_policy import server_command
+from sandbox_share_install import HELPER
 
 
 @unittest.skipUnless(platform.system() == "Darwin" and os.environ.get("COLLAB_MAC_IDENTITY_PROOF") == "1",
@@ -35,6 +37,8 @@ class MacIdentityLiveTests(unittest.TestCase):
                 setup(mounts, user)
                 account = identity(user)
                 self.assertNotEqual(account.pw_uid, os.getuid())
+                probe = subprocess.check_output(["sudo", "-n", "/usr/bin/python3", "-I", str(HELPER), user, "--identity", "false"], text=True)
+                self.assertEqual(json.loads(probe), dict(uid=account.pw_uid, gid=account.pw_gid, groups=[account.pw_gid]))
                 command = server_command(shared, False, user)
                 result = subprocess.run(["/usr/bin/sftp", "-D", shlex.join(command), "-b", "-"],
                     input=f'put "{secret}" "{shared}/from-agent"\n', text=True, capture_output=True, timeout=20)

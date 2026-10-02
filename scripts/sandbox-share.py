@@ -13,6 +13,7 @@ import sys
 from sandbox_mac_shares import account_commands, acl_commands, identity, setup, validate_mounts
 from sandbox_share_runtime import serve
 from sandbox_share_links import uncovered_links
+from sandbox_share_install import install_commands, require_installed
 
 
 def arguments():
@@ -28,7 +29,7 @@ def arguments():
 def main():
     args = arguments()
     if platform.system() != "Darwin" or os.getuid() == 0:
-        raise ValueError("Run on macOS as your normal user; setup requests sudo only for account creation")
+        raise ValueError("Run on macOS as your normal user; setup requests sudo for the account and protected helper")
     mounts = validate_mounts(json.loads(args.mounts_file.read_text()))
     if args.action == "plan":
         show_plan(mounts, args.share_user)
@@ -37,6 +38,7 @@ def main():
         print("Sharing identity and selected-directory ACLs ready. Run sandbox-share.py run next.")
     else:
         identity(args.share_user)
+        require_installed()
         serve(mounts, args.share_user, args.remote, args.project)
 
 
@@ -44,7 +46,7 @@ def show_plan(mounts, user):
     print(json.dumps(mounts, indent=2))
     for link, target in uncovered_links(mounts):
         print(f"Unshared symlink target: {link} -> {target}")
-    for command in account_commands(user) + acl_commands(mounts, user):
+    for command in account_commands(user) + install_commands() + acl_commands(mounts, user):
         print(shlex.join(command))
     print("Preview only. Setup grants host file access; run keeps the file connection open.")
 

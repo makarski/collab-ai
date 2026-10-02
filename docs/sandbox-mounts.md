@@ -64,8 +64,9 @@ python3 scripts/sandbox-share.py run --mounts-file /path/to/mounts.json
 ```
 
 Inside workspace, `cd` to that same path. Edits reach host files immediately.
-The helper uses a non-login `collab-share` account, a directory-restricted macOS
-sandbox, and a file-only connection; it exposes no host shell or listening port.
+Setup installs a root-owned helper outside shared projects. It drops to the
+non-login `collab-share` account and clears supplementary groups before serving
+files under a directory-restricted macOS sandbox. It exposes no host shell or port.
 Existing ownership stays unchanged. You can edit newly created files too.
 
 **Stop:** Ctrl+C disconnects shares. Restart workspace before reconnecting.
