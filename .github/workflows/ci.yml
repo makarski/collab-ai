@@ -28,6 +28,18 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  mac-sharing:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prove restricted file access and dedicated host ownership
+        env:
+          COLLAB_MAC_IDENTITY_PROOF: '1'
+        run: python3 -m unittest discover -s scripts/tests -v
+
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -104,7 +116,7 @@ jobs:
 
   release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/workspace-v'))
-    needs: [checks, images]
+    needs: [checks, images, mac-sharing]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

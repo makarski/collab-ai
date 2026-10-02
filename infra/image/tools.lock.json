@@ -5,7 +5,7 @@
   "starship_version": "1.26.0",
   "architectures": {
     "aarch64": {
-      "base_image": "6381f978985fdd66f52809ab21ea17dfece05576debdd3c6e5824cba6c93886d",
+      "base_image": "c3628ca9341332a5dbfa149c093b9d2d5d3c17e06559fa01b34aadc4a5bc5b0e",
       "go_arch": "arm64",
       "starship_target": "aarch64-unknown-linux-musl",
       "starship_sha256": "dc30189378d2f2e287384e8a692d3f95ad1df64cf0e8c36aa9201516028aed6b",
@@ -22,7 +22,7 @@
       "codescene_sha256": "8ca6119b2d5fb9f2219276d348e841619aafc847f53a10d39e5c242b14100208"
     },
     "x86_64": {
-      "base_image": "a4f3be59e3082311939e194f9b69ded49785979aafb4bcb7ef58b2506104c61b",
+      "base_image": "41cfd281da936eeff5ffa669ee7504ad14898cff65640378e45a9690480940d1",
       "go_arch": "amd64",
       "starship_target": "x86_64-unknown-linux-musl",
       "starship_sha256": "b7c232b0e8249d8e55a40beb79c5c43a7d370f3f9408bd215deb0170daeaadf3",
