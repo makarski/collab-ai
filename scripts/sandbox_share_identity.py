@@ -22,7 +22,7 @@ def linux_identity(share_user, writable):
 
 
 def mac_identity(share_user, writable):
-    error = "macOS host sharing is read-only without host ID mapping; edit inside the persistent workspace"
+    error = "macOS host sharing is read-only through VirtioFS; for writable sharing use sandbox-share.py"
     if writable:
         raise ValueError(error)
     if share_user:

@@ -8,7 +8,7 @@ printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
 apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update
 apt-get install -y --no-install-recommends ca-certificates curl python3 git gh \
-    openssh-server ripgrep tmux less locales
+    openssh-server sshfs ripgrep tmux less locales
 bash /root/build/infra/image/install-docker.sh
 python3 /root/build/infra/image/install-tools.py
 export PATH="/usr/local/go/bin:$PATH" GOTOOLCHAIN=local CGO_ENABLED=0

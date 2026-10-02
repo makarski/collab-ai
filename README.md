@@ -85,6 +85,7 @@ need distinct agent IDs. [Login help](docs/sandbox.md#sign-in-and-network-access
 Both agents should read `/usr/local/share/collab-ai/SKILL.md`.
 
 [Mount directories](docs/sandbox-mounts.md) ·
+[Mac writable sharing](docs/sandbox-mounts.md#mac-writable-sharing) ·
 [Docker and Compose](docs/sandbox.md#docker-and-compose) ·
 [Bundled MCP tools](docs/sandbox.md#bundled-mcp-tools) ·
 [Upgrade or reprovision](docs/sandbox-storage.md#replace-dev-retain-data) ·
@@ -130,8 +131,8 @@ The shared Unix socket connects them.
 
 ## Security
 
-Agent commands run inside the container. Host mounts are read-only on macOS;
-Linux writes require a dedicated sharing identity. Writable sharing lets agents
+Agent commands run inside the container. Host mounts default to read-only;
+writes require a dedicated sharing identity. Writable sharing lets agents
 change files that you or host automation may later execute.
 [Boundaries](docs/sandbox.md#security-can-agents-execute-code-on-my-host).
 

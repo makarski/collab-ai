@@ -3,7 +3,7 @@
 ## Where agents can edit
 
 - **Sandbox copy:** agents can code; changes return through Git or a patch, not automatic host sync.
-- **Host mount:** read-only by default. Linux permits writes with a dedicated sharing account; macOS does not.
+- **Host mount:** read-only by default. Writes require a dedicated sharing account; choose the Mac or Linux setup below.
 
 For coding, clone or copy into an unmounted directory such as `/workspace/project-work`.
 
@@ -32,6 +32,46 @@ or hyphens, starting with a letter. Host permissions still apply.
 ```sh
 python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json
 ```
+
+## Mac writable sharing
+
+Use the current workspace image (includes SSHFS). Start workspace normally.
+For this mode, keep each container path **identical to its host path**:
+
+```json
+[
+  {
+    "project_name": "etl-development",
+    "host_path": "/Users/you/workspace/etl-development",
+    "container_mount_path": "/Users/you/workspace/etl-development",
+    "container_readonly": false
+  }
+]
+```
+
+List external symlink targets as separate entries; one parent entry covers its
+children. `plan` reports unlisted targets, skipping common build/cache folders.
+It never adds them automatically. Git worktrees also need their common repository
+directory available at its original path.
+
+```sh
+# HOST: inspect first; setup creates the sharing account and grants directory access
+python3 scripts/sandbox-share.py plan --mounts-file /path/to/mounts.json
+python3 scripts/sandbox-share.py setup --mounts-file /path/to/mounts.json
+
+# Keep running in a separate host terminal; sudo starts the restricted file helper
+python3 scripts/sandbox-share.py run --mounts-file /path/to/mounts.json
+```
+
+Inside workspace, `cd` to that same path. Edits reach host files immediately.
+The helper uses a non-login `collab-share` account, a directory-restricted macOS
+sandbox, and a file-only connection; it exposes no host shell or listening port.
+Existing ownership stays unchanged. You can edit newly created files too.
+
+**Stop:** Ctrl+C disconnects shares. Restart workspace before reconnecting.
+Disconnected mounts refuse writes; files remain on the host. Account/ACL grants
+remain after stopping. This mode does not use `mounts-apply` or require a VM restart.
+Writable files can later execute on the host; [review them first](sandbox.md#security-can-agents-execute-code-on-my-host).
 
 ## Linux writable sharing
 
@@ -66,7 +106,7 @@ Mounts do **not** prevent execution. Review host changes before running them.
 
 ## Apply
 
-On **macOS**, stop the dedicated VM before changing its read-only mounts:
+For **macOS read-only VirtioFS mounts**, stop the dedicated VM before changing mounts:
 
 ```sh
 colima stop collab-ai
