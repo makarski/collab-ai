@@ -6,6 +6,7 @@ import stat
 
 HELPER_DIRECTORY = Path("/Library/Application Support/collab-ai/sharing")
 HELPER = HELPER_DIRECTORY / "host.py"
+SYSTEM_ANCESTORS = {Path("/Library"), Path("/Library/Application Support")}
 
 
 def check_protected(path):
@@ -18,8 +19,17 @@ def check_protected(path):
 def check_metadata(info, path):
     if stat.S_ISLNK(info.st_mode):
         raise ValueError(f"Sharing helper path must not be a symlink: {path}")
-    if info.st_uid != 0 or info.st_mode & 0o022:
+    if info.st_uid != 0 or info.st_mode & forbidden_write_bits(info, path):
         raise ValueError(f"Sharing helper path must be root-owned and non-writable: {path}")
+
+
+def forbidden_write_bits(info, path):
+    # macOS system directories may grant writes to wheel/admin. Those host
+    # administrators are already trusted; the sharing account cannot join them.
+    trusted_system_group = path in SYSTEM_ANCESTORS and info.st_gid in (0, 80)
+    if trusted_system_group and stat.S_ISDIR(info.st_mode):
+        return 0o002
+    return 0o022
 
 
 def install_commands():
