@@ -12,11 +12,14 @@ def check_protected(path):
     for parent in [path, *path.parents]:
         if not parent.exists() and not parent.is_symlink():
             continue
-        info = parent.lstat()
-        if stat.S_ISLNK(info.st_mode):
-            raise ValueError(f"Sharing helper path must not be a symlink: {parent}")
-        if info.st_uid != 0 or info.st_mode & 0o022:
-            raise ValueError(f"Sharing helper path must be root-owned and non-writable: {parent}")
+        check_metadata(parent.lstat(), parent)
+
+
+def check_metadata(info, path):
+    if stat.S_ISLNK(info.st_mode):
+        raise ValueError(f"Sharing helper path must not be a symlink: {path}")
+    if info.st_uid != 0 or info.st_mode & 0o022:
+        raise ValueError(f"Sharing helper path must be root-owned and non-writable: {path}")
 
 
 def install_commands():

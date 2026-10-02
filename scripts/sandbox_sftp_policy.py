@@ -1,6 +1,7 @@
 """Restrict the macOS file server independently of the SSHFS client."""
 
 import json
+import os
 from pathlib import Path
 
 
@@ -38,5 +39,6 @@ def server_command(source, readonly, user=None):
         command.append("-R")
     if user:
         command = ["sudo", "-n", "--", "/usr/bin/python3", "-I",
-                   "/Library/Application Support/collab-ai/sharing/host.py", user, str(source), str(readonly).lower()]
+                   "/Library/Application Support/collab-ai/sharing/host.py", user, str(source),
+                   str(readonly).lower(), str(os.getpid())]
     return command
