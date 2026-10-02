@@ -2,6 +2,7 @@
 
 import grp
 import ctypes
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -84,7 +85,7 @@ def main():
     user, source, readonly, operator_pid = sys.argv[1:]
     # Subscribe before dropping credentials; the operator's death closes shares
     # even after SIGKILL, with no reliance on the operator running cleanup code.
-    with select.kqueue() as watcher:
+    with closing(select.kqueue()) as watcher:
         event = select.kevent(int(operator_pid), filter=select.KQ_FILTER_PROC,
                              flags=select.KQ_EV_ADD, fflags=select.KQ_NOTE_EXIT)
         watcher.control([event], 0, 0)
