@@ -26,7 +26,12 @@ def validate_mount(entry):
     if not re.fullmatch(r"/Users/[^/]+/[^/]+/.+", source):
         raise ValueError("Mac sharing requires selected project directories below /Users/USER/DIRECTORY/")
     if entry.get("container_mount_path") != source:
-        raise ValueError("Mac writable shares preserve symlinks: container_mount_path must equal host_path")
+        raise ValueError(
+            f"Project {name!r}: container_mount_path is {entry.get('container_mount_path')!r}. "
+            f"Set container_mount_path to {source!r}. "
+            "Mac sharing requires the same absolute path on host and container "
+            "so existing absolute symlinks resolve."
+        )
     return dict(project_name=name, host_path=source, container_mount_path=source,
                 container_readonly=validated_readonly(entry.get("container_readonly", True)))
 
