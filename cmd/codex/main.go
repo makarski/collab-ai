@@ -124,6 +124,7 @@ type codexLauncher struct {
 	binary     string
 	budget     *budget.Budget
 	restricted bool
+	appStderr  io.Writer // nil preserves stderr for non-terminal integrations.
 }
 
 func (l codexLauncher) budgetResult(err error) error {
@@ -150,6 +151,9 @@ func (l codexLauncher) runOperator(ctx context.Context, operator operatorIO) (re
 	defer client.Close()
 	cmd := appServerCommand(ctx, l.binary, "app-server", "--listen", "stdio://")
 	cmd.Stderr = os.Stderr
+	if l.appStderr != nil {
+		cmd.Stderr = l.appStderr
+	}
 	input, output, err := appServerPipes(cmd)
 	if err != nil {
 		return err
