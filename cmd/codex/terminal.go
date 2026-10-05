@@ -23,6 +23,11 @@ func (l codexLauncher) runTerminal(ctx context.Context, args []string) (result e
 	if err := l.validateTerminal(args); err != nil {
 		return err
 	}
+	// Only the UI may write to the terminal while it owns raw mode. Replay
+	// server diagnostics after both the UI and endpoint have stopped.
+	diagnostics := &terminalDiagnostics{}
+	l.appStderr = diagnostics
+	defer diagnostics.report(os.Stderr)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	endpoint, err := newTerminalEndpoint(ctx, func(ctx context.Context, stream io.ReadWriteCloser) error {

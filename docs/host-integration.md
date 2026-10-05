@@ -92,6 +92,9 @@ Cancellation sends SIGTERM to Codex so npm launchers can forward it to their nat
 child, with a two-second fallback timeout. Codex owns session selection, history
 loading and argument parsing; forwarding flags does not guarantee every workflow.
 
+App Server diagnostics appear after the terminal exits, keeping the live UI intact.
+Only the latest 64 KiB is retained; truncated output is marked.
+
 </details>
 
 ### Codex soft cap
