@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from sandbox_mounts import colima_mounts, mount_variables, read_mounts, write_json
+from sandbox_colima_config import check_settings
 
 
 PROFILE = "collab-ai"
@@ -49,8 +50,7 @@ def check_profile(directory, config):
     settings = directory / "colima.yaml"
     if json.loads(marker.read_text()) != {"schema": 1, "config": config}:
         raise ValueError("Host settings changed; reconcile the existing profile explicitly before proceeding")
-    if json.loads(settings.read_text()) != config:
-        raise ValueError("Colima configuration drifted; inspect it before proceeding")
+    check_settings(settings, config)
 
 
 def check_profile_files(directory):
@@ -71,7 +71,7 @@ def apply_profile(directory, config):
     if directory.exists():
         return
     directory.mkdir(mode=0o700, parents=True)
-    # JSON is valid YAML. --save-config=false preserves this inspectable file.
+    # JSON is valid YAML; ordinary Colima commands may later save expanded YAML.
     with (directory / "colima.yaml").open("x") as stream:
         json.dump(config, stream, indent=2)
         stream.write("\n")
