@@ -12,7 +12,7 @@ import sys
 
 from sandbox_mac_shares import account_commands, acl_commands, identity, setup, validate_mounts
 from sandbox_share_runtime import serve
-from sandbox_share_links import uncovered_links
+from sandbox_share_links import warn_uncovered_links
 from sandbox_share_install import install_commands, require_installed
 
 
@@ -44,8 +44,7 @@ def main():
 
 def show_plan(mounts, user):
     print(json.dumps(mounts, indent=2))
-    for link, target in uncovered_links(mounts):
-        print(f"Unshared symlink target: {link} -> {target}")
+    warn_uncovered_links(mounts)
     for command in account_commands(user) + install_commands() + acl_commands(mounts, user):
         print(shlex.join(command))
     print("Preview only. Setup grants host file access; run keeps the file connection open.")

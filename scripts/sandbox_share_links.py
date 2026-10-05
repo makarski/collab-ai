@@ -2,9 +2,22 @@
 
 import os
 from pathlib import Path
+import sys
 
 
 SKIP = {".git", "node_modules", ".venv", "venv", "__pycache__", "target", "dist", "build", ".cache"}
+
+
+def warn_uncovered_links(mounts):
+    links = list(uncovered_links(mounts))
+    if not links:
+        return
+    color = sys.stdout.isatty() and "NO_COLOR" not in os.environ and os.environ.get("TERM") != "dumb"
+    yellow, reset = ("\033[33m", "\033[0m") if color else ("", "")
+    for link, target in links:
+        print(f"{yellow}Warning: unshared symlink target: {link} -> {target}{reset}")
+    print("To resolve: add needed target directories to mounts.json with matching host_path and container_mount_path.\n"
+          "Use container_readonly: false for editing, true for reference access. Rerun plan; ignore unused links.")
 
 
 def uncovered_links(mounts):
