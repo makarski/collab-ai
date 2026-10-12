@@ -20,6 +20,7 @@ func WriteText(w io.Writer, out protocol.StatusSnapshot) error {
 		pending = fmt.Sprint(out.DurablePending.Total)
 	}
 	fmt.Fprintf(&b, "Durable pending recipient deliveries: %s\n", pending)
+	fmt.Fprintf(&b, "Operator inbox pending: %s\n", operatorPending(out.OperatorPending))
 	fmt.Fprintln(&b, "Legacy unacknowledged counts: unavailable")
 	if out.Error != "" {
 		fmt.Fprintf(&b, "Error: %q\n", out.Error)
@@ -53,6 +54,15 @@ func writePending(w io.Writer, p *protocol.PendingStatus) {
 	for _, r := range p.Recipients {
 		fmt.Fprintf(w, "  %q: %d\n", r.AgentID, r.Pending)
 	}
+}
+
+// operatorPending counts the same rows as the durable total; nil means an
+// older broker, so the count is unknown rather than zero.
+func operatorPending(n *int) string {
+	if n == nil {
+		return "unknown"
+	}
+	return fmt.Sprint(*n)
 }
 
 func timestamp(t *time.Time) string {

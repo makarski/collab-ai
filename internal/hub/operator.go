@@ -54,10 +54,26 @@ type operatorSend struct {
 }
 
 func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
+	switch req.msg.Type {
+	case protocol.TypeOperatorSend:
+		return h.routeOperatorSend(ctx, clients, req)
+	case protocol.TypeOperatorReceive:
+		return h.operatorReceive(ctx, req)
+	case protocol.TypeOperatorReceived:
+		return h.operatorReceived(ctx, clients, req)
+	case protocol.TypeOperatorAck:
+		return h.operatorAck(ctx, clients, req)
+	}
+	rerr := &routingError{protocol.ErrUnsupportedOperation, "unsupported operator request type"}
+	h.auditRejected(ctx, "request", req, rerr)
+	return rerr.frame(req.msg.MessageID)
+}
+
+func (h *Hub) routeOperatorSend(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
 	msg := req.msg
 	scope, rerr := operatorScope(msg)
 	if rerr != nil {
-		h.auditRejected(ctx, req.uid, msg.MessageID, rerr)
+		h.auditRejected(ctx, "send", req, rerr)
 		return rerr.frame(msg.MessageID)
 	}
 	auditID, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "send", PrincipalUID: req.uid, MessageID: msg.MessageID, Scope: scope.Kind, Result: store.AuditPending})
@@ -127,8 +143,8 @@ func operatorFrame(send operatorSend, seq uint64) protocol.Message {
 	}
 }
 
-func (h *Hub) auditRejected(ctx context.Context, uid int, id string, rerr *routingError) {
-	_, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "send", PrincipalUID: uid, MessageID: id, Result: store.AuditRejected, Detail: rerr.code})
+func (h *Hub) auditRejected(ctx context.Context, action string, req operatorRequest, rerr *routingError) {
+	_, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: action, PrincipalUID: req.uid, MessageID: req.msg.MessageID, Result: store.AuditRejected, Detail: rerr.code})
 	if err != nil {
 		h.log.Error("operator audit failed for rejected request", "error", err)
 	}

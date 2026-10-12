@@ -54,7 +54,7 @@ func persistDurable(ctx context.Context, tx *sql.Tx, msg protocol.Message, recip
 	if err != nil {
 		return err
 	}
-	if err := checkDurableCapacity(ctx, tx, durableSize{bytes, recipients}); err != nil {
+	if err := checkDurableCapacity(ctx, tx, durableSize{bytes, recipients, msg.From}); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO durable_messages VALUES (?, ?, ?)`, msg.MessageID, bytes, bytes+len(recipients)*1024)
@@ -79,6 +79,7 @@ func DurableWireBytes(msg protocol.Message) (int, error) {
 type durableSize struct {
 	bytes      int
 	recipients []protocol.Recipient
+	sender     string
 }
 
 func checkDurableCapacity(ctx context.Context, tx *sql.Tx, size durableSize) error {
@@ -107,6 +108,12 @@ func checkDurableCapacity(ctx context.Context, tx *sql.Tx, size durableSize) err
 
 func checkRecipientCapacity(ctx context.Context, tx *sql.Tx, size durableSize) error {
 	for _, recipient := range size.recipients {
+		if recipient.AgentID == protocol.OperatorID {
+			if err := checkOperatorInboxCapacity(ctx, tx, size); err != nil {
+				return err
+			}
+			continue
+		}
 		var count, bytes int
 		query := `SELECT COUNT(*), COALESCE(SUM(d.wire_bytes),0) FROM durable_inbox i JOIN durable_messages d USING(message_id) WHERE i.agent_id = ? AND i.acknowledged_at IS NULL`
 		if err := tx.QueryRowContext(ctx, query, recipient.AgentID).Scan(&count, &bytes); err != nil {

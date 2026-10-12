@@ -8,8 +8,9 @@ import (
 )
 
 type StatusRecords struct {
-	Sessions []protocol.SessionStatus
-	Pending  protocol.PendingStatus
+	Sessions        []protocol.SessionStatus
+	Pending         protocol.PendingStatus
+	OperatorPending int
 }
 
 // ReadStatus reads a consistent, bounded view without updating session history,
@@ -26,6 +27,10 @@ func (s *Store) ReadStatus(ctx context.Context) (StatusRecords, error) {
 		return StatusRecords{}, err
 	}
 	out.Pending, err = pendingStatus(ctx, tx)
+	if err != nil {
+		return StatusRecords{}, err
+	}
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM durable_inbox WHERE agent_id = ? AND acknowledged_at IS NULL`, protocol.OperatorID).Scan(&out.OperatorPending)
 	return out, err
 }
 

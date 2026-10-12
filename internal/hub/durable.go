@@ -2,9 +2,11 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"collab-ai/internal/protocol"
+	"collab-ai/internal/store"
 )
 
 func (h *Hub) connect(clients map[string]*Client, c *Client) {
@@ -60,7 +62,7 @@ func validateDurability(in Inbound) *routingError {
 	if !in.Msg.AckRequested {
 		return &routingError{protocol.ErrMalformedFrame, "durable delivery requires ack_requested"}
 	}
-	if in.Msg.To != protocol.Broadcast {
+	if in.Msg.To != protocol.Broadcast && in.Msg.To != protocol.OperatorID {
 		if err := protocol.ValidateAgentID(in.Msg.To); err != nil {
 			return &routingError{protocol.ErrMalformedFrame, err.Error()}
 		}
@@ -69,6 +71,9 @@ func validateDurability(in Inbound) *routingError {
 }
 
 func (h *Hub) resolveRecipients(ctx context.Context, clients map[string]*Client, in Inbound) ([]protocol.Recipient, *routingError) {
+	if in.Msg.To == protocol.OperatorID {
+		return h.operatorInbox(ctx, in)
+	}
 	if in.Msg.To == protocol.Broadcast {
 		recipients, err := broadcastRecipients(clients, in.From)
 		if err != nil {
@@ -121,7 +126,7 @@ func (h *Hub) reportRetry(ctx context.Context, clients map[string]*Client, in In
 	}
 	h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: request.MessageID,
 		Stage: protocol.StageAccepted, Seq: snapshot.Message.Seq, Durable: true, Repeated: true,
-		Recipients: snapshot.Recipients, Receipts: snapshot.Receipts})
+		Recipients: publicRecipients(snapshot.Recipients), Receipts: snapshot.Receipts})
 	return true
 }
 
@@ -130,4 +135,29 @@ func disconnectDetail(durable bool) string {
 		return "recipient session disconnected before agent acknowledgment; pending message retained for replay to its next v3 owner"
 	}
 	return "recipient session disconnected before agent acknowledgment; this non-durable message has no replay"
+}
+
+// operatorInbox validates a reply's correlation before quota and persistence.
+func (h *Hub) operatorInbox(ctx context.Context, in Inbound) ([]protocol.Recipient, *routingError) {
+	err := h.store.ValidateOperatorReply(ctx, in.From.ID, in.Msg.InReplyTo)
+	if errors.Is(err, store.ErrInvalidReply) {
+		return nil, &routingError{protocol.ErrInvalidReply, err.Error()}
+	}
+	if err != nil {
+		h.log.Error("operator reply validation failed", "message_id", in.Msg.MessageID, "error", err)
+		return nil, &routingError{protocol.ErrInternal, "cannot validate reply; message not accepted"}
+	}
+	return []protocol.Recipient{{AgentID: protocol.OperatorID, SessionID: store.OperatorInboxSession}}, nil
+}
+
+// publicRecipients hides the operator inbox's internal placeholder session.
+func publicRecipients(recipients []protocol.Recipient) []protocol.Recipient {
+	out := make([]protocol.Recipient, len(recipients))
+	for i, r := range recipients {
+		if r.AgentID == protocol.OperatorID {
+			r.SessionID = ""
+		}
+		out[i] = r
+	}
+	return out
 }

@@ -182,7 +182,7 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 		return
 	}
 	if out.AckRequested {
-		h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: out.MessageID, Stage: protocol.StageAccepted, Seq: out.Seq, Recipients: recipients, Durable: out.Durable})
+		h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: out.MessageID, Stage: protocol.StageAccepted, Seq: out.Seq, Recipients: publicRecipients(recipients), Durable: out.Durable})
 	}
 	h.deliver(clients, in.From, out, recipients)
 }
@@ -205,7 +205,7 @@ var agentEnvelopeChecks = []func(protocol.Message, int) *routingError{
 	func(msg protocol.Message, _ int) *routingError { return checkNoOrigin(msg) },
 	checkIDLengths,
 	checkAckCapability,
-	func(msg protocol.Message, _ int) *routingError { return checkAgentAddress(msg) },
+	checkAgentAddress,
 }
 
 func checkMsgType(msg protocol.Message, _ int) *routingError {
@@ -230,14 +230,29 @@ func checkAckCapability(msg protocol.Message, version int) *routingError {
 }
 
 // checkAgentAddress keeps operator-only addressing out of agent sends.
-func checkAgentAddress(msg protocol.Message) *routingError {
+func checkAgentAddress(msg protocol.Message, version int) *routingError {
 	switch {
 	case msg.To == "":
 		return &routingError{protocol.ErrMissingRecipient, "field to is required"}
-	case msg.To == protocol.OperatorID:
-		return &routingError{protocol.ErrUnknownRecipient, "the operator has no agent inbox; operator replies are not supported yet"}
 	case len(msg.Group) != 0 || len(msg.Excluded) != 0:
 		return &routingError{protocol.ErrMalformedFrame, "group sends are operator-only"}
+	case msg.To == protocol.OperatorID:
+		return checkOperatorAddress(msg, version)
+	}
+	return nil
+}
+
+// checkOperatorAddress admits durable messages to the operator inbox from agents
+// that negotiated the operator inbox protocol.
+func checkOperatorAddress(msg protocol.Message, version int) *routingError {
+	durable := msg.Durable && msg.AckRequested
+	switch {
+	case version < protocol.OperatorInboxVersion && !durable:
+		return &routingError{protocol.ErrUnknownRecipient, "the operator inbox accepts only durable messages from protocol_version 5"}
+	case version < protocol.OperatorInboxVersion:
+		return &routingError{protocol.ErrDurabilityUnavailable, "messages to the operator require protocol_version 5"}
+	case !durable:
+		return &routingError{protocol.ErrMalformedFrame, "messages to the operator must be durable with ack_requested"}
 	}
 	return nil
 }

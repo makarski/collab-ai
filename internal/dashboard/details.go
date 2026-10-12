@@ -80,6 +80,14 @@ func number(n *int) string {
 	}
 	return fmt.Sprint(*n)
 }
+
+// operatorInbox shows unknown for older brokers, which don't report the inbox.
+func operatorInbox(n *int) string {
+	if n == nil {
+		return "unknown"
+	}
+	return fmt.Sprint(*n)
+}
 func pendingTotal(p *protocol.PendingStatus) string {
 	if p == nil {
 		return "unavailable"

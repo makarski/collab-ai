@@ -24,7 +24,10 @@ type StatusSnapshot struct {
 	HistoryAvailable     bool            `json:"history_available"`
 	DurablePending       *PendingStatus  `json:"durable_pending"`
 	LegacyUnacknowledged *int            `json:"legacy_unacknowledged"`
-	Error                string          `json:"error,omitempty"`
+	// OperatorPending counts the same rows as DurablePending for the operator
+	// inbox; nil from an older broker means unknown, not zero.
+	OperatorPending *int   `json:"operator_pending,omitempty"`
+	Error           string `json:"error,omitempty"`
 }
 
 type SessionStatus struct {

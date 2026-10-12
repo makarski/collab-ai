@@ -55,6 +55,7 @@ func (h *Hub) snapshot(ctx context.Context, clients map[string]*Client) protocol
 	}
 	out.HistoryAvailable = true
 	out.DurablePending = &records.Pending
+	out.OperatorPending = &records.OperatorPending
 	appendHistory(&out, clients, records.Sessions)
 	return out
 }
