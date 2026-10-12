@@ -46,6 +46,7 @@ type Hub struct {
 	log        *slog.Logger
 	done       chan struct{}
 	status     chan statusRequest
+	operator   chan operatorRequest
 	startedAt  time.Time
 }
 
@@ -61,6 +62,7 @@ func New(st *store.Store, startSeq uint64, log *slog.Logger) *Hub {
 		log:        log,
 		done:       make(chan struct{}),
 		status:     make(chan statusRequest),
+		operator:   make(chan operatorRequest),
 		startedAt:  time.Now().UTC(),
 	}
 }
@@ -134,6 +136,9 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case req := <-h.status:
 			req.reply <- h.snapshot(req.ctx, clients)
+
+		case req := <-h.operator:
+			req.reply <- h.routeOperator(req.ctx, clients, req)
 		}
 	}
 }
@@ -153,6 +158,11 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 		return
 	}
 	in.From.lastSeenAt = time.Now().UTC()
+	// Origin is assigned by the broker from the connection; a claimed one is a spoof attempt.
+	if in.Msg.Origin != "" {
+		h.sendError(clients, in.From, protocol.ErrMalformedFrame, "origin is set by the broker and cannot be supplied by agents", in.Msg.MessageID)
+		return
+	}
 	if in.Msg.Type == protocol.TypeAck {
 		h.acknowledge(ctx, clients, in)
 		return
@@ -197,6 +207,12 @@ func prepareMessage(in *Inbound) *routingError {
 	if msg.To == "" {
 		return &routingError{protocol.ErrMissingRecipient, "field to is required"}
 	}
+	if msg.To == protocol.OperatorID {
+		return &routingError{protocol.ErrUnknownRecipient, "the operator has no agent inbox; operator replies are not supported yet"}
+	}
+	if len(msg.Group) != 0 || len(msg.Excluded) != 0 {
+		return &routingError{protocol.ErrMalformedFrame, "group sends are operator-only"}
+	}
 	return validateDurability(*in)
 }
 
@@ -207,7 +223,7 @@ func broadcastRecipients(clients map[string]*Client, sender *Client) ([]protocol
 			recipients = append(recipients, c.identity())
 		}
 	}
-	if len(recipients) > 256 {
+	if len(recipients) > protocol.MaxRecipients {
 		return nil, &routingError{protocol.ErrRecipientUnavailable, "broadcast exceeds 256 connected recipients; send to smaller groups directly"}
 	}
 	sort.Slice(recipients, func(i, j int) bool { return recipients[i].AgentID < recipients[j].AgentID })
@@ -225,7 +241,7 @@ func (h *Hub) persistRoute(ctx context.Context, in Inbound, recipients []protoco
 	out := protocol.Message{
 		Type: protocol.TypeMsg, Seq: h.seq, TS: &ts,
 		From: in.From.ID, SessionID: in.From.SessionID, To: msg.To,
-		Payload: msg.Payload, MessageID: msg.MessageID,
+		Payload: msg.Payload, MessageID: msg.MessageID, Origin: protocol.OriginAgent,
 		InReplyTo: msg.InReplyTo, AckRequested: msg.AckRequested, Durable: msg.Durable,
 	}
 	// Added broker metadata must still fit the receiver's frame limit.

@@ -1,0 +1,183 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net"
+	"strings"
+	"time"
+
+	"collab-ai/internal/protocol"
+
+	"github.com/google/uuid"
+)
+
+// The operator endpoint exists only in secured and serves only the operator UID.
+const defaultOperatorSocket = "/run/collab-ai-operator/operator.sock"
+
+const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--json] [--timeout 5s] TEXT"
+
+type operatorSend struct {
+	socket, to, group, messageID string
+	all, asJSON                  bool
+	timeout                      time.Duration
+	text                         string
+}
+
+func runOperator(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] != "send" {
+		fmt.Fprintln(stderr, operatorUsage)
+		return 2
+	}
+	cfg, code := parseOperatorSend(args[1:], stderr)
+	if code != -1 {
+		return code
+	}
+	ctx, cancel := context.WithTimeout(ctx, cfg.timeout)
+	defer cancel()
+	resp, err := sendOperator(ctx, cfg.socket, cfg.request())
+	if err != nil {
+		fmt.Fprintln(stderr, "operator send failed:", err)
+		return 1
+	}
+	if cfg.asJSON {
+		if err := json.NewEncoder(stdout).Encode(resp); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+	}
+	if resp.Type != protocol.TypeAck || resp.Stage != protocol.StageAccepted {
+		fmt.Fprintf(stderr, "operator send rejected: %q: %q\n", resp.Code, resp.Detail)
+		return 1
+	}
+	if !cfg.asJSON {
+		writeOperatorAccepted(stdout, resp)
+	}
+	return 0
+}
+
+func parseOperatorSend(args []string, stderr io.Writer) (operatorSend, int) {
+	var cfg operatorSend
+	flags := flag.NewFlagSet("operator send", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.StringVar(&cfg.socket, "socket", defaultOperatorSocket, "operator Unix socket path (secured only)")
+	flags.StringVar(&cfg.to, "to", "", "one agent ID")
+	flags.StringVar(&cfg.group, "group", "", "comma-separated agent IDs")
+	flags.BoolVar(&cfg.all, "all", false, "all connected agents that can display origin")
+	flags.StringVar(&cfg.messageID, "message-id", "", "stable message ID for retries (generated when omitted)")
+	flags.BoolVar(&cfg.asJSON, "json", false, "emit the broker response as JSON")
+	flags.DurationVar(&cfg.timeout, "timeout", 5*time.Second, "overall timeout, greater than zero and at most 30s")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return cfg, 0
+		}
+		return cfg, 2
+	}
+	set := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if err := cfg.validate(set, flags.Args()); err != nil {
+		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, operatorUsage)
+		return cfg, 2
+	}
+	if cfg.messageID == "" {
+		cfg.messageID = uuid.NewString()
+	}
+	return cfg, -1
+}
+
+// Scope flags count when given, even with an empty value, so an empty --group
+// can't silently fall back to another scope.
+func (cfg *operatorSend) validate(set map[string]bool, positional []string) error {
+	scopes := 0
+	for _, name := range []string{"to", "group", "all"} {
+		if set[name] {
+			scopes++
+		}
+	}
+	if scopes != 1 || (set["all"] && !cfg.all) {
+		return errors.New("choose exactly one of --to, --group or --all")
+	}
+	if set["to"] && cfg.to == "" {
+		return errors.New("--to must not be empty")
+	}
+	if set["group"] {
+		for _, id := range strings.Split(cfg.group, ",") {
+			if id == "" {
+				return errors.New("--group must not contain empty agent IDs")
+			}
+		}
+	}
+	if len(positional) != 1 || positional[0] == "" {
+		return errors.New("exactly one non-empty TEXT argument is required")
+	}
+	if cfg.socket == "" || len(cfg.messageID) > 128 {
+		return errors.New("a socket path is required and --message-id must be at most 128 bytes")
+	}
+	if cfg.timeout <= 0 || cfg.timeout > 30*time.Second {
+		return errors.New("timeout must be greater than zero and at most 30s")
+	}
+	cfg.text = positional[0]
+	return nil
+}
+
+func (cfg operatorSend) request() protocol.Message {
+	payload, _ := json.Marshal(map[string]string{"text": cfg.text})
+	msg := protocol.Message{Type: protocol.TypeOperatorSend, MessageID: cfg.messageID, Payload: payload}
+	switch {
+	case cfg.all:
+		msg.To = protocol.Broadcast
+	case cfg.group != "":
+		msg.Group = strings.Split(cfg.group, ",")
+	default:
+		msg.To = cfg.to
+	}
+	return msg
+}
+
+func sendOperator(ctx context.Context, socket string, req protocol.Message) (protocol.Message, error) {
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "unix", socket)
+	if err != nil {
+		return protocol.Message{}, err
+	}
+	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+	if deadline, ok := ctx.Deadline(); ok {
+		conn.SetDeadline(deadline)
+	}
+	if err := protocol.WriteFrame(conn, req); err != nil {
+		return protocol.Message{}, err
+	}
+	var resp protocol.Message
+	if err := protocol.ReadFrame(bufio.NewReader(conn), &resp); err != nil {
+		return protocol.Message{}, err
+	}
+	return resp, nil
+}
+
+func writeOperatorAccepted(w io.Writer, resp protocol.Message) {
+	// Agent and message IDs are peer-controlled; quote them so terminal controls stay inert.
+	ids := make([]string, 0, len(resp.Recipients))
+	for _, r := range resp.Recipients {
+		ids = append(ids, fmt.Sprintf("%q", r.AgentID))
+	}
+	state := "accepted"
+	if resp.Repeated {
+		state = "already accepted (retry)"
+	}
+	fmt.Fprintf(w, "%q %s seq=%d recipients=%s\n", resp.MessageID, state, resp.Seq, strings.Join(ids, ","))
+	if len(resp.Excluded) != 0 {
+		excluded := make([]string, 0, len(resp.Excluded))
+		for _, id := range resp.Excluded {
+			excluded = append(excluded, fmt.Sprintf("%q", id))
+		}
+		fmt.Fprintf(w, "excluded (cannot display origin or inbox full): %s\n", strings.Join(excluded, ","))
+	}
+}

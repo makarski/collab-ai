@@ -50,13 +50,10 @@ func persistDurable(ctx context.Context, tx *sql.Tx, msg protocol.Message, recip
 	if !msg.Durable {
 		return nil
 	}
-	data, err := json.Marshal(msg)
+	bytes, err := DurableWireBytes(msg)
 	if err != nil {
 		return err
 	}
-	// Include replay metadata and a conservative allowance for receipt rows and
-	// IDs. This bounds logical durable storage, not SQLite file/journal overhead.
-	bytes := len(data) + 64
 	if err := checkDurableCapacity(ctx, tx, durableSize{bytes, recipients}); err != nil {
 		return err
 	}
@@ -70,6 +67,13 @@ func persistDurable(ctx context.Context, tx *sql.Tx, msg protocol.Message, recip
 		}
 	}
 	return nil
+}
+
+// DurableWireBytes includes replay metadata and a conservative allowance for
+// receipt rows and IDs. It bounds logical durable storage, not SQLite overhead.
+func DurableWireBytes(msg protocol.Message) (int, error) {
+	data, err := json.Marshal(msg)
+	return len(data) + 64, err
 }
 
 type durableSize struct {
@@ -118,24 +122,32 @@ func checkRecipientCapacity(ctx context.Context, tx *sql.Tx, size durableSize) e
 	return nil
 }
 
-// ClaimPending commits the new delivery owner before exposing pending frames.
-// Only v3 hub registration calls this; legacy history is never enrolled.
+// ClaimPending claims an inbox for a v3 owner, which cannot display origin.
 func (s *Store) ClaimPending(ctx context.Context, recipient protocol.Recipient) ([]protocol.Message, error) {
+	return s.ClaimPendingFor(ctx, recipient, protocol.DurableVersion)
+}
+
+// ClaimPendingFor commits the new delivery owner before exposing pending frames.
+// Only v3+ hub registration calls this; legacy history is never enrolled. Owners
+// below OriginVersion are not given operator messages: those stay pending,
+// unclaimed, for the next owner that can display their origin.
+func (s *Store) ClaimPendingFor(ctx context.Context, recipient protocol.Recipient, version int) ([]protocol.Message, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `UPDATE durable_inbox SET session_id = ?, received_at = NULL WHERE agent_id = ? AND acknowledged_at IS NULL`, recipient.SessionID, recipient.AgentID)
+	canShowOrigin := version >= protocol.OriginVersion
+	_, err = tx.ExecContext(ctx, `UPDATE durable_inbox SET session_id = ?, received_at = NULL WHERE agent_id = ? AND acknowledged_at IS NULL AND (? OR NOT `+operatorRow+`)`, recipient.SessionID, recipient.AgentID, canShowOrigin)
 	if err != nil {
 		return nil, err
 	}
-	messages, err := readPending(ctx, tx, recipient.AgentID)
+	messages, err := readPending(ctx, tx, recipient.AgentID, canShowOrigin)
 	if err != nil {
 		return nil, err
 	}
 	// A failed recovery must not make a new logical ID eligible for offline sends.
-	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO durable_agents VALUES (?)`, recipient.AgentID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO durable_agents (agent_id, protocol_version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET protocol_version = excluded.protocol_version`, recipient.AgentID, version); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -144,9 +156,24 @@ func (s *Store) ClaimPending(ctx context.Context, recipient protocol.Recipient) 
 	return messages, nil
 }
 
-func readPending(ctx context.Context, tx *sql.Tx, id string) ([]protocol.Message, error) {
-	query := `SELECT mm.message_id, m.seq, m.ts, m.sender, mm.sender_session, m.recipient, m.payload, mm.in_reply_to FROM durable_inbox i JOIN message_metadata mm USING(message_id) JOIN messages m USING(seq) WHERE i.agent_id = ? AND i.acknowledged_at IS NULL ORDER BY m.seq LIMIT ?`
-	rows, err := tx.QueryContext(ctx, query, id, MaxPendingMessages+1)
+const operatorRow = `EXISTS (SELECT 1 FROM message_metadata o WHERE o.message_id = durable_inbox.message_id AND o.origin = 'operator')`
+
+// AgentProtocolVersion returns the version negotiated at the agent's last durable
+// registration, or 0 when unknown.
+func (s *Store) AgentProtocolVersion(ctx context.Context, id string) (int, error) {
+	var version sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT protocol_version FROM durable_agents WHERE agent_id = ?`, id).Scan(&version)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return int(version.Int64), err
+}
+
+const durableColumns = `mm.message_id, m.seq, m.ts, m.sender, mm.sender_session, m.recipient, m.payload, mm.in_reply_to, mm.origin`
+
+func readPending(ctx context.Context, tx *sql.Tx, id string, canShowOrigin bool) ([]protocol.Message, error) {
+	query := `SELECT ` + durableColumns + ` FROM durable_inbox i JOIN message_metadata mm USING(message_id) JOIN messages m USING(seq) WHERE i.agent_id = ? AND i.acknowledged_at IS NULL AND (? OR mm.origin IS NULL OR mm.origin != 'operator') ORDER BY m.seq LIMIT ?`
+	rows, err := tx.QueryContext(ctx, query, id, canShowOrigin, MaxPendingMessages+1)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +198,9 @@ type scanner interface{ Scan(...any) error }
 func scanDurableMessage(row scanner) (protocol.Message, error) {
 	msg := protocol.Message{Type: protocol.TypeMsg, Durable: true, AckRequested: true}
 	var payload string
-	err := row.Scan(&msg.MessageID, &msg.Seq, &msg.TS, &msg.From, &msg.SessionID, &msg.To, &payload, &msg.InReplyTo)
+	var origin sql.NullString
+	err := row.Scan(&msg.MessageID, &msg.Seq, &msg.TS, &msg.From, &msg.SessionID, &msg.To, &payload, &msg.InReplyTo, &origin)
 	msg.Payload = json.RawMessage(payload)
+	msg.Origin = protocol.DisplayOrigin(origin.String)
 	return msg, err
 }

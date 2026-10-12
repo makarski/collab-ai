@@ -66,11 +66,42 @@ func Open(path string) (*Store, error) {
 	// Single writer keeps things simple and avoids SQLITE_BUSY under the hub's
 	// serialized write pattern.
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec("PRAGMA synchronous = FULL;" + schema + durableSchema); err != nil {
+	if _, err := db.Exec("PRAGMA synchronous = FULL;" + schema + durableSchema + operatorSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// Existing tables don't gain columns from CREATE TABLE IF NOT EXISTS. Added
+// columns are nullable, so legacy rows read as unknown rather than a default.
+var addedColumns = []struct{ table, column, decl string }{
+	{"message_metadata", "origin", "TEXT"},
+	{"durable_agents", "protocol_version", "INTEGER"},
+}
+
+func migrate(db *sql.DB) error {
+	for _, c := range addedColumns {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column).Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			continue
+		}
+		if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.column + ` ` + c.decl); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func nullString(s string) sql.NullString {
+	return sql.NullString{String: s, Valid: s != ""}
 }
 
 // Close closes the underlying database.
@@ -138,6 +169,13 @@ func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, sender
 		return err
 	}
 	defer tx.Rollback()
+	if err := persistMessage(ctx, tx, msg, senderSession, recipients); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func persistMessage(ctx context.Context, tx *sql.Tx, msg protocol.Message, senderSession string, recipients []protocol.Recipient) error {
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_metadata WHERE message_id = ?`, msg.MessageID).Scan(&exists); err != nil {
 		return err
@@ -148,16 +186,13 @@ func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, sender
 	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (seq, ts, sender, recipient, payload) VALUES (?, ?, ?, ?, ?)`, msg.Seq, msg.TS.UTC(), msg.From, msg.To, string(msg.Payload)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO message_metadata (message_id, seq, sender_session, in_reply_to, ack_requested) VALUES (?, ?, ?, ?, ?)`, msg.MessageID, msg.Seq, senderSession, msg.InReplyTo, msg.AckRequested); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO message_metadata (message_id, seq, sender_session, in_reply_to, ack_requested, origin) VALUES (?, ?, ?, ?, ?, ?)`, msg.MessageID, msg.Seq, senderSession, msg.InReplyTo, msg.AckRequested, nullString(msg.Origin)); err != nil {
 		return err
 	}
 	if err := insertRecipients(ctx, tx, msg.MessageID, recipients); err != nil {
 		return err
 	}
-	if err := persistDurable(ctx, tx, msg, recipients); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return persistDurable(ctx, tx, msg, recipients)
 }
 
 func insertRecipients(ctx context.Context, tx *sql.Tx, id string, recipients []protocol.Recipient) error {

@@ -105,7 +105,7 @@ func (c *Client) readLoop(r *bufio.Reader) {
 			c.fail(fmt.Errorf("broker connection closed: %w; restart the adapter to reconnect; accepted unacknowledged durable messages replay on v3; other frames may be lost", err))
 			return
 		}
-		if err := c.bufferMessage(msg); err != nil {
+		if err := c.bufferMessage(protocol.WithDisplayOrigin(msg)); err != nil {
 			c.fail(err)
 			return
 		}
