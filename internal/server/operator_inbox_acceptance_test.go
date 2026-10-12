@@ -284,6 +284,8 @@ func TestOperatorInboxReceiptRetriesKeepTimestamps(t *testing.T) {
 	// Any duplicated notification would precede this retry response on the same socket.
 	r := inboxSend(t, p, req)
 	operatorEqual(t, "retry frozen", r.Repeated, true)
+	operatorEqual(t, "retry hides operator recipient session", r.Recipients[0].SessionID, "")
+	operatorEqual(t, "retry hides operator receipt session", r.Receipts[0].SessionID, "")
 	operatorEqual(t, "retained human stage", r.Receipts[0].Stage, "agent_acknowledged")
 	requireOperatorAuditPrivate(t, f.db)
 }

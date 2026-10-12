@@ -126,7 +126,7 @@ func (h *Hub) reportRetry(ctx context.Context, clients map[string]*Client, in In
 	}
 	h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: request.MessageID,
 		Stage: protocol.StageAccepted, Seq: snapshot.Message.Seq, Durable: true, Repeated: true,
-		Recipients: publicRecipients(snapshot.Recipients), Receipts: snapshot.Receipts})
+		Recipients: publicRecipients(snapshot.Recipients), Receipts: publicReceipts(snapshot.Receipts)})
 	return true
 }
 
@@ -154,6 +154,18 @@ func (h *Hub) operatorInbox(ctx context.Context, in Inbound) ([]protocol.Recipie
 func publicRecipients(recipients []protocol.Recipient) []protocol.Recipient {
 	out := make([]protocol.Recipient, len(recipients))
 	for i, r := range recipients {
+		if r.AgentID == protocol.OperatorID {
+			r.SessionID = ""
+		}
+		out[i] = r
+	}
+	return out
+}
+
+// publicReceipts hides the operator inbox's internal placeholder session.
+func publicReceipts(receipts []protocol.ReceiptState) []protocol.ReceiptState {
+	out := make([]protocol.ReceiptState, len(receipts))
+	for i, r := range receipts {
 		if r.AgentID == protocol.OperatorID {
 			r.SessionID = ""
 		}
