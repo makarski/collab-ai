@@ -158,11 +158,6 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 		return
 	}
 	in.From.lastSeenAt = time.Now().UTC()
-	// Origin is assigned by the broker from the connection; a claimed one is a spoof attempt.
-	if in.Msg.Origin != "" {
-		h.sendError(clients, in.From, protocol.ErrMalformedFrame, "origin is set by the broker and cannot be supplied by agents", in.Msg.MessageID)
-		return
-	}
 	if in.Msg.Type == protocol.TypeAck {
 		h.acknowledge(ctx, clients, in)
 		return
@@ -194,6 +189,9 @@ func prepareMessage(in *Inbound) *routingError {
 	msg := &in.Msg
 	if msg.Type != protocol.TypeMsg {
 		return &routingError{protocol.ErrMalformedFrame, "expected type msg or ack"}
+	}
+	if err := checkNoOrigin(*msg); err != nil {
+		return err
 	}
 	if msg.MessageID == "" {
 		msg.MessageID = uuid.NewString()
@@ -310,8 +308,20 @@ func (h *Hub) reportUnavailable(clients map[string]*Client, sender *Client, msg 
 	h.enqueue(clients, sender, failure.frame(msg.MessageID))
 }
 
+// checkNoOrigin rejects a claimed origin: the broker assigns it from the connection.
+func checkNoOrigin(msg protocol.Message) *routingError {
+	if msg.Origin != "" {
+		return &routingError{protocol.ErrMalformedFrame, "origin is set by the broker and cannot be supplied by agents"}
+	}
+	return nil
+}
+
 func (h *Hub) acknowledge(ctx context.Context, clients map[string]*Client, in Inbound) {
 	msg := in.Msg
+	if err := checkNoOrigin(msg); err != nil {
+		h.enqueue(clients, in.From, err.frame(msg.MessageID))
+		return
+	}
 	sender, err := h.store.Acknowledge(ctx, store.Acknowledgment{MessageID: msg.MessageID, Recipient: in.From.identity(), Stage: msg.Stage, ProtocolVersion: in.From.ProtocolVersion})
 	if err != nil {
 		code, detail := protocol.ErrInternal, "acknowledgment not persisted"

@@ -67,7 +67,7 @@ func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req
 	}
 	out, rerr := h.admitOperator(ctx, clients, operatorSend{msg, scope, auditID})
 	if rerr != nil {
-		h.finishAudit(ctx, auditID, store.AuditRejected, rerr.code)
+		h.finishAudit(ctx, auditID, store.AuditOutcome{Result: store.AuditRejected, Detail: rerr.code})
 		return rerr.frame(msg.MessageID)
 	}
 	return out
@@ -86,7 +86,7 @@ func (h *Hub) admitOperator(ctx context.Context, clients map[string]*Client, sen
 
 // repeatOperator answers an identical retry with the retained outcome; nothing is rerouted.
 func (h *Hub) repeatOperator(ctx context.Context, send operatorSend, retry *store.OperatorRetry) (protocol.Message, *routingError) {
-	if err := h.store.FinishOperatorAudit(ctx, send.auditID, store.AuditRepeated, ""); err != nil {
+	if err := h.store.FinishOperatorAudit(ctx, send.auditID, store.AuditOutcome{Result: store.AuditRepeated}); err != nil {
 		h.log.Error("operator audit result failed", "message_id", send.msg.MessageID, "error", err)
 		return protocol.Message{}, &routingError{protocol.ErrInternal, "operator audit unavailable"}
 	}
@@ -134,8 +134,8 @@ func (h *Hub) auditRejected(ctx context.Context, uid int, id string, rerr *routi
 	}
 }
 
-func (h *Hub) finishAudit(ctx context.Context, id int64, result, detail string) {
-	if err := h.store.FinishOperatorAudit(ctx, id, result, detail); err != nil {
+func (h *Hub) finishAudit(ctx context.Context, id int64, outcome store.AuditOutcome) {
+	if err := h.store.FinishOperatorAudit(ctx, id, outcome); err != nil {
 		h.log.Error("operator audit result failed", "audit_id", id, "error", err)
 	}
 }
@@ -247,20 +247,15 @@ func (h *Hub) operatorBroadcast(ctx context.Context, clients map[string]*Client,
 	recipients := []protocol.Recipient{}
 	excluded := []string{}
 	for _, id := range ids {
-		c := clients[id]
-		if c.ProtocolVersion < protocol.OriginVersion {
+		eligible, rerr := h.broadcastEligible(ctx, clients[id], wire)
+		if rerr != nil {
+			return nil, nil, rerr
+		}
+		if eligible {
+			recipients = append(recipients, clients[id].identity())
+		} else {
 			excluded = append(excluded, id)
-			continue
 		}
-		fits, err := h.store.RecipientCapacity(ctx, id, wire)
-		if err != nil {
-			return nil, nil, &routingError{protocol.ErrInternal, "cannot determine recipient capacity"}
-		}
-		if !fits {
-			excluded = append(excluded, id)
-			continue
-		}
-		recipients = append(recipients, c.identity())
 	}
 	if len(recipients) == 0 {
 		return nil, nil, &routingError{protocol.ErrRecipientUnavailable, "no eligible recipients"}
@@ -269,6 +264,19 @@ func (h *Hub) operatorBroadcast(ctx context.Context, clients map[string]*Client,
 		return nil, nil, &routingError{protocol.ErrMalformedFrame, "too many recipients; send to smaller groups"}
 	}
 	return recipients, excluded, nil
+}
+
+// broadcastEligible admits a connected agent that can display origin and whose
+// own inbox has room; global limits are checked later for the whole set.
+func (h *Hub) broadcastEligible(ctx context.Context, c *Client, wire int) (bool, *routingError) {
+	if c.ProtocolVersion < protocol.OriginVersion {
+		return false, nil
+	}
+	fits, err := h.store.RecipientCapacity(ctx, c.ID, wire)
+	if err != nil {
+		return false, &routingError{protocol.ErrInternal, "cannot determine recipient capacity"}
+	}
+	return fits, nil
 }
 
 func checkFrameSize(out protocol.Message) *routingError {

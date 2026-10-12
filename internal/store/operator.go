@@ -80,17 +80,23 @@ func (s *Store) RecordOperatorAudit(ctx context.Context, a OperatorAudit) (int64
 	return res.LastInsertId()
 }
 
+// AuditOutcome is the result of an operator request; Detail is a fixed, payload-free reason.
+type AuditOutcome struct {
+	Result string
+	Detail string
+}
+
 // FinishOperatorAudit records the outcome of an earlier intent row.
-func (s *Store) FinishOperatorAudit(ctx context.Context, id int64, result, detail string) error {
-	return finishAudit(ctx, s.db, id, result, detail)
+func (s *Store) FinishOperatorAudit(ctx context.Context, id int64, outcome AuditOutcome) error {
+	return finishAudit(ctx, s.db, id, outcome)
 }
 
 type execer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func finishAudit(ctx context.Context, db execer, id int64, result, detail string) error {
-	res, err := db.ExecContext(ctx, `UPDATE operator_audit SET result = ?, detail = ? WHERE id = ? AND result = ?`, result, nullString(detail), id, AuditPending)
+func finishAudit(ctx context.Context, db execer, id int64, outcome AuditOutcome) error {
+	res, err := db.ExecContext(ctx, `UPDATE operator_audit SET result = ?, detail = ? WHERE id = ? AND result = ?`, outcome.Result, nullString(outcome.Detail), id, AuditPending)
 	if err != nil {
 		return err
 	}
@@ -124,7 +130,7 @@ func (s *Store) PersistOperatorMessage(ctx context.Context, m OperatorMessage) e
 	if err := insertOperatorRequest(ctx, tx, m); err != nil {
 		return err
 	}
-	if err := finishAudit(ctx, tx, m.AuditID, AuditAccepted, ""); err != nil {
+	if err := finishAudit(ctx, tx, m.AuditID, AuditOutcome{Result: AuditAccepted}); err != nil {
 		return err
 	}
 	return tx.Commit()

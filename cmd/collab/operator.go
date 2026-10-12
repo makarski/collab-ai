@@ -46,18 +46,23 @@ func runOperator(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, "operator send failed:", err)
 		return 1
 	}
-	if cfg.asJSON {
+	return reportOperator(resp, cfg.asJSON, stdout, stderr)
+}
+
+// reportOperator prints the broker response; JSON output includes rejections.
+func reportOperator(resp protocol.Message, asJSON bool, stdout, stderr io.Writer) int {
+	accepted := resp.Type == protocol.TypeAck && resp.Stage == protocol.StageAccepted
+	if asJSON {
 		if err := json.NewEncoder(stdout).Encode(resp); err != nil {
 			fmt.Fprintln(stderr, err)
 			return 1
 		}
+	} else if accepted {
+		writeOperatorAccepted(stdout, resp)
 	}
-	if resp.Type != protocol.TypeAck || resp.Stage != protocol.StageAccepted {
+	if !accepted {
 		fmt.Fprintf(stderr, "operator send rejected: %q: %q\n", resp.Code, resp.Detail)
 		return 1
-	}
-	if !cfg.asJSON {
-		writeOperatorAccepted(stdout, resp)
 	}
 	return 0
 }
@@ -106,22 +111,41 @@ func (cfg *operatorSend) validate(set map[string]bool, positional []string) erro
 	return nil
 }
 
+var errScope = errors.New("choose exactly one of --to, --group or --all")
+
 // Scope flags count when given, even with an empty value, so an empty --group
 // can't silently fall back to another scope.
 func (cfg operatorSend) validateScope(set map[string]bool) error {
-	scopes := 0
-	for _, name := range []string{"to", "group", "all"} {
+	checks := map[string]func() error{"to": cfg.checkTo, "group": cfg.checkGroup, "all": cfg.checkAll}
+	var chosen []string
+	for name := range checks {
 		if set[name] {
-			scopes++
+			chosen = append(chosen, name)
 		}
 	}
-	switch {
-	case scopes != 1 || (set["all"] && !cfg.all):
-		return errors.New("choose exactly one of --to, --group or --all")
-	case set["to"] && cfg.to == "":
+	if len(chosen) != 1 {
+		return errScope
+	}
+	return checks[chosen[0]]()
+}
+
+func (cfg operatorSend) checkTo() error {
+	if cfg.to == "" {
 		return errors.New("--to must not be empty")
-	case set["group"] && slices.Contains(strings.Split(cfg.group, ","), ""):
+	}
+	return nil
+}
+
+func (cfg operatorSend) checkGroup() error {
+	if slices.Contains(strings.Split(cfg.group, ","), "") {
 		return errors.New("--group must not contain empty agent IDs")
+	}
+	return nil
+}
+
+func (cfg operatorSend) checkAll() error {
+	if !cfg.all {
+		return errScope
 	}
 	return nil
 }
