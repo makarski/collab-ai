@@ -114,11 +114,7 @@ func (h *Hub) Done() <-chan struct{} { return h.done }
 func (h *Hub) Run(ctx context.Context) {
 	clients := make(map[string]*Client)
 	defer close(h.done)
-	defer func() {
-		for _, c := range clients {
-			h.disconnect(clients, c)
-		}
-	}()
+	defer h.disconnectAll(clients)
 
 	for {
 		select {
@@ -140,6 +136,12 @@ func (h *Hub) Run(ctx context.Context) {
 		case req := <-h.operator:
 			req.reply <- h.routeOperator(req.ctx, clients, req)
 		}
+	}
+}
+
+func (h *Hub) disconnectAll(clients map[string]*Client) {
+	for _, c := range clients {
+		h.disconnect(clients, c)
 	}
 }
 
