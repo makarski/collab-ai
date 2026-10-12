@@ -150,26 +150,33 @@ func (h *Hub) operatorInbox(ctx context.Context, in Inbound) ([]protocol.Recipie
 	return []protocol.Recipient{{AgentID: protocol.OperatorID, SessionID: store.OperatorInboxSession}}, nil
 }
 
-// publicRecipients hides the operator inbox's internal placeholder session.
-func publicRecipients(recipients []protocol.Recipient) []protocol.Recipient {
-	out := make([]protocol.Recipient, len(recipients))
-	for i, r := range recipients {
-		if r.AgentID == protocol.OperatorID {
-			r.SessionID = ""
-		}
-		out[i] = r
-	}
-	return out
+// publicRecipients and publicReceipts hide the operator inbox's internal
+// placeholder session. They copy; retained state is never modified.
+func publicRecipients(in []protocol.Recipient) []protocol.Recipient {
+	return mapCopy(in, func(r protocol.Recipient) protocol.Recipient {
+		r.SessionID = publicSession(r.AgentID, r.SessionID)
+		return r
+	})
 }
 
-// publicReceipts hides the operator inbox's internal placeholder session.
-func publicReceipts(receipts []protocol.ReceiptState) []protocol.ReceiptState {
-	out := make([]protocol.ReceiptState, len(receipts))
-	for i, r := range receipts {
-		if r.AgentID == protocol.OperatorID {
-			r.SessionID = ""
-		}
-		out[i] = r
+func publicReceipts(in []protocol.ReceiptState) []protocol.ReceiptState {
+	return mapCopy(in, func(r protocol.ReceiptState) protocol.ReceiptState {
+		r.SessionID = publicSession(r.AgentID, r.SessionID)
+		return r
+	})
+}
+
+func publicSession(agentID, session string) string {
+	if agentID == protocol.OperatorID {
+		return ""
+	}
+	return session
+}
+
+func mapCopy[T any](in []T, f func(T) T) []T {
+	out := make([]T, len(in))
+	for i, v := range in {
+		out[i] = f(v)
 	}
 	return out
 }
