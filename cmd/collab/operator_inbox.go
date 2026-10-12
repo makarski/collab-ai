@@ -51,15 +51,20 @@ func (c operatorCall) send(ctx context.Context, req protocol.Message) (protocol.
 	return sendOperator(ctx, c.socket, req)
 }
 
+// expectation names the response type a request must produce, and the action for errors.
+type expectation struct {
+	want, action string
+}
+
 // expect sends a request and reports transport failures and broker errors.
-func (c operatorCall) expect(ctx context.Context, req protocol.Message, want, action string, stderr io.Writer) (protocol.Message, error) {
+func (c operatorCall) expect(ctx context.Context, req protocol.Message, exp expectation, stderr io.Writer) (protocol.Message, error) {
 	resp, err := c.send(ctx, req)
 	if err != nil {
-		fmt.Fprintf(stderr, "%s failed: %v\n", action, err)
+		fmt.Fprintf(stderr, "%s failed: %v\n", exp.action, err)
 		return resp, errReported
 	}
-	if resp.Type != want {
-		reportBrokerError(stderr, action+" rejected", resp)
+	if resp.Type != exp.want {
+		reportBrokerError(stderr, exp.action+" rejected", resp)
 		return resp, errReported
 	}
 	return resp, nil
@@ -87,7 +92,7 @@ func runOperatorReceive(ctx context.Context, args []string, stdout, stderr io.Wr
 	if code != -1 {
 		return code
 	}
-	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorReceive, PageRequest: &page}, protocol.TypeOperatorPage, "operator receive", stderr)
+	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorReceive, PageRequest: &page}, expectation{protocol.TypeOperatorPage, "operator receive"}, stderr)
 	if err != nil {
 		return 1
 	}
@@ -238,7 +243,7 @@ func confirmReceived(ctx context.Context, call operatorCall, page *protocol.Oper
 		ids[i] = m.MessageID
 	}
 	const action = "receipt confirmation (the messages will be returned again)"
-	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorReceived, MessageIDs: ids}, protocol.TypeAck, action, stderr)
+	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorReceived, MessageIDs: ids}, expectation{protocol.TypeAck, action}, stderr)
 	if err != nil {
 		return 1
 	}
@@ -275,7 +280,7 @@ func runOperatorAck(ctx context.Context, args []string, stdout, stderr io.Writer
 	if code != -1 {
 		return code
 	}
-	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, protocol.TypeAck, "operator ack", stderr)
+	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, expectation{protocol.TypeAck, "operator ack"}, stderr)
 	if err != nil {
 		return 1
 	}
