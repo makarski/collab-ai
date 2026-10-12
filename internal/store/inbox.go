@@ -178,7 +178,7 @@ func (s *Store) MarkOperatorReceived(ctx context.Context, ids []string, audit Op
 	now := time.Now().UTC()
 	for _, row := range rows {
 		if !row.received.Valid {
-			if err := setOperatorStage(ctx, tx, row.id, protocol.StageAdapterReceived, now); err != nil {
+			if err := updateDurableReceipt(ctx, tx, operatorStage(row.id, protocol.StageAdapterReceived), now); err != nil {
 				return nil, nil, err
 			}
 			row.received = sql.NullTime{Time: now, Valid: true}
@@ -210,7 +210,7 @@ func (s *Store) AcknowledgeOperator(ctx context.Context, id string, audit Operat
 	}
 	var transition *OperatorTransition
 	if !row.acknowledged.Valid {
-		if err := setOperatorStage(ctx, tx, id, protocol.StageAgentAcknowledged, time.Now().UTC()); err != nil {
+		if err := updateDurableReceipt(ctx, tx, operatorStage(id, protocol.StageAgentAcknowledged), time.Now().UTC()); err != nil {
 			return nil, err
 		}
 		transition = &OperatorTransition{id, row.sender, protocol.StageAgentAcknowledged}
@@ -257,8 +257,8 @@ func operatorRows(ctx context.Context, tx *sql.Tx, ids []string) ([]inboxRow, er
 	return rows, nil
 }
 
-func setOperatorStage(ctx context.Context, tx *sql.Tx, id, stage string, now time.Time) error {
-	return updateDurableReceipt(ctx, tx, Acknowledgment{MessageID: id, Recipient: protocol.Recipient{AgentID: protocol.OperatorID}, Stage: stage}, now)
+func operatorStage(id, stage string) Acknowledgment {
+	return Acknowledgment{MessageID: id, Recipient: protocol.Recipient{AgentID: protocol.OperatorID}, Stage: stage}
 }
 
 func insertAudit(ctx context.Context, db execer, a OperatorAudit) error {

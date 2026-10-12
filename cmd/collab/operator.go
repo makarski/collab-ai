@@ -163,8 +163,11 @@ func (cfg operatorSend) checkAll() error {
 }
 
 func (cfg operatorSend) validateOptions() error {
-	if cfg.socket == "" || len(cfg.messageID) > 128 || len(cfg.inReplyTo) > 128 {
-		return errors.New("a socket path is required, and --message-id and --in-reply-to must be at most 128 bytes")
+	if cfg.socket == "" {
+		return errors.New("a socket path is required")
+	}
+	if max(len(cfg.messageID), len(cfg.inReplyTo)) > 128 {
+		return errors.New("--message-id and --in-reply-to must be at most 128 bytes")
 	}
 	if cfg.timeout <= 0 || cfg.timeout > 30*time.Second {
 		return errors.New("timeout must be greater than zero and at most 30s")
