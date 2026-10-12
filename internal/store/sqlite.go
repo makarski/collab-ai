@@ -169,13 +169,20 @@ func (s *Store) PersistMessage(ctx context.Context, msg protocol.Message, sender
 		return err
 	}
 	defer tx.Rollback()
-	if err := persistMessage(ctx, tx, msg, senderSession, recipients); err != nil {
+	if err := persistMessage(ctx, tx, routedMessage{msg, senderSession, recipients}); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func persistMessage(ctx context.Context, tx *sql.Tx, msg protocol.Message, senderSession string, recipients []protocol.Recipient) error {
+type routedMessage struct {
+	msg           protocol.Message
+	senderSession string
+	recipients    []protocol.Recipient
+}
+
+func persistMessage(ctx context.Context, tx *sql.Tx, routed routedMessage) error {
+	msg, recipients := routed.msg, routed.recipients
 	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_metadata WHERE message_id = ?`, msg.MessageID).Scan(&exists); err != nil {
 		return err
@@ -186,7 +193,7 @@ func persistMessage(ctx context.Context, tx *sql.Tx, msg protocol.Message, sende
 	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (seq, ts, sender, recipient, payload) VALUES (?, ?, ?, ?, ?)`, msg.Seq, msg.TS.UTC(), msg.From, msg.To, string(msg.Payload)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO message_metadata (message_id, seq, sender_session, in_reply_to, ack_requested, origin) VALUES (?, ?, ?, ?, ?, ?)`, msg.MessageID, msg.Seq, senderSession, msg.InReplyTo, msg.AckRequested, nullString(msg.Origin)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO message_metadata (message_id, seq, sender_session, in_reply_to, ack_requested, origin) VALUES (?, ?, ?, ?, ?, ?)`, msg.MessageID, msg.Seq, routed.senderSession, msg.InReplyTo, msg.AckRequested, nullString(msg.Origin)); err != nil {
 		return err
 	}
 	if err := insertRecipients(ctx, tx, msg.MessageID, recipients); err != nil {

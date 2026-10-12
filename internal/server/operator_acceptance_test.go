@@ -72,21 +72,15 @@ func newOperatorFixture(t *testing.T, uid int, database string) *operatorFixture
 		database = filepath.Join(t.TempDir(), "operator.db")
 	}
 	st, e := store.Open(database)
-	if e != nil {
-		t.Fatal(e)
-	}
+	operatorNoError(t, e)
 	seq, e := st.LastSeq(context.Background())
-	if e != nil {
-		t.Fatal(e)
-	}
+	operatorNoError(t, e)
 	ctx, cancel := context.WithCancel(context.Background())
 	h := hub.New(st, seq, testLog())
 	go h.Run(ctx)
 	f := &operatorFixture{t: t, agent: socketPath(t), operator: socketPath(t)}
 	f.db, e = sql.Open("sqlite", database)
-	if e != nil {
-		t.Fatal(e)
-	}
+	operatorNoError(t, e)
 	a := New(f.agent, h, testLog())
 	o := NewOperator(f.operator, h, uid, testLog())
 	f.endpoint = o
@@ -97,21 +91,7 @@ func newOperatorFixture(t *testing.T, uid int, database string) *operatorFixture
 		cancel()
 		a.Close()
 		o.Close()
-		for i := 0; i < 2; i++ {
-			select {
-			case e := <-done:
-				if e != nil {
-					t.Error(e)
-				}
-			case <-time.After(3 * time.Second):
-				t.Error("listener shutdown timeout")
-			}
-		}
-		select {
-		case <-h.Done():
-		case <-time.After(3 * time.Second):
-			t.Error("hub shutdown timeout")
-		}
+		awaitOperatorShutdown(t, done, h.Done())
 		f.db.Close()
 		st.Close()
 	})
@@ -143,9 +123,9 @@ func operatorRequest(id, to string) protocol.Message {
 }
 func requireOperatorAccepted(t *testing.T, m protocol.Message, ids ...string) {
 	t.Helper()
-	if m.Type != "ack" || m.Stage != "accepted" || m.Seq == 0 {
-		t.Fatalf("expected acceptance: %+v", m)
-	}
+	operatorEqual(t, "acceptance type", m.Type, "ack")
+	operatorEqual(t, "acceptance stage", m.Stage, "accepted")
+	operatorEqual(t, "sequence assigned", m.Seq != 0, true)
 	got := []string{}
 	for _, r := range m.Recipients {
 		got = append(got, r.AgentID)
@@ -170,9 +150,7 @@ func TestOperatorAcceptanceDirectAndFrozenRetry(t *testing.T) {
 	accepted := f.send(req)
 	requireOperatorAccepted(t, accepted, "alpha")
 	m := p.read()
-	if m.Type != "msg" || m.From != "operator" || m.Origin != "operator" || !m.Durable || !m.AckRequested || m.MessageID != req.MessageID {
-		t.Fatalf("unsafe operator delivery: %+v", m)
-	}
+	requireOperatorDelivery(t, m, req.MessageID)
 	retry := f.send(req)
 	requireOperatorAccepted(t, retry, "alpha")
 	if !retry.Repeated || retry.Seq != accepted.Seq {
@@ -185,23 +163,7 @@ func TestOperatorAcceptanceDirectAndFrozenRetry(t *testing.T) {
 	if f.count("messages") != 1 || f.count("operator_requests") != 1 {
 		t.Fatal("retry persisted another message")
 	}
-	rows, e := f.db.Query("SELECT coalesce(detail,'') FROM operator_audit")
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var detail string
-		if e := rows.Scan(&detail); e != nil {
-			t.Fatal(e)
-		}
-		if strings.Contains(detail, "PRIVATE_OPERATOR_PAYLOAD") {
-			t.Fatal("audit leaked payload")
-		}
-	}
-	if e := rows.Err(); e != nil {
-		t.Fatal(e)
-	}
+	requireOperatorAuditPrivate(t, f.db)
 }
 func TestOperatorAcceptanceRejectUIDBeforeReading(t *testing.T) {
 	f := newOperatorFixture(t, os.Getuid()+1, "")
@@ -213,12 +175,12 @@ func TestOperatorAcceptanceRejectUIDBeforeReading(t *testing.T) {
 	var uid int
 	var action, result string
 	var id, scope sql.NullString
-	if e := f.db.QueryRow("SELECT principal_uid,action,result,message_id,scope FROM operator_audit").Scan(&uid, &action, &result, &id, &scope); e != nil {
-		t.Fatal(e)
-	}
-	if uid != os.Getuid() || action != "connect" || result != "forbidden" || id.Valid || scope.Valid {
-		t.Fatalf("wrong denied audit: %d %s %s %v %v", uid, action, result, id, scope)
-	}
+	operatorNoError(t, f.db.QueryRow("SELECT principal_uid,action,result,message_id,scope FROM operator_audit").Scan(&uid, &action, &result, &id, &scope))
+	operatorEqual(t, "denied UID", uid, os.Getuid())
+	operatorEqual(t, "denied action", action, "connect")
+	operatorEqual(t, "denied result", result, "forbidden")
+	operatorEqual(t, "denied message ID present", id.Valid, false)
+	operatorEqual(t, "denied scope present", scope.Valid, false)
 	if f.count("messages") != 0 {
 		t.Fatal("unauthorized route persisted")
 	}
@@ -243,23 +205,7 @@ func TestOperatorAcceptanceGroupAndBroadcast(t *testing.T) {
 	if f.count("messages") != 1 || f.count("durable_inbox") != 2 {
 		t.Fatal("failed group partially persisted")
 	}
-	all := operatorRequest("all", "*")
-	r := f.send(all)
-	requireOperatorAccepted(t, r, "alpha", "zulu")
-	if !reflect.DeepEqual(r.Excluded, []string{"legacy"}) {
-		t.Fatalf("exclusions: %+v", r)
-	}
-	f.peer("newcomer", 4)
-	r = f.send(all)
-	requireOperatorAccepted(t, r, "alpha", "zulu")
-	if !r.Repeated || !reflect.DeepEqual(r.Excluded, []string{"legacy"}) {
-		t.Fatalf("broadcast retry changed: %+v", r)
-	}
-	all.To = ""
-	all.Group = []string{"alpha", "zulu"}
-	if r := f.send(all); r.Code != "duplicate_message" {
-		t.Fatalf("scope collision: %+v", r)
-	}
+	requireOperatorFrozenBroadcast(t, f)
 }
 func TestOperatorAcceptanceFullInboxAtomicity(t *testing.T) {
 	f := newOperatorFixture(t, os.Getuid(), "")
@@ -336,20 +282,14 @@ func TestOperatorAcceptanceRestartAndDowngrade(t *testing.T) {
 	})
 	var originalSession string
 	db, e := sql.Open("sqlite", database)
-	if e != nil {
-		t.Fatal(e)
-	}
+	operatorNoError(t, e)
 	defer db.Close()
-	if e := db.QueryRow("SELECT session_id FROM durable_inbox WHERE message_id='held'").Scan(&originalSession); e != nil {
-		t.Fatal(e)
-	}
+	operatorNoError(t, db.QueryRow("SELECT session_id FROM durable_inbox WHERE message_id='held'").Scan(&originalSession))
 	t.Run("downgrade", func(t *testing.T) {
 		f := newOperatorFixture(t, os.Getuid(), database)
 		p := f.peer("alpha", 3)
 		var session string
-		if e := f.db.QueryRow("SELECT session_id FROM durable_inbox WHERE message_id='held'").Scan(&session); e != nil {
-			t.Fatal(e)
-		}
+		operatorNoError(t, f.db.QueryRow("SELECT session_id FROM durable_inbox WHERE message_id='held'").Scan(&session))
 		if session != originalSession {
 			t.Fatal("v3 claimed an operator message")
 		}
@@ -364,9 +304,9 @@ func TestOperatorAcceptanceRestartAndDowngrade(t *testing.T) {
 		f := newOperatorFixture(t, os.Getuid(), database)
 		p := f.peer("alpha", 4)
 		m := p.read()
-		if m.MessageID != "held" || m.Origin != "operator" || !m.Replayed {
-			t.Fatalf("lost provenance or held replay: %+v", m)
-		}
+		operatorEqual(t, "replay ID", m.MessageID, "held")
+		operatorEqual(t, "replay origin", m.Origin, "operator")
+		operatorEqual(t, "replay marker", m.Replayed, true)
 	})
 }
 
@@ -390,30 +330,9 @@ func TestOperatorAcceptancePreservesExistingSocketPaths(t *testing.T) {
 	for _, kind := range []string{"file", "symlink", "live socket", "stale socket"} {
 		t.Run(kind, func(t *testing.T) {
 			path := socketPath(t)
-			switch kind {
-			case "file":
-				if e := os.WriteFile(path, []byte("keep"), 0600); e != nil {
-					t.Fatal(e)
-				}
-			case "symlink":
-				if e := os.Symlink("missing", path); e != nil {
-					t.Fatal(e)
-				}
-			default:
-				ln, e := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
-				if e != nil {
-					t.Fatal(e)
-				}
-				ln.SetUnlinkOnClose(false)
-				defer ln.Close()
-				if kind == "stale socket" {
-					ln.Close()
-				}
-			}
+			createOperatorExistingPath(t, path, kind)
 			before, e := os.Lstat(path)
-			if e != nil {
-				t.Fatal(e)
-			}
+			operatorNoError(t, e)
 			srv := NewOperator(path, nil, os.Getuid(), testLog())
 			if e := srv.Listen(context.Background()); e == nil {
 				t.Fatal("preexisting path replaced")
@@ -466,9 +385,9 @@ func TestOperatorAcceptanceGlobalCapacityRejectsWholeBroadcast(t *testing.T) {
 	if r := f.send(operatorRequest("global-full", "*")); r.Code != "inbox_full" {
 		t.Fatalf("global quota must reject whole scope: %+v", r)
 	}
-	if f.count("messages") != 0 || f.count("operator_requests") != 0 || f.count("durable_inbox") != store.MaxGlobalPending-1 {
-		t.Fatal("global capacity selected partial recipients")
-	}
+	operatorEqual(t, "global quota history", f.count("messages"), 0)
+	operatorEqual(t, "global quota requests", f.count("operator_requests"), 0)
+	operatorEqual(t, "global quota inbox", f.count("durable_inbox"), store.MaxGlobalPending-1)
 }
 
 func TestOperatorAcceptanceEmptyBroadcast(t *testing.T) {
@@ -485,20 +404,15 @@ func TestOperatorAcceptanceEmptyBroadcast(t *testing.T) {
 func TestOperatorAcceptanceCloseCancelsUnreadConnectionAndPreservesReplacement(t *testing.T) {
 	f := newOperatorFixture(t, os.Getuid(), "")
 	p := operatorDial(t, f.operator)
-	if e := os.Remove(f.operator); e != nil {
-		t.Fatal(e)
-	}
-	if e := os.WriteFile(f.operator, []byte("replacement"), 0600); e != nil {
-		t.Fatal(e)
-	}
-	if e := f.endpoint.Close(); e != nil {
-		t.Fatal(e)
-	}
+	operatorNoError(t, os.Remove(f.operator))
+	operatorNoError(t, os.WriteFile(f.operator, []byte("replacement"), 0600))
+	operatorNoError(t, f.endpoint.Close())
 	p.SetReadDeadline(time.Now().Add(time.Second))
 	_, readErr := p.r.ReadByte()
 	var netErr net.Error
-	if readErr == nil || (errors.As(readErr, &netErr) && netErr.Timeout()) {
-		t.Fatalf("pending operator connection not closed: %v", readErr)
+	operatorEqual(t, "closed connection returned error", readErr != nil, true)
+	if errors.As(readErr, &netErr) {
+		operatorEqual(t, "close did not time out", netErr.Timeout(), false)
 	}
 	data, e := os.ReadFile(f.operator)
 	if e != nil || string(data) != "replacement" {
@@ -518,13 +432,109 @@ func TestOperatorAcceptanceMalformedWireAuditOmitsPayload(t *testing.T) {
 	}
 	var detail, result string
 	var id, scope sql.NullString
-	if e := f.db.QueryRow("SELECT result,detail,message_id,scope FROM operator_audit").Scan(&result, &detail, &id, &scope); e != nil {
-		t.Fatal(e)
-	}
-	if result != "rejected" || strings.Contains(detail, "PRIVATE_OPERATOR_PAYLOAD") || id.Valid || scope.Valid {
-		t.Fatalf("malformed frame audit: %s %q %v %v", result, detail, id, scope)
-	}
+	operatorNoError(t, f.db.QueryRow("SELECT result,detail,message_id,scope FROM operator_audit").Scan(&result, &detail, &id, &scope))
+	operatorEqual(t, "malformed audit result", result, "rejected")
+	operatorEqual(t, "malformed audit leaked payload", strings.Contains(detail, "PRIVATE_OPERATOR_PAYLOAD"), false)
+	operatorEqual(t, "malformed audit message ID present", id.Valid, false)
+	operatorEqual(t, "malformed audit scope present", scope.Valid, false)
 	if f.count("messages") != 0 {
 		t.Fatal("malformed frame routed")
+	}
+}
+
+func operatorEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", label, got, want)
+	}
+}
+
+func operatorNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func requireOperatorDelivery(t *testing.T, m protocol.Message, id string) {
+	t.Helper()
+	operatorEqual(t, "delivery type", m.Type, "msg")
+	operatorEqual(t, "delivery sender", m.From, "operator")
+	operatorEqual(t, "delivery origin", m.Origin, "operator")
+	operatorEqual(t, "delivery durable", m.Durable, true)
+	operatorEqual(t, "delivery requests acknowledgment", m.AckRequested, true)
+	operatorEqual(t, "delivery ID", m.MessageID, id)
+}
+
+func requireOperatorAuditPrivate(t *testing.T, db *sql.DB) {
+	t.Helper()
+	rows, e := db.Query("SELECT coalesce(detail,'') FROM operator_audit")
+	operatorNoError(t, e)
+	defer rows.Close()
+	for rows.Next() {
+		var detail string
+		operatorNoError(t, rows.Scan(&detail))
+		if strings.Contains(detail, "PRIVATE_OPERATOR_PAYLOAD") {
+			t.Fatal("audit leaked payload")
+		}
+	}
+	operatorNoError(t, rows.Err())
+}
+
+func awaitOperatorShutdown(t *testing.T, done <-chan error, hubDone <-chan struct{}) {
+	t.Helper()
+	for i := 0; i < 2; i++ {
+		select {
+		case e := <-done:
+			if e != nil {
+				t.Error(e)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("listener shutdown timeout")
+		}
+	}
+	select {
+	case <-hubDone:
+	case <-time.After(3 * time.Second):
+		t.Error("hub shutdown timeout")
+	}
+}
+
+func createOperatorExistingPath(t *testing.T, path, kind string) {
+	t.Helper()
+	switch kind {
+	case "file":
+		operatorNoError(t, os.WriteFile(path, []byte("keep"), 0600))
+	case "symlink":
+		operatorNoError(t, os.Symlink("missing", path))
+	default:
+		ln, e := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+		operatorNoError(t, e)
+		ln.SetUnlinkOnClose(false)
+		t.Cleanup(func() { ln.Close() })
+		if kind == "stale socket" {
+			ln.Close()
+		}
+	}
+}
+
+func requireOperatorFrozenBroadcast(t *testing.T, f *operatorFixture) {
+	t.Helper()
+	all := operatorRequest("all", "*")
+	r := f.send(all)
+	requireOperatorAccepted(t, r, "alpha", "zulu")
+	if !reflect.DeepEqual(r.Excluded, []string{"legacy"}) {
+		t.Fatalf("exclusions: %+v", r)
+	}
+	f.peer("newcomer", 4)
+	r = f.send(all)
+	requireOperatorAccepted(t, r, "alpha", "zulu")
+	if !r.Repeated || !reflect.DeepEqual(r.Excluded, []string{"legacy"}) {
+		t.Fatalf("broadcast retry changed: %+v", r)
+	}
+	all.To = ""
+	all.Group = []string{"alpha", "zulu"}
+	if r := f.send(all); r.Code != "duplicate_message" {
+		t.Fatalf("scope collision: %+v", r)
 	}
 }

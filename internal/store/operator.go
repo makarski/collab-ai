@@ -100,36 +100,51 @@ func finishAudit(ctx context.Context, db execer, id int64, result, detail string
 	return nil
 }
 
+// OperatorMessage is a routed operator message with its frozen scope and the
+// audit intent row its result is committed to.
+type OperatorMessage struct {
+	Msg        protocol.Message
+	Scope      OperatorScope
+	Recipients []protocol.Recipient
+	Excluded   []string
+	AuditID    int64
+}
+
 // PersistOperatorMessage commits the message, its frozen scope and the audit
 // result atomically, so a routed operator message is never left unaudited.
-func (s *Store) PersistOperatorMessage(ctx context.Context, msg protocol.Message, scope OperatorScope, recipients []protocol.Recipient, excluded []string, auditID int64) error {
+func (s *Store) PersistOperatorMessage(ctx context.Context, m OperatorMessage) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if err := persistMessage(ctx, tx, msg, "", recipients); err != nil {
+	if err := persistMessage(ctx, tx, routedMessage{msg: m.Msg, recipients: m.Recipients}); err != nil {
 		return err
 	}
-	members, err := jsonOrNull(scope.Members)
-	if err != nil {
+	if err := insertOperatorRequest(ctx, tx, m); err != nil {
 		return err
 	}
-	frozen, err := json.Marshal(recipients)
-	if err != nil {
-		return err
-	}
-	left, err := json.Marshal(nonNil(excluded))
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO operator_requests (message_id, scope_kind, members, recipients, excluded) VALUES (?, ?, ?, ?, ?)`, msg.MessageID, scope.Kind, members, string(frozen), string(left)); err != nil {
-		return err
-	}
-	if err := finishAudit(ctx, tx, auditID, AuditAccepted, ""); err != nil {
+	if err := finishAudit(ctx, tx, m.AuditID, AuditAccepted, ""); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func insertOperatorRequest(ctx context.Context, tx *sql.Tx, m OperatorMessage) error {
+	members, err := jsonOrNull(m.Scope.Members)
+	if err != nil {
+		return err
+	}
+	frozen, err := json.Marshal(m.Recipients)
+	if err != nil {
+		return err
+	}
+	left, err := json.Marshal(nonNil(m.Excluded))
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO operator_requests (message_id, scope_kind, members, recipients, excluded) VALUES (?, ?, ?, ?, ?)`, m.Msg.MessageID, m.Scope.Kind, members, string(frozen), string(left))
+	return err
 }
 
 // OperatorRetry is the retained outcome of an earlier identical operator send.
@@ -140,24 +155,39 @@ type OperatorRetry struct {
 	Receipts   []protocol.ReceiptState
 }
 
+type storedMessage struct {
+	seq       uint64
+	origin    sql.NullString
+	inReplyTo string
+	payload   string
+}
+
+// matches holds only for a trusted operator message with the same correlation and content.
+func (m storedMessage) matches(request protocol.Message) bool {
+	return m.origin.String == protocol.OriginOperator && m.inReplyTo == request.InReplyTo &&
+		bytes.Equal(compactPayload(json.RawMessage(m.payload)), compactPayload(request.Payload))
+}
+
 // LookupOperatorRetry returns nil when the ID is unused. A used ID matches only
 // a trusted operator message with the same scope, payload and correlation;
 // anything else, including legacy rows claiming the operator sender, is a duplicate.
 func (s *Store) LookupOperatorRetry(ctx context.Context, request protocol.Message, scope OperatorScope) (*OperatorRetry, error) {
-	var seq uint64
-	var origin sql.NullString
-	var inReplyTo, payload string
-	err := s.db.QueryRowContext(ctx, `SELECT m.seq, mm.origin, mm.in_reply_to, m.payload FROM message_metadata mm JOIN messages m USING(seq) WHERE mm.message_id = ?`, request.MessageID).Scan(&seq, &origin, &inReplyTo, &payload)
+	var stored storedMessage
+	err := s.db.QueryRowContext(ctx, `SELECT m.seq, mm.origin, mm.in_reply_to, m.payload FROM message_metadata mm JOIN messages m USING(seq) WHERE mm.message_id = ?`, request.MessageID).Scan(&stored.seq, &stored.origin, &stored.inReplyTo, &stored.payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if origin.String != protocol.OriginOperator || inReplyTo != request.InReplyTo || !bytes.Equal(compactPayload(json.RawMessage(payload)), compactPayload(request.Payload)) {
+	if !stored.matches(request) {
 		return nil, ErrDuplicateMessage
 	}
-	stored, retry, err := s.operatorRequest(ctx, request.MessageID)
+	return s.operatorRetry(ctx, request.MessageID, stored.seq, scope)
+}
+
+func (s *Store) operatorRetry(ctx context.Context, id string, seq uint64, scope OperatorScope) (*OperatorRetry, error) {
+	stored, retry, err := s.operatorRequest(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDuplicateMessage
 	}
@@ -168,7 +198,7 @@ func (s *Store) LookupOperatorRetry(ctx context.Context, request protocol.Messag
 		return nil, ErrDuplicateMessage
 	}
 	retry.Seq = seq
-	snapshot := RetrySnapshot{Message: protocol.Message{MessageID: request.MessageID}}
+	snapshot := RetrySnapshot{Message: protocol.Message{MessageID: id}}
 	if err := s.retryReceipts(ctx, &snapshot); err != nil {
 		return nil, err
 	}

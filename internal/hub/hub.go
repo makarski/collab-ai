@@ -204,16 +204,23 @@ func prepareMessage(in *Inbound) *routingError {
 	if msg.AckRequested && in.From.ProtocolVersion < protocol.AcknowledgmentVersion {
 		return &routingError{protocol.ErrMalformedFrame, "ack_requested requires protocol_version 2 in hello"}
 	}
-	if msg.To == "" {
-		return &routingError{protocol.ErrMissingRecipient, "field to is required"}
-	}
-	if msg.To == protocol.OperatorID {
-		return &routingError{protocol.ErrUnknownRecipient, "the operator has no agent inbox; operator replies are not supported yet"}
-	}
-	if len(msg.Group) != 0 || len(msg.Excluded) != 0 {
-		return &routingError{protocol.ErrMalformedFrame, "group sends are operator-only"}
+	if err := checkAgentAddress(*msg); err != nil {
+		return err
 	}
 	return validateDurability(*in)
+}
+
+// checkAgentAddress keeps operator-only addressing out of agent sends.
+func checkAgentAddress(msg protocol.Message) *routingError {
+	switch {
+	case msg.To == "":
+		return &routingError{protocol.ErrMissingRecipient, "field to is required"}
+	case msg.To == protocol.OperatorID:
+		return &routingError{protocol.ErrUnknownRecipient, "the operator has no agent inbox; operator replies are not supported yet"}
+	case len(msg.Group) != 0 || len(msg.Excluded) != 0:
+		return &routingError{protocol.ErrMalformedFrame, "group sends are operator-only"}
+	}
+	return nil
 }
 
 func broadcastRecipients(clients map[string]*Client, sender *Client) ([]protocol.Recipient, *routingError) {

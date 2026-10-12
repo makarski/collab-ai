@@ -46,11 +46,18 @@ func (h *Hub) AuditConnection(ctx context.Context, uid int, result, detail strin
 	return err
 }
 
+// operatorSend is one validated operator request with its audit intent row.
+type operatorSend struct {
+	msg     protocol.Message
+	scope   store.OperatorScope
+	auditID int64
+}
+
 func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
 	msg := req.msg
 	scope, rerr := operatorScope(msg)
 	if rerr != nil {
-		h.auditRejected(ctx, req.uid, msg.MessageID, "", rerr)
+		h.auditRejected(ctx, req.uid, msg.MessageID, rerr)
 		return rerr.frame(msg.MessageID)
 	}
 	auditID, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "send", PrincipalUID: req.uid, MessageID: msg.MessageID, Scope: scope.Kind, Result: store.AuditPending})
@@ -58,7 +65,7 @@ func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req
 		h.log.Error("operator audit intent failed; request not routed", "message_id", msg.MessageID, "error", err)
 		return (&routingError{protocol.ErrInternal, "operator audit unavailable; message not routed"}).frame(msg.MessageID)
 	}
-	out, rerr := h.admitOperator(ctx, clients, msg, scope, auditID)
+	out, rerr := h.admitOperator(ctx, clients, operatorSend{msg, scope, auditID})
 	if rerr != nil {
 		h.finishAudit(ctx, auditID, store.AuditRejected, rerr.code)
 		return rerr.frame(msg.MessageID)
@@ -66,35 +73,41 @@ func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req
 	return out
 }
 
-func (h *Hub) admitOperator(ctx context.Context, clients map[string]*Client, msg protocol.Message, scope store.OperatorScope, auditID int64) (protocol.Message, *routingError) {
-	retry, err := h.store.LookupOperatorRetry(ctx, msg, scope)
+func (h *Hub) admitOperator(ctx context.Context, clients map[string]*Client, send operatorSend) (protocol.Message, *routingError) {
+	retry, err := h.store.LookupOperatorRetry(ctx, send.msg, send.scope)
 	if err != nil {
-		return protocol.Message{}, h.persistenceError(msg.MessageID, err)
+		return protocol.Message{}, h.persistenceError(send.msg.MessageID, err)
 	}
 	if retry != nil {
-		if err := h.store.FinishOperatorAudit(ctx, auditID, store.AuditRepeated, ""); err != nil {
-			h.log.Error("operator audit result failed", "message_id", msg.MessageID, "error", err)
-			return protocol.Message{}, &routingError{protocol.ErrInternal, "operator audit unavailable"}
-		}
-		return protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: protocol.StageAccepted, Seq: retry.Seq,
-			Durable: true, Repeated: true, Recipients: retry.Recipients, Receipts: retry.Receipts, Excluded: retry.Excluded}, nil
+		return h.repeatOperator(ctx, send, retry)
 	}
-	ts := time.Now().UTC()
-	out := protocol.Message{
-		Type: protocol.TypeMsg, Seq: h.seq + 1, TS: &ts, From: protocol.OperatorID, To: operatorTo(msg, scope),
-		Origin: protocol.OriginOperator, Payload: msg.Payload, MessageID: msg.MessageID, InReplyTo: msg.InReplyTo,
-		AckRequested: true, Durable: true,
+	return h.commitOperator(ctx, clients, send)
+}
+
+// repeatOperator answers an identical retry with the retained outcome; nothing is rerouted.
+func (h *Hub) repeatOperator(ctx context.Context, send operatorSend, retry *store.OperatorRetry) (protocol.Message, *routingError) {
+	if err := h.store.FinishOperatorAudit(ctx, send.auditID, store.AuditRepeated, ""); err != nil {
+		h.log.Error("operator audit result failed", "message_id", send.msg.MessageID, "error", err)
+		return protocol.Message{}, &routingError{protocol.ErrInternal, "operator audit unavailable"}
 	}
-	recipients, excluded, rerr := h.operatorRecipients(ctx, clients, out, scope)
+	return protocol.Message{Type: protocol.TypeAck, MessageID: send.msg.MessageID, Stage: protocol.StageAccepted, Seq: retry.Seq,
+		Durable: true, Repeated: true, Recipients: retry.Recipients, Receipts: retry.Receipts, Excluded: retry.Excluded}, nil
+}
+
+// commitOperator freezes recipients, persists with the audit result, then delivers.
+func (h *Hub) commitOperator(ctx context.Context, clients map[string]*Client, send operatorSend) (protocol.Message, *routingError) {
+	out := operatorFrame(send, h.seq+1)
+	recipients, excluded, rerr := h.operatorRecipients(ctx, clients, out, send.scope)
+	if rerr == nil {
+		rerr = checkFrameSize(out)
+	}
 	if rerr != nil {
 		return protocol.Message{}, rerr
 	}
-	if rerr := checkFrameSize(out); rerr != nil {
-		return protocol.Message{}, rerr
-	}
 	h.seq++
-	if err := h.store.PersistOperatorMessage(ctx, out, scope, recipients, excluded, auditID); err != nil {
-		return protocol.Message{}, h.persistenceError(msg.MessageID, err)
+	err := h.store.PersistOperatorMessage(ctx, store.OperatorMessage{Msg: out, Scope: send.scope, Recipients: recipients, Excluded: excluded, AuditID: send.auditID})
+	if err != nil {
+		return protocol.Message{}, h.persistenceError(out.MessageID, err)
 	}
 	for _, r := range recipients {
 		if c := sessionOwner(clients, r); c != nil {
@@ -105,8 +118,17 @@ func (h *Hub) admitOperator(ctx context.Context, clients map[string]*Client, msg
 		Durable: true, Recipients: recipients, Excluded: excluded}, nil
 }
 
-func (h *Hub) auditRejected(ctx context.Context, uid int, id, scope string, rerr *routingError) {
-	_, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "send", PrincipalUID: uid, MessageID: id, Scope: scope, Result: store.AuditRejected, Detail: rerr.code})
+func operatorFrame(send operatorSend, seq uint64) protocol.Message {
+	ts := time.Now().UTC()
+	return protocol.Message{
+		Type: protocol.TypeMsg, Seq: seq, TS: &ts, From: protocol.OperatorID, To: operatorTo(send.msg, send.scope),
+		Origin: protocol.OriginOperator, Payload: send.msg.Payload, MessageID: send.msg.MessageID, InReplyTo: send.msg.InReplyTo,
+		AckRequested: true, Durable: true,
+	}
+}
+
+func (h *Hub) auditRejected(ctx context.Context, uid int, id string, rerr *routingError) {
+	_, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "send", PrincipalUID: uid, MessageID: id, Result: store.AuditRejected, Detail: rerr.code})
 	if err != nil {
 		h.log.Error("operator audit failed for rejected request", "error", err)
 	}
@@ -120,41 +142,52 @@ func (h *Hub) finishAudit(ctx context.Context, id int64, result, detail string) 
 
 // operatorScope validates the request shape and canonicalizes its scope.
 func operatorScope(msg protocol.Message) (store.OperatorScope, *routingError) {
-	malformed := func(detail string) (store.OperatorScope, *routingError) {
+	if detail := operatorEnvelopeError(msg); detail != "" {
 		return store.OperatorScope{}, &routingError{protocol.ErrMalformedFrame, detail}
-	}
-	if msg.Type != protocol.TypeOperatorSend {
-		return malformed("expected operator_send")
-	}
-	if msg.MessageID == "" || len(msg.MessageID) > 128 || len(msg.InReplyTo) > 128 {
-		return malformed("message_id is required; message_id and in_reply_to must be at most 128 bytes")
-	}
-	if msg.Origin != "" || len(msg.Excluded) != 0 {
-		return malformed("origin and excluded are set by the broker")
-	}
-	if (msg.To == "") == (len(msg.Group) == 0) {
-		return malformed("exactly one of to or group is required")
 	}
 	if msg.To == protocol.Broadcast {
 		return store.OperatorScope{Kind: store.ScopeAll}, nil
 	}
-	members := msg.Group
-	kind := store.ScopeGroup
+	scope := store.OperatorScope{Kind: store.ScopeGroup, Members: msg.Group}
 	if msg.To != "" {
-		members, kind = []string{msg.To}, store.ScopeDirect
+		scope = store.OperatorScope{Kind: store.ScopeDirect, Members: []string{msg.To}}
 	}
-	members = slices.Clone(members)
+	members, detail := canonicalMembers(scope.Members)
+	if detail != "" {
+		return store.OperatorScope{}, &routingError{protocol.ErrMalformedFrame, detail}
+	}
+	scope.Members = members
+	return scope, nil
+}
+
+func operatorEnvelopeError(msg protocol.Message) string {
+	switch {
+	case msg.Type != protocol.TypeOperatorSend:
+		return "expected operator_send"
+	case msg.MessageID == "" || len(msg.MessageID) > 128 || len(msg.InReplyTo) > 128:
+		return "message_id is required; message_id and in_reply_to must be at most 128 bytes"
+	case msg.Origin != "" || len(msg.Excluded) != 0:
+		return "origin and excluded are set by the broker"
+	case (msg.To == "") == (len(msg.Group) == 0):
+		return "exactly one of to or group is required"
+	}
+	return ""
+}
+
+// canonicalMembers sorts and deduplicates, so equivalent groups retry as one request.
+func canonicalMembers(ids []string) ([]string, string) {
+	members := slices.Clone(ids)
 	sort.Strings(members)
 	members = slices.Compact(members)
 	if len(members) > protocol.MaxRecipients {
-		return malformed("group exceeds 256 recipients")
+		return nil, "group exceeds 256 recipients"
 	}
 	for _, id := range members {
 		if err := protocol.ValidateAgentID(id); err != nil {
-			return malformed(err.Error())
+			return nil, err.Error()
 		}
 	}
-	return store.OperatorScope{Kind: kind, Members: members}, nil
+	return members, ""
 }
 
 // operatorTo is informational; operator_requests holds the canonical scope.

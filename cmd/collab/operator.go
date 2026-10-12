@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,38 +92,47 @@ func parseOperatorSend(args []string, stderr io.Writer) (operatorSend, int) {
 	return cfg, -1
 }
 
+func (cfg *operatorSend) validate(set map[string]bool, positional []string) error {
+	if err := cfg.validateScope(set); err != nil {
+		return err
+	}
+	if len(positional) != 1 || positional[0] == "" {
+		return errors.New("exactly one non-empty TEXT argument is required")
+	}
+	if err := cfg.validateOptions(); err != nil {
+		return err
+	}
+	cfg.text = positional[0]
+	return nil
+}
+
 // Scope flags count when given, even with an empty value, so an empty --group
 // can't silently fall back to another scope.
-func (cfg *operatorSend) validate(set map[string]bool, positional []string) error {
+func (cfg operatorSend) validateScope(set map[string]bool) error {
 	scopes := 0
 	for _, name := range []string{"to", "group", "all"} {
 		if set[name] {
 			scopes++
 		}
 	}
-	if scopes != 1 || (set["all"] && !cfg.all) {
+	switch {
+	case scopes != 1 || (set["all"] && !cfg.all):
 		return errors.New("choose exactly one of --to, --group or --all")
-	}
-	if set["to"] && cfg.to == "" {
+	case set["to"] && cfg.to == "":
 		return errors.New("--to must not be empty")
+	case set["group"] && slices.Contains(strings.Split(cfg.group, ","), ""):
+		return errors.New("--group must not contain empty agent IDs")
 	}
-	if set["group"] {
-		for _, id := range strings.Split(cfg.group, ",") {
-			if id == "" {
-				return errors.New("--group must not contain empty agent IDs")
-			}
-		}
-	}
-	if len(positional) != 1 || positional[0] == "" {
-		return errors.New("exactly one non-empty TEXT argument is required")
-	}
+	return nil
+}
+
+func (cfg operatorSend) validateOptions() error {
 	if cfg.socket == "" || len(cfg.messageID) > 128 {
 		return errors.New("a socket path is required and --message-id must be at most 128 bytes")
 	}
 	if cfg.timeout <= 0 || cfg.timeout > 30*time.Second {
 		return errors.New("timeout must be greater than zero and at most 30s")
 	}
-	cfg.text = positional[0]
 	return nil
 }
 
