@@ -15,19 +15,35 @@ const (
 	TypeMsg     = "msg"     // bidirectional, chat payload
 	TypeError   = "error"   // broker -> client, protocol or routing error
 	TypeAck     = "ack"     // client -> broker receipt; broker -> client persisted acknowledgment
+
+	TypeOperatorSend = "operator_send" // operator socket only: one request per connection
 )
 
 const (
-	Version                = DurableVersion
+	Version                = OriginVersion
 	AcknowledgmentVersion  = 2
 	DurableVersion         = 3
+	OriginVersion          = 4
 	StageAccepted          = "accepted"
 	StageAdapterReceived   = "adapter_received"
 	StageAgentAcknowledged = "agent_acknowledged"
 )
 
+// Origin is set by the broker from the connection, never accepted from a client.
+const (
+	OriginOperator = "operator"
+	OriginAgent    = "agent"
+	OriginUnknown  = "unknown"
+)
+
 // Broadcast is the reserved recipient for messages to all connected agents.
 const Broadcast = "*"
+
+// OperatorID is the reserved sender of operator messages; agents cannot claim it.
+const OperatorID = "operator"
+
+// MaxRecipients bounds broadcast and group membership.
+const MaxRecipients = 256
 
 // ValidateAgentID is shared by wire and MCP registration.
 func ValidateAgentID(id string) error {
@@ -37,7 +53,28 @@ func ValidateAgentID(id string) error {
 	if id == Broadcast {
 		return errors.New("agent ID cannot be *")
 	}
+	if id == OperatorID {
+		return errors.New("agent ID operator is reserved")
+	}
 	return nil
+}
+
+// WithDisplayOrigin labels a delivered msg frame for a host; other frame types
+// carry no origin.
+func WithDisplayOrigin(msg Message) Message {
+	if msg.Type == TypeMsg {
+		msg.Origin = DisplayOrigin(msg.Origin)
+	}
+	return msg
+}
+
+// DisplayOrigin renders a missing origin as unknown, never as operator or agent.
+func DisplayOrigin(origin string) string {
+	switch origin {
+	case OriginOperator, OriginAgent:
+		return origin
+	}
+	return OriginUnknown
 }
 
 // Error codes sent in TypeError frames.
@@ -54,6 +91,7 @@ const (
 	ErrInvalidAck            = "invalid_ack"
 	ErrInboxFull             = "inbox_full"
 	ErrDurabilityUnavailable = "durability_unavailable"
+	ErrForbidden             = "forbidden"
 )
 
 // Recipient freezes broadcast membership at acceptance, including inbox ownership.
@@ -92,6 +130,9 @@ type Message struct {
 	Model           string          `json:"model,omitempty"`            // hello: e.g. "claude-sonnet-4"
 	From            string          `json:"from,omitempty"`             // msg (broker -> client)
 	To              string          `json:"to,omitempty"`               // msg: agent id or "*"
+	Origin          string          `json:"origin,omitempty"`           // msg (broker -> client): operator, agent or unknown
+	Group           []string        `json:"group,omitempty"`            // operator_send: explicit recipient set
+	Excluded        []string        `json:"excluded,omitempty"`         // operator accepted: connected agents left out of "*"
 	Payload         json.RawMessage `json:"payload,omitempty"`          // msg: opaque JSON
 	Code            string          `json:"code,omitempty"`             // error
 	Detail          string          `json:"detail,omitempty"`           // error

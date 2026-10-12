@@ -35,11 +35,14 @@ type Server struct {
 	socketInfo os.FileInfo
 	cancel     context.CancelFunc
 	closed     bool
+	handle     func(context.Context, net.Conn)
 }
 
 // New creates a Server bound to socketPath (not yet listening).
 func New(socketPath string, h *hub.Hub, log *slog.Logger) *Server {
-	return &Server{socketPath: socketPath, hub: h, log: log}
+	s := &Server{socketPath: socketPath, hub: h, log: log}
+	s.handle = s.handleConn
+	return s
 }
 
 // Listen starts accepting connections until ctx is cancelled.
@@ -96,7 +99,7 @@ func (s *Server) Listen(ctx context.Context) error {
 		connections.Add(1)
 		go func() {
 			defer connections.Done()
-			s.handleConn(ctx, conn)
+			s.handle(ctx, conn)
 		}()
 	}
 }

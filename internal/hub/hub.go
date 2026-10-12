@@ -46,6 +46,7 @@ type Hub struct {
 	log        *slog.Logger
 	done       chan struct{}
 	status     chan statusRequest
+	operator   chan operatorRequest
 	startedAt  time.Time
 }
 
@@ -61,6 +62,7 @@ func New(st *store.Store, startSeq uint64, log *slog.Logger) *Hub {
 		log:        log,
 		done:       make(chan struct{}),
 		status:     make(chan statusRequest),
+		operator:   make(chan operatorRequest),
 		startedAt:  time.Now().UTC(),
 	}
 }
@@ -112,11 +114,7 @@ func (h *Hub) Done() <-chan struct{} { return h.done }
 func (h *Hub) Run(ctx context.Context) {
 	clients := make(map[string]*Client)
 	defer close(h.done)
-	defer func() {
-		for _, c := range clients {
-			h.disconnect(clients, c)
-		}
-	}()
+	defer h.disconnectAll(clients)
 
 	for {
 		select {
@@ -134,7 +132,16 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case req := <-h.status:
 			req.reply <- h.snapshot(req.ctx, clients)
+
+		case req := <-h.operator:
+			req.reply <- h.routeOperator(req.ctx, clients, req)
 		}
+	}
+}
+
+func (h *Hub) disconnectAll(clients map[string]*Client) {
+	for _, c := range clients {
+		h.disconnect(clients, c)
 	}
 }
 
@@ -181,23 +188,58 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 }
 
 func prepareMessage(in *Inbound) *routingError {
-	msg := &in.Msg
+	for _, check := range agentEnvelopeChecks {
+		if err := check(in.Msg, in.From.ProtocolVersion); err != nil {
+			return err
+		}
+	}
+	if in.Msg.MessageID == "" {
+		in.Msg.MessageID = uuid.NewString()
+	}
+	return validateDurability(*in)
+}
+
+// agentEnvelopeChecks run in order before an ID is assigned or anything persists.
+var agentEnvelopeChecks = []func(protocol.Message, int) *routingError{
+	checkMsgType,
+	func(msg protocol.Message, _ int) *routingError { return checkNoOrigin(msg) },
+	checkIDLengths,
+	checkAckCapability,
+	func(msg protocol.Message, _ int) *routingError { return checkAgentAddress(msg) },
+}
+
+func checkMsgType(msg protocol.Message, _ int) *routingError {
 	if msg.Type != protocol.TypeMsg {
 		return &routingError{protocol.ErrMalformedFrame, "expected type msg or ack"}
 	}
-	if msg.MessageID == "" {
-		msg.MessageID = uuid.NewString()
-	}
+	return nil
+}
+
+func checkIDLengths(msg protocol.Message, _ int) *routingError {
 	if len(msg.MessageID) > 128 || len(msg.InReplyTo) > 128 {
 		return &routingError{protocol.ErrMalformedFrame, "message_id and in_reply_to must be at most 128 bytes"}
 	}
-	if msg.AckRequested && in.From.ProtocolVersion < protocol.AcknowledgmentVersion {
+	return nil
+}
+
+func checkAckCapability(msg protocol.Message, version int) *routingError {
+	if msg.AckRequested && version < protocol.AcknowledgmentVersion {
 		return &routingError{protocol.ErrMalformedFrame, "ack_requested requires protocol_version 2 in hello"}
 	}
-	if msg.To == "" {
+	return nil
+}
+
+// checkAgentAddress keeps operator-only addressing out of agent sends.
+func checkAgentAddress(msg protocol.Message) *routingError {
+	switch {
+	case msg.To == "":
 		return &routingError{protocol.ErrMissingRecipient, "field to is required"}
+	case msg.To == protocol.OperatorID:
+		return &routingError{protocol.ErrUnknownRecipient, "the operator has no agent inbox; operator replies are not supported yet"}
+	case len(msg.Group) != 0 || len(msg.Excluded) != 0:
+		return &routingError{protocol.ErrMalformedFrame, "group sends are operator-only"}
 	}
-	return validateDurability(*in)
+	return nil
 }
 
 func broadcastRecipients(clients map[string]*Client, sender *Client) ([]protocol.Recipient, *routingError) {
@@ -207,7 +249,7 @@ func broadcastRecipients(clients map[string]*Client, sender *Client) ([]protocol
 			recipients = append(recipients, c.identity())
 		}
 	}
-	if len(recipients) > 256 {
+	if len(recipients) > protocol.MaxRecipients {
 		return nil, &routingError{protocol.ErrRecipientUnavailable, "broadcast exceeds 256 connected recipients; send to smaller groups directly"}
 	}
 	sort.Slice(recipients, func(i, j int) bool { return recipients[i].AgentID < recipients[j].AgentID })
@@ -225,7 +267,7 @@ func (h *Hub) persistRoute(ctx context.Context, in Inbound, recipients []protoco
 	out := protocol.Message{
 		Type: protocol.TypeMsg, Seq: h.seq, TS: &ts,
 		From: in.From.ID, SessionID: in.From.SessionID, To: msg.To,
-		Payload: msg.Payload, MessageID: msg.MessageID,
+		Payload: msg.Payload, MessageID: msg.MessageID, Origin: protocol.OriginAgent,
 		InReplyTo: msg.InReplyTo, AckRequested: msg.AckRequested, Durable: msg.Durable,
 	}
 	// Added broker metadata must still fit the receiver's frame limit.
@@ -287,8 +329,20 @@ func (h *Hub) reportUnavailable(clients map[string]*Client, sender *Client, msg 
 	h.enqueue(clients, sender, failure.frame(msg.MessageID))
 }
 
+// checkNoOrigin rejects a claimed origin: the broker assigns it from the connection.
+func checkNoOrigin(msg protocol.Message) *routingError {
+	if msg.Origin != "" {
+		return &routingError{protocol.ErrMalformedFrame, "origin is set by the broker and cannot be supplied by agents"}
+	}
+	return nil
+}
+
 func (h *Hub) acknowledge(ctx context.Context, clients map[string]*Client, in Inbound) {
 	msg := in.Msg
+	if err := checkNoOrigin(msg); err != nil {
+		h.enqueue(clients, in.From, err.frame(msg.MessageID))
+		return
+	}
 	sender, err := h.store.Acknowledge(ctx, store.Acknowledgment{MessageID: msg.MessageID, Recipient: in.From.identity(), Stage: msg.Stage, ProtocolVersion: in.From.ProtocolVersion})
 	if err != nil {
 		code, detail := protocol.ErrInternal, "acknowledgment not persisted"

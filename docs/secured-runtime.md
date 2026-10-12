@@ -47,6 +47,33 @@ The old workspace database is left untouched and is **not merged** into control.
 Export any needed workspace history before replacing its root disk. The control
 database survives broker crashes and control-container replacement.
 
+## Operator messages
+
+The human operator sends to agents from `secured`, never from the workspace. On
+the host (Linux: `local:`):
+
+```sh
+incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --to codex-1 "Please pause after this task."
+incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --group claude-1,codex-1 "Review starts now."
+incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --all --json "Stand-up in 5 minutes."
+```
+
+- **The endpoint:** `/run/collab-ai-operator/operator.sock` lives in a
+  `0700` runtime directory owned by `broker`, created and removed by
+  `collab-secured-broker`. It is on no shared volume, so the workspace never
+  sees it.
+- **Who it serves:** the broker accepts only UID 0 there (`SO_PEERCRED`,
+  checked before reading). So root in `secured`, and therefore Incus or host
+  administrators, act as the operator; workspace agents can't.
+- **What agents see:** messages arrive with `origin: operator` and
+  `from: operator`. Agents can't supply an origin or register the `operator`
+  ID.
+- **Audit:** every send and every rejected connection is recorded in
+  `operator_audit` in the control database, without message text. Use
+  `--message-id` to retry a send safely.
+- **Not available yet:** replies to the operator, an operator inbox, `attach`
+  and seat control (#69). See [protocol](protocol.md#origin-and-operator-messages-v4).
+
 ## Status, stop and restart
 
 On the host (Linux: `local:`):

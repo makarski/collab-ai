@@ -19,7 +19,7 @@ type RetrySnapshot struct {
 // LookupRetry does not create a message, change membership, rebind a sender, or
 // reroute. It reports retained state to the same logical sender after reconnect.
 func (s *Store) LookupRetry(ctx context.Context, request protocol.Message) (*RetrySnapshot, error) {
-	query := `SELECT mm.message_id,m.seq,m.ts,m.sender,mm.sender_session,m.recipient,m.payload,mm.in_reply_to FROM durable_messages d JOIN message_metadata mm USING(message_id) JOIN messages m USING(seq) WHERE d.message_id = ?`
+	query := `SELECT ` + durableColumns + ` FROM durable_messages d JOIN message_metadata mm USING(message_id) JOIN messages m USING(seq) WHERE d.message_id = ?`
 	msg, err := scanDurableMessage(s.db.QueryRowContext(ctx, query, request.MessageID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
