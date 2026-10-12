@@ -139,6 +139,37 @@ none.
 The `collab operator send` CLI wraps this endpoint (see
 [secured runtime](secured-runtime.md)).
 
+## Operator inbox (v5)
+
+Agents that negotiated v5 can write to the operator: `to: "operator"` with
+`durable` and `ack_requested`.
+- **Replies:** a message with `in_reply_to` must answer an operator message
+  that was sent to the sender (`invalid_reply` otherwise). A message without
+  it is a question or status update.
+- **Quotas:** each sender may have up to 16 messages and 512 KiB pending; the
+  inbox as a whole up to 256 messages and 8 MiB. The global limits still
+  apply. Over quota, the send is rejected with `inbox_full`.
+- **Older agents:** a v4 durable send returns `durability_unavailable`; a v4
+  non-durable send returns `unknown_recipient`.
+
+The operator endpoint gains three one-shot requests:
+
+| Request | Effect |
+| --- | --- |
+| `operator_receive {page_request: {after_seq, upper_seq, limit}}` | Returns `operator_page` with unacknowledged inbox messages in sequence order. `upper_seq: 0` starts a scan bounded by the highest committed message; echo the returned `upper_seq` to continue. It changes no receipts. |
+| `operator_received {message_ids}` | After the client has adopted a page, records `adapter_received` (1 to 32 IDs, all validated first). |
+| `operator_ack {message_id}` | The human's explicit receipt. Requires `adapter_received`. It means received, never approval or completion. |
+
+- Receipts and acknowledgments commit together with their audit rows, and
+  repeats are idempotent.
+- The original sender session is notified only on the first transition.
+- Unknown request types return `unsupported_operation`.
+
+**PR1 limitation:** these one-shot requests have no exclusive owner, so two
+concurrent receives can return the same messages. A live operator session with
+a single owner comes next (#77). `collab status` and the dashboard show the
+inbox's pending count; older brokers show it as unknown.
+
 Test interactively with `nc -U /tmp/collab-ai.sock`.
 
 Frames are limited to 1 MiB including the newline. A reader whose 64-frame outgoing

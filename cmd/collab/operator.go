@@ -21,17 +21,28 @@ import (
 // The operator endpoint exists only in secured and serves only the operator UID.
 const defaultOperatorSocket = "/run/collab-ai-operator/operator.sock"
 
-const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--json] [--timeout 5s] TEXT"
+const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID"
 
 type operatorSend struct {
 	socket, to, group, messageID string
+	inReplyTo                    string
 	all, asJSON                  bool
 	timeout                      time.Duration
 	text                         string
 }
 
 func runOperator(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "send" {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, operatorUsage)
+		return 2
+	}
+	switch args[0] {
+	case "receive":
+		return runOperatorReceive(ctx, args[1:], stdout, stderr)
+	case "ack":
+		return runOperatorAck(ctx, args[1:], stdout, stderr)
+	case "send":
+	default:
 		fmt.Fprintln(stderr, operatorUsage)
 		return 2
 	}
@@ -76,6 +87,7 @@ func parseOperatorSend(args []string, stderr io.Writer) (operatorSend, int) {
 	flags.StringVar(&cfg.group, "group", "", "comma-separated agent IDs")
 	flags.BoolVar(&cfg.all, "all", false, "all connected agents that can display origin")
 	flags.StringVar(&cfg.messageID, "message-id", "", "stable message ID for retries (generated when omitted)")
+	flags.StringVar(&cfg.inReplyTo, "in-reply-to", "", "message ID this answers (a correlation claim)")
 	flags.BoolVar(&cfg.asJSON, "json", false, "emit the broker response as JSON")
 	flags.DurationVar(&cfg.timeout, "timeout", 5*time.Second, "overall timeout, greater than zero and at most 30s")
 	if err := flags.Parse(args); err != nil {
@@ -151,8 +163,11 @@ func (cfg operatorSend) checkAll() error {
 }
 
 func (cfg operatorSend) validateOptions() error {
-	if cfg.socket == "" || len(cfg.messageID) > 128 {
-		return errors.New("a socket path is required and --message-id must be at most 128 bytes")
+	if cfg.socket == "" {
+		return errors.New("a socket path is required")
+	}
+	if max(len(cfg.messageID), len(cfg.inReplyTo)) > 128 {
+		return errors.New("--message-id and --in-reply-to must be at most 128 bytes")
 	}
 	if cfg.timeout <= 0 || cfg.timeout > 30*time.Second {
 		return errors.New("timeout must be greater than zero and at most 30s")
@@ -162,7 +177,7 @@ func (cfg operatorSend) validateOptions() error {
 
 func (cfg operatorSend) request() protocol.Message {
 	payload, _ := json.Marshal(map[string]string{"text": cfg.text})
-	msg := protocol.Message{Type: protocol.TypeOperatorSend, MessageID: cfg.messageID, Payload: payload}
+	msg := protocol.Message{Type: protocol.TypeOperatorSend, MessageID: cfg.messageID, InReplyTo: cfg.inReplyTo, Payload: payload}
 	switch {
 	case cfg.all:
 		msg.To = protocol.Broadcast

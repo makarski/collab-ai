@@ -56,7 +56,16 @@ the host (Linux: `local:`):
 incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --to codex-1 "Please pause after this task."
 incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --group claude-1,codex-1 "Review starts now."
 incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --all --json "Stand-up in 5 minutes."
+
+# Read the operator inbox, acknowledge a message, and answer it
+incus --project collab-ai exec colima-collab-ai:secured -- collab operator receive
+incus --project collab-ai exec colima-collab-ai:secured -- collab operator ack MESSAGE_ID
+incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --to codex-1 --in-reply-to MESSAGE_ID "Yes, go ahead."
 ```
+
+`receive` prints a page, then confirms receipt. Continue a scan with the
+printed `--after`/`--upper` values. `ack` records that you received the
+message; it is not approval.
 
 - **The endpoint:** `/run/collab-ai-operator/operator.sock` lives in a
   `0700` runtime directory owned by `broker`, created and removed by
@@ -71,7 +80,7 @@ incus --project collab-ai exec colima-collab-ai:secured -- collab operator send 
 - **Audit:** every send and every rejected connection is recorded in
   `operator_audit` in the control database, without message text. Use
   `--message-id` to retry a send safely.
-- **Not available yet:** replies to the operator, an operator inbox, `attach`
+- **Not available yet:** the interactive chat and live session (#77), `attach`
   and seat control (#69). See [protocol](protocol.md#origin-and-operator-messages-v4).
 
 ## Status, stop and restart

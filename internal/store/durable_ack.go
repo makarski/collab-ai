@@ -39,7 +39,7 @@ func (s *Store) acknowledgeDurable(ctx context.Context, ack Acknowledgment) (pro
 		return protocol.Recipient{}, err
 	}
 	if !receipt.acknowledged.Valid {
-		if err := updateDurableReceipt(ctx, tx, ack); err != nil {
+		if err := updateDurableReceipt(ctx, tx, ack, time.Now().UTC()); err != nil {
 			return protocol.Recipient{}, err
 		}
 	}
@@ -77,13 +77,12 @@ func (r durableReceipt) validate(ack Acknowledgment) error {
 	return nil
 }
 
-func updateDurableReceipt(ctx context.Context, tx *sql.Tx, ack Acknowledgment) error {
+func updateDurableReceipt(ctx context.Context, tx *sql.Tx, ack Acknowledgment, now time.Time) error {
 	column := "received_at"
 	legacyColumn := "adapter_received_at"
 	if ack.Stage == protocol.StageAgentAcknowledged {
 		column, legacyColumn = "acknowledged_at", "agent_acknowledged_at"
 	}
-	now := time.Now().UTC()
 	query := `UPDATE durable_inbox SET ` + column + ` = COALESCE(` + column + `, ?) WHERE message_id = ? AND agent_id = ?`
 	if _, err := tx.ExecContext(ctx, query, now, ack.MessageID, ack.Recipient.AgentID); err != nil {
 		return err

@@ -19,8 +19,9 @@ func validateReplyWait(id, from string, wait time.Duration) error {
 	if len(id) == 0 || len(id) > 128 {
 		return errors.New("message_id must be 1 to 128 bytes")
 	}
-	if err := protocol.ValidateAgentID(from); err != nil {
-		return errors.New("from must be an explicit agent ID, 1 to 128 bytes, other than *")
+	// The reserved operator can't register, but it can reply.
+	if err := protocol.ValidateAgentID(from); err != nil && from != protocol.OperatorID {
+		return errors.New("from must be an explicit agent ID or operator, 1 to 128 bytes, other than *")
 	}
 	if wait <= 0 || wait > 30*time.Second {
 		return errors.New("reply wait must be greater than zero and at most 30 seconds")

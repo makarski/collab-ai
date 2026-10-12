@@ -16,14 +16,20 @@ const (
 	TypeError   = "error"   // broker -> client, protocol or routing error
 	TypeAck     = "ack"     // client -> broker receipt; broker -> client persisted acknowledgment
 
-	TypeOperatorSend = "operator_send" // operator socket only: one request per connection
+	// Operator socket only: one request per connection.
+	TypeOperatorSend     = "operator_send"
+	TypeOperatorReceive  = "operator_receive"  // request a page of the operator inbox
+	TypeOperatorReceived = "operator_received" // confirm the client adopted received messages
+	TypeOperatorAck      = "operator_ack"      // the human's explicit receipt of one message
+	TypeOperatorPage     = "operator_page"     // response to operator_receive
 )
 
 const (
-	Version                = OriginVersion
+	Version                = OperatorInboxVersion
 	AcknowledgmentVersion  = 2
 	DurableVersion         = 3
 	OriginVersion          = 4
+	OperatorInboxVersion   = 5
 	StageAccepted          = "accepted"
 	StageAdapterReceived   = "adapter_received"
 	StageAgentAcknowledged = "agent_acknowledged"
@@ -92,6 +98,8 @@ const (
 	ErrInboxFull             = "inbox_full"
 	ErrDurabilityUnavailable = "durability_unavailable"
 	ErrForbidden             = "forbidden"
+	ErrInvalidReply          = "invalid_reply"
+	ErrUnsupportedOperation  = "unsupported_operation"
 )
 
 // Recipient freezes broadcast membership at acceptance, including inbox ownership.
@@ -102,6 +110,7 @@ type Recipient struct {
 
 // ReceiptState is retained per-recipient progress returned on an idempotent retry.
 type ReceiptState struct {
+	MessageID string `json:"message_id,omitempty"` // operator_received: the confirmed message
 	AgentID   string `json:"agent_id"`
 	SessionID string `json:"session_id,omitempty"`
 	Stage     string `json:"stage"`
@@ -133,8 +142,34 @@ type Message struct {
 	Origin          string          `json:"origin,omitempty"`           // msg (broker -> client): operator, agent or unknown
 	Group           []string        `json:"group,omitempty"`            // operator_send: explicit recipient set
 	Excluded        []string        `json:"excluded,omitempty"`         // operator accepted: connected agents left out of "*"
+	PageRequest     *PageRequest    `json:"page_request,omitempty"`     // operator_receive
+	Page            *OperatorPage   `json:"page,omitempty"`             // operator_page
+	MessageIDs      []string        `json:"message_ids,omitempty"`      // operator_received
 	Payload         json.RawMessage `json:"payload,omitempty"`          // msg: opaque JSON
 	Code            string          `json:"code,omitempty"`             // error
 	Detail          string          `json:"detail,omitempty"`           // error
 	TS              *time.Time      `json:"ts,omitempty"`               // msg (broker -> client), UTC; pointer so zero is omitted
+}
+
+// Operator inbox paging limits.
+const (
+	OperatorPageDefault = 16
+	OperatorPageMax     = 32
+)
+
+// PageRequest selects unacknowledged operator-inbox messages with
+// AfterSeq < seq <= UpperSeq. UpperSeq 0 starts a new scan bounded by the
+// highest committed message.
+type PageRequest struct {
+	AfterSeq uint64 `json:"after_seq"`
+	UpperSeq uint64 `json:"upper_seq"`
+	Limit    int    `json:"limit,omitempty"` // omitted or 0 means OperatorPageDefault
+}
+
+// OperatorPage is a live pending view: acknowledgments can remove rows from a scan.
+type OperatorPage struct {
+	Messages     []Message `json:"messages"`
+	NextAfterSeq uint64    `json:"next_after_seq"`
+	UpperSeq     uint64    `json:"upper_seq"`
+	More         bool      `json:"more"`
 }
