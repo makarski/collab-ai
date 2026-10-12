@@ -186,26 +186,45 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 }
 
 func prepareMessage(in *Inbound) *routingError {
-	msg := &in.Msg
+	for _, check := range agentEnvelopeChecks {
+		if err := check(in.Msg, in.From.ProtocolVersion); err != nil {
+			return err
+		}
+	}
+	if in.Msg.MessageID == "" {
+		in.Msg.MessageID = uuid.NewString()
+	}
+	return validateDurability(*in)
+}
+
+// agentEnvelopeChecks run in order before an ID is assigned or anything persists.
+var agentEnvelopeChecks = []func(protocol.Message, int) *routingError{
+	checkMsgType,
+	func(msg protocol.Message, _ int) *routingError { return checkNoOrigin(msg) },
+	checkIDLengths,
+	checkAckCapability,
+	func(msg protocol.Message, _ int) *routingError { return checkAgentAddress(msg) },
+}
+
+func checkMsgType(msg protocol.Message, _ int) *routingError {
 	if msg.Type != protocol.TypeMsg {
 		return &routingError{protocol.ErrMalformedFrame, "expected type msg or ack"}
 	}
-	if err := checkNoOrigin(*msg); err != nil {
-		return err
-	}
-	if msg.MessageID == "" {
-		msg.MessageID = uuid.NewString()
-	}
+	return nil
+}
+
+func checkIDLengths(msg protocol.Message, _ int) *routingError {
 	if len(msg.MessageID) > 128 || len(msg.InReplyTo) > 128 {
 		return &routingError{protocol.ErrMalformedFrame, "message_id and in_reply_to must be at most 128 bytes"}
 	}
-	if msg.AckRequested && in.From.ProtocolVersion < protocol.AcknowledgmentVersion {
+	return nil
+}
+
+func checkAckCapability(msg protocol.Message, version int) *routingError {
+	if msg.AckRequested && version < protocol.AcknowledgmentVersion {
 		return &routingError{protocol.ErrMalformedFrame, "ack_requested requires protocol_version 2 in hello"}
 	}
-	if err := checkAgentAddress(*msg); err != nil {
-		return err
-	}
-	return validateDurability(*in)
+	return nil
 }
 
 // checkAgentAddress keeps operator-only addressing out of agent sends.

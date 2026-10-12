@@ -235,35 +235,54 @@ func (h *Hub) operatorMember(ctx context.Context, clients map[string]*Client, id
 // operatorBroadcast freezes connected eligible agents in ID order. Agents below
 // v4 or with a full inbox are excluded; global limits then apply to all or none.
 func (h *Hub) operatorBroadcast(ctx context.Context, clients map[string]*Client, out protocol.Message) ([]protocol.Recipient, []string, *routingError) {
-	ids := make([]string, 0, len(clients))
-	for id := range clients {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
 	wire, err := store.DurableWireBytes(out)
 	if err != nil {
 		return nil, nil, &routingError{protocol.ErrMalformedFrame, "payload is not valid JSON"}
 	}
+	recipients, excluded, rerr := h.partitionBroadcast(ctx, sortedClients(clients), wire)
+	if rerr == nil {
+		rerr = checkBroadcastSize(recipients)
+	}
+	if rerr != nil {
+		return nil, nil, rerr
+	}
+	return recipients, excluded, nil
+}
+
+func sortedClients(clients map[string]*Client) []*Client {
+	sorted := make([]*Client, 0, len(clients))
+	for _, c := range clients {
+		sorted = append(sorted, c)
+	}
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
+	return sorted
+}
+
+func (h *Hub) partitionBroadcast(ctx context.Context, candidates []*Client, wire int) ([]protocol.Recipient, []string, *routingError) {
 	recipients := []protocol.Recipient{}
 	excluded := []string{}
-	for _, id := range ids {
-		eligible, rerr := h.broadcastEligible(ctx, clients[id], wire)
+	for _, c := range candidates {
+		eligible, rerr := h.broadcastEligible(ctx, c, wire)
 		if rerr != nil {
 			return nil, nil, rerr
 		}
 		if eligible {
-			recipients = append(recipients, clients[id].identity())
+			recipients = append(recipients, c.identity())
 		} else {
-			excluded = append(excluded, id)
+			excluded = append(excluded, c.ID)
 		}
 	}
+	return recipients, excluded, nil
+}
+
+func checkBroadcastSize(recipients []protocol.Recipient) *routingError {
 	if len(recipients) == 0 {
-		return nil, nil, &routingError{protocol.ErrRecipientUnavailable, "no eligible recipients"}
+		return &routingError{protocol.ErrRecipientUnavailable, "no eligible recipients"}
 	}
 	if len(recipients) > protocol.MaxRecipients {
-		return nil, nil, &routingError{protocol.ErrMalformedFrame, "too many recipients; send to smaller groups"}
+		return &routingError{protocol.ErrMalformedFrame, "too many recipients; send to smaller groups"}
 	}
-	return recipients, excluded, nil
+	return nil
 }
 
 // broadcastEligible admits a connected agent that can display origin and whose
