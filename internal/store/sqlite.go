@@ -221,13 +221,25 @@ type Acknowledgment struct {
 // Acknowledge authenticates receipt against the session that owned the inbox at
 // acceptance. Stages are monotonic and retries are idempotent.
 func (s *Store) Acknowledge(ctx context.Context, ack Acknowledgment) (protocol.Recipient, error) {
+	report, err := s.AcknowledgeReport(ctx, ack)
+	return report.Sender, err
+}
+
+// AcknowledgeReport is Acknowledge, also reporting first transitions on
+// operator-sent messages.
+func (s *Store) AcknowledgeReport(ctx context.Context, ack Acknowledgment) (AckReport, error) {
 	durable, err := s.isDurable(ctx, ack.MessageID)
 	if err != nil {
-		return protocol.Recipient{}, err
+		return AckReport{}, err
 	}
 	if durable {
 		return s.acknowledgeDurable(ctx, ack)
 	}
+	sender, err := s.acknowledgeLegacy(ctx, ack)
+	return AckReport{Sender: sender}, err
+}
+
+func (s *Store) acknowledgeLegacy(ctx context.Context, ack Acknowledgment) (protocol.Recipient, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return protocol.Recipient{}, err

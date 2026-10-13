@@ -44,13 +44,18 @@ func (o *OperatorServer) handleOperator(ctx context.Context, conn net.Conn) {
 	}
 
 	conn.SetReadDeadline(time.Now().Add(helloTimeout))
+	r := bufio.NewReader(conn)
 	var msg protocol.Message
-	if err := protocol.ReadFrame(bufio.NewReader(conn), &msg); err != nil {
+	if err := protocol.ReadFrame(r, &msg); err != nil {
 		o.audit(ctx, uid, store.AuditRejected, "unreadable request frame")
-		o.reply(conn, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrMalformedFrame, Detail: "expected one operator_send frame"})
+		o.reply(conn, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrMalformedFrame, Detail: "expected one operator request frame"})
 		return
 	}
 	conn.SetReadDeadline(time.Time{})
+	if msg.Type == protocol.TypeOperatorSessionOpen {
+		o.runSession(ctx, operatorSessionPeer{conn: conn, r: r, uid: uid}, msg)
+		return
+	}
 	o.reply(conn, o.hub.SubmitOperator(ctx, uid, msg))
 }
 
@@ -60,9 +65,11 @@ func (o *OperatorServer) audit(ctx context.Context, uid int, result, detail stri
 	}
 }
 
-func (o *OperatorServer) reply(conn net.Conn, msg protocol.Message) {
+func (o *OperatorServer) reply(conn net.Conn, msg protocol.Message) error {
 	conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	if err := protocol.WriteFrame(conn, msg); err != nil {
+	err := protocol.WriteFrame(conn, msg)
+	if err != nil {
 		o.log.Debug("operator write error", "error", err)
 	}
+	return err
 }

@@ -20,39 +20,63 @@ type durableReceipt struct {
 	session      string
 	received     sql.NullTime
 	acknowledged sql.NullTime
+	origin       sql.NullString
 }
 
-func (s *Store) acknowledgeDurable(ctx context.Context, ack Acknowledgment) (protocol.Recipient, error) {
+// AckReport says whom to notify and whether this acknowledgment was a first
+// transition on an operator-sent message, which the live session reports.
+type AckReport struct {
+	Sender        protocol.Recipient
+	FirstOperator bool
+}
+
+func (s *Store) acknowledgeDurable(ctx context.Context, ack Acknowledgment) (AckReport, error) {
 	if ack.ProtocolVersion < protocol.DurableVersion {
-		return protocol.Recipient{}, ErrInvalidAck
+		return AckReport{}, ErrInvalidAck
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return protocol.Recipient{}, err
+		return AckReport{}, err
 	}
 	defer tx.Rollback()
+	report, err := applyDurableAck(ctx, tx, ack)
+	if err != nil {
+		return AckReport{}, err
+	}
+	return report, tx.Commit()
+}
+
+// applyDurableAck validates and records one acknowledgment inside tx.
+func applyDurableAck(ctx context.Context, tx *sql.Tx, ack Acknowledgment) (AckReport, error) {
 	receipt, err := readDurableReceipt(ctx, tx, ack)
 	if err != nil {
-		return protocol.Recipient{}, err
+		return AckReport{}, err
 	}
 	if err := receipt.validate(ack); err != nil {
-		return protocol.Recipient{}, err
+		return AckReport{}, err
 	}
-	if !receipt.acknowledged.Valid {
-		if err := updateDurableReceipt(ctx, tx, ack, time.Now().UTC()); err != nil {
-			return protocol.Recipient{}, err
-		}
+	report := AckReport{Sender: receipt.sender, FirstOperator: receipt.firstOperatorTransition(ack.Stage)}
+	if receipt.acknowledged.Valid {
+		return report, nil
 	}
-	if err := tx.Commit(); err != nil {
-		return protocol.Recipient{}, err
+	return report, updateDurableReceipt(ctx, tx, ack, time.Now().UTC())
+}
+
+func (r durableReceipt) firstOperatorTransition(stage string) bool {
+	return r.firstTransition(stage) && r.origin.String == protocol.OriginOperator
+}
+
+func (r durableReceipt) firstTransition(stage string) bool {
+	if r.acknowledged.Valid {
+		return false
 	}
-	return receipt.sender, nil
+	return stage == protocol.StageAgentAcknowledged || !r.received.Valid
 }
 
 func readDurableReceipt(ctx context.Context, tx *sql.Tx, ack Acknowledgment) (durableReceipt, error) {
 	var r durableReceipt
-	query := `SELECT m.sender, mm.sender_session, i.session_id, i.received_at, i.acknowledged_at FROM durable_inbox i JOIN message_metadata mm USING(message_id) JOIN messages m USING(seq) WHERE i.message_id = ? AND i.agent_id = ?`
-	err := tx.QueryRowContext(ctx, query, ack.MessageID, ack.Recipient.AgentID).Scan(&r.sender.AgentID, &r.sender.SessionID, &r.session, &r.received, &r.acknowledged)
+	query := `SELECT m.sender, mm.sender_session, i.session_id, i.received_at, i.acknowledged_at, mm.origin FROM durable_inbox i JOIN message_metadata mm USING(message_id) JOIN messages m USING(seq) WHERE i.message_id = ? AND i.agent_id = ?`
+	err := tx.QueryRowContext(ctx, query, ack.MessageID, ack.Recipient.AgentID).Scan(&r.sender.AgentID, &r.sender.SessionID, &r.session, &r.received, &r.acknowledged, &r.origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ErrInvalidAck
 	}

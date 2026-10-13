@@ -11,24 +11,36 @@ import (
 	"collab-ai/internal/store"
 )
 
+type operatorRequestKind int
+
+const (
+	reqOneShot operatorRequestKind = iota
+	reqOpen
+	reqSession
+	reqClose
+)
+
 type operatorRequest struct {
 	ctx   context.Context
 	uid   int
 	msg   protocol.Message
 	reply chan protocol.Message
+	kind  operatorRequestKind
+	sess  *OperatorSession
 }
 
 // SubmitOperator routes one request from an authenticated operator connection
 // and returns its response frame. The caller has already verified the peer UID.
 func (h *Hub) SubmitOperator(ctx context.Context, uid int, msg protocol.Message) protocol.Message {
-	req := operatorRequest{ctx: ctx, uid: uid, msg: msg, reply: make(chan protocol.Message, 1)}
-	unavailable := protocol.Message{Type: protocol.TypeError, Code: protocol.ErrInternal, Detail: "broker is shutting down", MessageID: msg.MessageID}
-	select {
-	case <-h.done:
+	return h.submit(ctx, operatorRequest{ctx: ctx, uid: uid, msg: msg})
+}
+
+// submit hands a request to the hub and waits for its response.
+func (h *Hub) submit(ctx context.Context, req operatorRequest) protocol.Message {
+	req.reply = make(chan protocol.Message, 1)
+	unavailable := protocol.Message{Type: protocol.TypeError, Code: protocol.ErrInternal, Detail: "broker is shutting down", MessageID: req.msg.MessageID, RequestID: req.msg.RequestID}
+	if !h.enqueueOperator(ctx, req) {
 		return unavailable
-	case <-ctx.Done():
-		return unavailable
-	case h.operator <- req:
 	}
 	select {
 	case <-h.done:
@@ -63,6 +75,10 @@ func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req
 		return h.operatorReceived(ctx, clients, req)
 	case protocol.TypeOperatorAck:
 		return h.operatorAck(ctx, clients, req)
+	case protocol.TypeOperatorSessionOpen, protocol.TypeOperatorSnapshot, protocol.TypeOperatorMessageStages:
+		rerr := &routingError{protocol.ErrInvalidState, "this request needs an open operator session"}
+		h.auditRejected(ctx, "request", req, rerr)
+		return rerr.frame(req.msg.MessageID)
 	}
 	rerr := &routingError{protocol.ErrUnsupportedOperation, "unsupported operator request type"}
 	h.auditRejected(ctx, "request", req, rerr)
@@ -125,6 +141,7 @@ func (h *Hub) commitOperator(ctx context.Context, clients map[string]*Client, se
 	if err != nil {
 		return protocol.Message{}, h.persistenceError(out.MessageID, err)
 	}
+	h.emit(protocol.SessionEvent{Kind: protocol.EventConversationChanged, Seq: out.Seq, MessageID: out.MessageID, Direction: "sent"})
 	for _, r := range recipients {
 		if c := sessionOwner(clients, r); c != nil {
 			h.enqueue(clients, c, out) // An undelivered durable frame stays pending for replay.

@@ -32,6 +32,10 @@ func (h *Hub) operatorReceive(ctx context.Context, req operatorRequest) protocol
 
 // operatorReceived confirms that the client adopted these messages.
 func (h *Hub) operatorReceived(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
+	if busy := h.ownerBusy(req); busy != nil {
+		h.auditRejected(ctx, "received", req, &routingError{busy.Code, busy.Detail})
+		return *busy
+	}
 	ids, rerr := receivedIDs(req.msg.MessageIDs)
 	if rerr != nil {
 		h.auditRejected(ctx, "received", req, rerr)
@@ -47,11 +51,18 @@ func (h *Hub) operatorReceived(ctx context.Context, clients map[string]*Client, 
 	for _, t := range transitions {
 		h.notifySender(clients, t)
 	}
+	if len(transitions) > 0 {
+		h.emitInbox(ctx)
+	}
 	return protocol.Message{Type: protocol.TypeAck, Stage: protocol.StageAdapterReceived, AgentID: protocol.OperatorID, Receipts: receipts}
 }
 
 // operatorAck records the human's explicit receipt; it is not approval.
 func (h *Hub) operatorAck(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
+	if busy := h.ownerBusy(req); busy != nil {
+		h.auditRejected(ctx, "ack", req, &routingError{busy.Code, busy.Detail})
+		return *busy
+	}
 	id := req.msg.MessageID
 	if id == "" || len(id) > 128 {
 		rerr := &routingError{protocol.ErrMalformedFrame, "message_id must be 1 to 128 bytes"}
@@ -66,6 +77,7 @@ func (h *Hub) operatorAck(ctx context.Context, clients map[string]*Client, req o
 	}
 	if transition != nil {
 		h.notifySender(clients, *transition)
+		h.emitInbox(ctx)
 	}
 	return protocol.Message{Type: protocol.TypeAck, MessageID: id, Stage: protocol.StageAgentAcknowledged, AgentID: protocol.OperatorID}
 }

@@ -19,7 +19,7 @@ func (h *Hub) connect(clients map[string]*Client, c *Client) {
 		rejectRegistration(c, protocol.Message{Code: protocol.ErrInternal, Detail: "session not persisted; registration rejected"})
 		return
 	}
-	pending, err := h.claimPending(c)
+	pending, reclaimed, err := h.claimPending(c)
 	if err != nil {
 		h.log.Error("recover inbox failed", "agent_id", c.ID, "error", err)
 		h.recordDisconnect(c)
@@ -34,6 +34,7 @@ func (h *Hub) connect(clients map[string]*Client, c *Client) {
 			return
 		}
 	}
+	h.noteConnected(c, reclaimed)
 	h.log.Info("agent connected", "agent_id", c.ID, "session_id", c.SessionID, "replayed", len(pending), "online", len(clients))
 }
 
@@ -43,13 +44,13 @@ func rejectRegistration(c *Client, frame protocol.Message) {
 	close(c.Send)
 }
 
-func (h *Hub) claimPending(c *Client) ([]protocol.Message, error) {
+func (h *Hub) claimPending(c *Client) ([]protocol.Message, []string, error) {
 	if c.ProtocolVersion < protocol.DurableVersion {
-		return nil, nil
+		return nil, nil, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return h.store.ClaimPendingFor(ctx, c.identity(), c.ProtocolVersion)
+	return h.store.ClaimPendingReport(ctx, c.identity(), c.ProtocolVersion)
 }
 
 func validateDurability(in Inbound) *routingError {

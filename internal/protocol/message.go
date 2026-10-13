@@ -22,6 +22,13 @@ const (
 	TypeOperatorReceived = "operator_received" // confirm the client adopted received messages
 	TypeOperatorAck      = "operator_ack"      // the human's explicit receipt of one message
 	TypeOperatorPage     = "operator_page"     // response to operator_receive
+
+	// Live operator session.
+	TypeOperatorSessionOpen   = "operator_session_open"
+	TypeOperatorSession       = "operator_session" // response to operator_session_open
+	TypeOperatorSnapshot      = "operator_snapshot"
+	TypeOperatorMessageStages = "operator_message_stages"
+	TypeEvent                 = "event"
 )
 
 const (
@@ -100,6 +107,9 @@ const (
 	ErrForbidden             = "forbidden"
 	ErrInvalidReply          = "invalid_reply"
 	ErrUnsupportedOperation  = "unsupported_operation"
+	ErrOwnerBusy             = "owner_busy"
+	ErrInvalidState          = "invalid_state"
+	ErrInvalidMessage        = "invalid_message"
 )
 
 // Recipient freezes broadcast membership at acceptance, including inbox ownership.
@@ -119,36 +129,45 @@ type ReceiptState struct {
 // Message is the single frame type used in both directions.
 // Fields are populated depending on Type.
 type Message struct {
-	Status          *StatusSnapshot `json:"status,omitempty"` // status response only
-	Type            string          `json:"type"`
-	ProtocolVersion int             `json:"protocol_version,omitempty"` // hello/welcome capability negotiation
-	MessageID       string          `json:"message_id,omitempty"`
-	InReplyTo       string          `json:"in_reply_to,omitempty"`
-	AckRequested    bool            `json:"ack_requested,omitempty"`    // msg: request staged acknowledgments
-	Durable         bool            `json:"durable,omitempty"`          // v3: retained until explicit agent acknowledgment
-	Replayed        bool            `json:"replayed,omitempty"`         // delivery on a replacement connection
-	Repeated        bool            `json:"repeated,omitempty"`         // accepted: idempotent send retry; no new delivery
-	Stage           string          `json:"stage,omitempty"`            // ack
-	Recipients      []Recipient     `json:"recipients,omitempty"`       // accepted: fixed membership
-	Receipts        []ReceiptState  `json:"receipts,omitempty"`         // repeated acceptance: latest retained progress
-	Seq             uint64          `json:"seq,omitempty"`              // broker-assigned global order (msg, welcome)
-	AgentID         string          `json:"agent_id,omitempty"`         // hello, welcome
-	SessionID       string          `json:"session_id,omitempty"`       // broker-assigned connection identity
-	OwnerSessionID  string          `json:"owner_session_id,omitempty"` // duplicate_id: current inbox owner
-	Harness         string          `json:"harness,omitempty"`          // hello: e.g. "claude-code 1.5"
-	Model           string          `json:"model,omitempty"`            // hello: e.g. "claude-sonnet-4"
-	From            string          `json:"from,omitempty"`             // msg (broker -> client)
-	To              string          `json:"to,omitempty"`               // msg: agent id or "*"
-	Origin          string          `json:"origin,omitempty"`           // msg (broker -> client): operator, agent or unknown
-	Group           []string        `json:"group,omitempty"`            // operator_send: explicit recipient set
-	Excluded        []string        `json:"excluded,omitempty"`         // operator accepted: connected agents left out of "*"
-	PageRequest     *PageRequest    `json:"page_request,omitempty"`     // operator_receive
-	Page            *OperatorPage   `json:"page,omitempty"`             // operator_page
-	MessageIDs      []string        `json:"message_ids,omitempty"`      // operator_received
-	Payload         json.RawMessage `json:"payload,omitempty"`          // msg: opaque JSON
-	Code            string          `json:"code,omitempty"`             // error
-	Detail          string          `json:"detail,omitempty"`           // error
-	TS              *time.Time      `json:"ts,omitempty"`               // msg (broker -> client), UTC; pointer so zero is omitted
+	Status          *StatusSnapshot   `json:"status,omitempty"` // status response only
+	Type            string            `json:"type"`
+	ProtocolVersion int               `json:"protocol_version,omitempty"` // hello/welcome capability negotiation
+	MessageID       string            `json:"message_id,omitempty"`
+	InReplyTo       string            `json:"in_reply_to,omitempty"`
+	AckRequested    bool              `json:"ack_requested,omitempty"`    // msg: request staged acknowledgments
+	Durable         bool              `json:"durable,omitempty"`          // v3: retained until explicit agent acknowledgment
+	Replayed        bool              `json:"replayed,omitempty"`         // delivery on a replacement connection
+	Repeated        bool              `json:"repeated,omitempty"`         // accepted: idempotent send retry; no new delivery
+	Stage           string            `json:"stage,omitempty"`            // ack
+	Recipients      []Recipient       `json:"recipients,omitempty"`       // accepted: fixed membership
+	Receipts        []ReceiptState    `json:"receipts,omitempty"`         // repeated acceptance: latest retained progress
+	Seq             uint64            `json:"seq,omitempty"`              // broker-assigned global order (msg, welcome)
+	AgentID         string            `json:"agent_id,omitempty"`         // hello, welcome
+	SessionID       string            `json:"session_id,omitempty"`       // broker-assigned connection identity
+	OwnerSessionID  string            `json:"owner_session_id,omitempty"` // duplicate_id: current inbox owner
+	Harness         string            `json:"harness,omitempty"`          // hello: e.g. "claude-code 1.5"
+	Model           string            `json:"model,omitempty"`            // hello: e.g. "claude-sonnet-4"
+	From            string            `json:"from,omitempty"`             // msg (broker -> client)
+	To              string            `json:"to,omitempty"`               // msg: agent id or "*"
+	Origin          string            `json:"origin,omitempty"`           // msg (broker -> client): operator, agent or unknown
+	Group           []string          `json:"group,omitempty"`            // operator_send: explicit recipient set
+	Excluded        []string          `json:"excluded,omitempty"`         // operator accepted: connected agents left out of "*"
+	PageRequest     *PageRequest      `json:"page_request,omitempty"`     // operator_receive
+	Page            *OperatorPage     `json:"page,omitempty"`             // operator_page
+	MessageIDs      []string          `json:"message_ids,omitempty"`      // operator_received
+	RequestID       string            `json:"request_id,omitempty"`       // operator session requests and their responses
+	Client          string            `json:"client,omitempty"`           // operator_session_open
+	Session         *SessionInfo      `json:"session,omitempty"`          // operator_session
+	Owner           *SessionInfo      `json:"owner,omitempty"`            // owner_busy
+	Snapshot        *OperatorSnapshot `json:"snapshot,omitempty"`         // operator_snapshot response
+	Stages          *StagePage        `json:"stages,omitempty"`           // operator_message_stages response
+	Event           *SessionEvent     `json:"event,omitempty"`            // event
+	AfterAgent      string            `json:"after_agent,omitempty"`      // operator_message_stages
+	Limit           int               `json:"limit,omitempty"`            // operator_message_stages
+	Payload         json.RawMessage   `json:"payload,omitempty"`          // msg: opaque JSON
+	Code            string            `json:"code,omitempty"`             // error
+	Detail          string            `json:"detail,omitempty"`           // error
+	TS              *time.Time        `json:"ts,omitempty"`               // msg (broker -> client), UTC; pointer so zero is omitted
 }
 
 // Operator inbox paging limits.
