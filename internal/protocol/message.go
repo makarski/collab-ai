@@ -28,6 +28,7 @@ const (
 	TypeOperatorSession       = "operator_session" // response to operator_session_open
 	TypeOperatorSnapshot      = "operator_snapshot"
 	TypeOperatorMessageStages = "operator_message_stages"
+	TypeOperatorHistory       = "operator_history" // request and response
 	TypeEvent                 = "event"
 )
 
@@ -164,6 +165,7 @@ type Message struct {
 	Event           *SessionEvent     `json:"event,omitempty"`            // event
 	AfterAgent      string            `json:"after_agent,omitempty"`      // operator_message_stages
 	Limit           int               `json:"limit,omitempty"`            // operator_message_stages
+	History         *HistoryPage      `json:"history,omitempty"`          // operator_history response
 	Payload         json.RawMessage   `json:"payload,omitempty"`          // msg: opaque JSON
 	Code            string            `json:"code,omitempty"`             // error
 	Detail          string            `json:"detail,omitempty"`           // error
@@ -180,9 +182,10 @@ const (
 // AfterSeq < seq <= UpperSeq. UpperSeq 0 starts a new scan bounded by the
 // highest committed message.
 type PageRequest struct {
-	AfterSeq uint64 `json:"after_seq"`
-	UpperSeq uint64 `json:"upper_seq"`
-	Limit    int    `json:"limit,omitempty"` // omitted or 0 means OperatorPageDefault
+	AfterSeq  uint64 `json:"after_seq"`
+	UpperSeq  uint64 `json:"upper_seq"`
+	Limit     int    `json:"limit,omitempty"`      // omitted or 0 means OperatorPageDefault (history: HistoryDefault)
+	BeforeSeq uint64 `json:"before_seq,omitempty"` // operator_history: exclusive; 0 means no cut
 }
 
 // OperatorPage is a live pending view: acknowledgments can remove rows from a scan.

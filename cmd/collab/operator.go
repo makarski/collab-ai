@@ -21,7 +21,7 @@ import (
 // The operator endpoint exists only in secured and serves only the operator UID.
 const defaultOperatorSocket = "/run/collab-ai-operator/operator.sock"
 
-const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID"
+const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID\n       collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json]"
 
 type operatorSend struct {
 	socket, to, group, messageID string
@@ -41,6 +41,8 @@ func runOperator(ctx context.Context, args []string, stdout, stderr io.Writer) i
 		return runOperatorReceive(ctx, args[1:], stdout, stderr)
 	case "ack":
 		return runOperatorAck(ctx, args[1:], stdout, stderr)
+	case "history":
+		return runOperatorHistory(ctx, args[1:], stdout, stderr)
 	case "send":
 	default:
 		fmt.Fprintln(stderr, operatorUsage)

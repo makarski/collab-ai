@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -118,4 +119,42 @@ func (h *Hub) inboxError(action string, err error) *routingError {
 	}
 	h.log.Error("operator inbox operation failed", "action", action, "error", err)
 	return &routingError{protocol.ErrInternal, "operator inbox unavailable; nothing changed"}
+}
+
+// operatorHistory returns a read-only page of the operator's conversation.
+// It returns message text, so it is audited; without the audit row, nothing
+// is returned.
+func (h *Hub) operatorHistory(ctx context.Context, req operatorRequest) protocol.Message {
+	var page protocol.PageRequest
+	if req.msg.PageRequest != nil {
+		page = *req.msg.PageRequest
+	}
+	out, err := h.store.ReadOperatorHistory(ctx, store.HistoryQuery{Page: page, Budget: h.historyBudget(req.msg.RequestID)})
+	if err != nil {
+		rerr := h.inboxError("history", err)
+		h.auditRejected(ctx, "history", req, rerr)
+		return rerr.frame("")
+	}
+	detail := fmt.Sprintf("before=%d upper=%d count=%d more=%t", page.BeforeSeq, out.UpperSeq, len(out.Entries), out.More)
+	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "history", PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
+		h.log.Error("operator history audit failed; page not returned", "error", err)
+		return (&routingError{protocol.ErrInternal, "operator audit unavailable"}).frame("")
+	}
+	out.Watermark = h.watermark()
+	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &out}
+}
+
+// historyBudget is the frame limit minus the exact response envelope, with
+// every numeric field at its widest. The first entry's comma (counted by the
+// store) offsets the trailing newline.
+func (h *Hub) historyBudget(requestID string) int {
+	widest := ^uint64(0)
+	envelope := protocol.Message{Type: protocol.TypeOperatorHistory, RequestID: requestID, History: &protocol.HistoryPage{
+		Watermark: protocol.Watermark{Epoch: h.epoch, Revision: widest}, UpperSeq: widest, NextBeforeSeq: widest, More: false, // "false" is the wider boolean
+		Entries: []protocol.HistoryEntry{}}}
+	data, err := json.Marshal(envelope)
+	if err != nil {
+		return 0
+	}
+	return protocol.MaxFrameBytes - len(data)
 }

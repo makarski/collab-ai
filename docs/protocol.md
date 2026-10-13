@@ -202,6 +202,33 @@ The operator socket also accepts a long-lived session, which the operator chat
   within the write deadline is closed and releases ownership. An idle session
   never expires.
 
+## Operator history
+
+`operator_history {page_request: {before_seq, upper_seq, limit}}` returns the
+operator's conversation newest first: messages the operator sent, and messages
+in the operator inbox, including acknowledged ones. It works one-shot and
+inside a session, and it's read-only: no claim, no receipts, no
+acknowledgment.
+
+- **Paging:** `upper_seq: 0` starts a scan bounded by the highest committed
+  message; echo the returned `upper_seq` and pass `next_before_seq` as
+  `before_seq` to read older entries. `limit` is 1 to 32 (default 16).
+- **Entries:** each carries the full message, its direction (`sent` or
+  `received`) and the original `sender_session` as provenance.
+  - Sent entries add current recipient stages (at most 16, then
+    `receipts_truncated`; page more with `operator_message_stages`, which also
+    works one-shot).
+  - Received entries add the operator's own `operator_stage`.
+- **Payloads are never truncated.** New operator sends are capped at 512 KiB
+  of encoded payload. Older oversized operator messages appear with
+  `body_omitted: true`, and their text isn't available through history. A
+  message stored without any payload shows payload `null`.
+- **Audit:** every history read is audited without payloads; if the audit
+  fails, nothing is returned.
+
+`collab operator history [--before SEQ] [--upper SEQ] [--limit N] [--json]`
+prints one page and the continuation flags.
+
 Test interactively with `nc -U /tmp/collab-ai.sock`.
 
 Frames are limited to 1 MiB including the newline. A reader whose 64-frame outgoing

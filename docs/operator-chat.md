@@ -555,3 +555,157 @@ type SessionEvent struct {
   budget, non-consuming.
 - Takeover of a stuck session, read-only viewers, the chat UI (PR3), and team
   or forum groups (#73).
+
+## PR2b contract: operator history (final, Claude/Codex, 2026-10-13)
+
+**Goal:** the chat can show the operator's earlier conversation, not just what
+happened since it opened. Read-only: it never claims, receives or
+acknowledges anything, and never resets a session's subscription baseline.
+
+### Scope
+
+Two kinds of messages, matched by trusted provenance and never by a
+peer-supplied `from`:
+- messages **sent by the operator** (`origin = operator`)
+- messages **addressed to the operator** (rows in the operator inbox),
+  including acknowledged ones
+
+### Payload size: a cap instead of chunking
+
+- **New operator sends are capped at 512 KiB of payload** (`malformed_frame`
+  "payload too large" above that). It's an analogous ceiling to the per-sender
+  quota for agents writing to the operator, though that quota counts
+  `DurableWireBytes` for the whole delivery. Every new history entry therefore
+  fits in a page with its envelope, so no chunked fetch protocol is needed.
+  - The 512 KiB are measured on the **final JSON-encoded payload** as
+    `WriteFrame` writes it (`json.Marshal` can expand HTML characters and
+    Unicode separators), not on the raw input length. The exact serialized
+    check on the history frame stays as well.
+  - The cap applies **after** `LookupOperatorRetry`, at the new-admission
+    boundary (`commitOperator`). An exact retry of an earlier accepted message
+    over 512 KiB keeps its retained outcome; a changed retry stays
+    `duplicate_message`.
+- **Older oversized operator messages,** possible since #75, appear with an
+  entry-level `body_omitted: true`, and the message has no `payload` field.
+  (A JSON `null` payload is still a legitimate inline payload.) Their text is
+  documented as unavailable through history. Nothing promises a fetch that
+  might not fit, so history is not complete body recovery.
+- A body is omitted only when that single entry can't fit an otherwise empty
+  page. Rows are never skipped to fill a page.
+- **A message stored without a payload** (`operator_send` has always accepted
+  a missing payload) appears with payload `null`. That's distinct from an
+  omitted body: the message simply had no payload.
+
+### Request
+
+`operator_history {request_id?, page_request: {before_seq, upper_seq, limit}}`
+is available as a one-shot request and inside a session. It's read-only, so
+it isn't refused while a session owns the inbox.
+
+- **`upper_seq`:** 0 starts a scan bounded by the highest committed message
+  (`MAX(messages.seq)`), read in the same transaction as the rows. Otherwise
+  it must be ≤ the committed maximum. The returned `upper_seq` is echoed on
+  later pages.
+- **`before_seq`:** 0 means no cut. Otherwise it must be ≤ `upper_seq`; it's
+  exclusive and doesn't need to match an existing row (gaps are fine).
+- **Rows:** `seq ≤ upper_seq AND (before_seq = 0 OR seq < before_seq)`, newest
+  first.
+- **Limit:** omitted or 0 means 16; 1 to 32 is valid. A negative or
+  overflowing value, or an invalid cursor, is `malformed_frame`.
+- **No matching history:**
+  - An empty committed database returns `upper_seq` 0, an empty page and
+    `more = false`.
+  - A non-empty database with no matching messages returns the captured
+    global `upper_seq`, an empty page and `more = false`.
+
+### Response
+
+`{type: "operator_history", request_id?, history}` with:
+- `watermark`, read in the same hub step
+- `upper_seq`
+- `next_before_seq`: the seq of the oldest returned entry, unchanged on an
+  empty page
+- `more`: exact, using the same scope and bounds in the same read transaction
+- `entries`, each holding:
+  - `message`: the full message, with origin, from, to, in_reply_to, payload
+    (or `body_omitted`), seq and ts. Message IDs are immutable.
+  - `direction`: `sent` or `received`
+  - `body_omitted`: entry-level, present and true only when the payload was
+    omitted
+  - `sender_session`: the original sender's session, shown as provenance only,
+    never as the current owner. The operator inbox's placeholder session is
+    always hidden.
+  - for sent messages: `recipients` (current stages, at most 16) and
+    `receipts_truncated`; larger fan-outs page through
+    `operator_message_stages`
+  - for received messages: `operator_stage`, the operator's own current
+    receipt stage. Pending means anything other than `agent_acknowledged`, so
+    no separate pending flag.
+
+### Wire (exact names)
+
+```go
+// PageRequest gains: BeforeSeq uint64 `json:"before_seq,omitempty"`
+// Message gains:     History *HistoryPage `json:"history,omitempty"`
+// Request and response type: "operator_history" (TypeOperatorHistory)
+
+type HistoryPage struct {
+    Watermark     Watermark      `json:"watermark"`
+    UpperSeq      uint64         `json:"upper_seq"`
+    NextBeforeSeq uint64         `json:"next_before_seq"`
+    More          bool           `json:"more"`
+    Entries       []HistoryEntry `json:"entries"`
+}
+type HistoryEntry struct {
+    Message           Message          `json:"message"`                      // no "payload" key when body_omitted
+    Direction         string           `json:"direction"`                    // sent | received
+    BodyOmitted       bool             `json:"body_omitted,omitempty"`
+    SenderSession     string           `json:"sender_session,omitempty"`     // provenance; never the operator placeholder
+    Recipients        []RecipientStage `json:"recipients,omitempty"`         // sent only, at most 16
+    ReceiptsTruncated bool             `json:"receipts_truncated,omitempty"` // sent only
+    OperatorStage     string           `json:"operator_stage,omitempty"`     // received only
+}
+```
+
+`message.session_id` is left empty in entries; provenance is in
+`sender_session`.
+
+### Consistency
+
+- `upper_seq` freezes which messages are in the scan, not their receipts.
+  Acknowledged entries stay in history. Stages are current at watermark `W`
+  and can change or be reclaimed later.
+- The PR2 per-entity watermark rules apply when a client merges history stages
+  with events.
+- Cursors survive a restart of the same database. A new epoch resets merged
+  state. After a database restore, start a new scan (as in PR1).
+
+### `operator_message_stages` as a one-shot read
+
+It is also allowed outside a session: a read-only metadata read with no
+ownership or receipt effects and no audit, as in PR2. Truncated receipts in a
+one-shot history can therefore be paged without opening a session.
+
+### Audit
+
+History returns message text, so each request writes one audit row with
+bounds, count and result, never payloads. A failed audit means `internal`,
+nothing is returned, and the watermark is unchanged.
+
+### Capabilities and compatibility
+
+- The session's capability list gains `history`.
+- An older broker answers `operator_history` with `unsupported_operation` (or
+  `malformed_frame` for build.132). The CLI keeps the broker's detail and adds
+  a conditional upgrade hint.
+
+### CLI
+
+`collab operator history [--socket P] [--before SEQ] [--upper SEQ] [--limit N] [--json] [--timeout D]`:
+- one page per call
+- validates the whole page before printing: descending unique seqs, unique
+  IDs, valid direction and scope fields, cursors and omission flags
+- never sends `received` and persists no cursor
+- prints the continuation (`--before`/`--upper`), and states plainly when a
+  body was omitted and isn't available
+- peer text is quoted, and a correlation is labeled as a claim

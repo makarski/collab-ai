@@ -23,7 +23,7 @@ const (
 )
 
 // SessionCapabilities are advertised in the operator_session response.
-var SessionCapabilities = []string{"send", "receive", "received", "ack", "snapshot", "message_stages", "events"}
+var SessionCapabilities = []string{"send", "receive", "received", "ack", "snapshot", "message_stages", "events", "history"}
 
 // Watermark orders session state: Revision increases by one per event within
 // an Epoch, which is new on every broker start.
@@ -97,4 +97,34 @@ type SessionEvent struct {
 	Stage           string    `json:"stage,omitempty"`
 	State           string    `json:"state,omitempty"`
 	ProtocolVersion int       `json:"protocol_version,omitempty"`
+}
+
+// Operator history limits. New operator payloads are capped so every new
+// history entry fits a page with its envelope.
+const (
+	OperatorPayloadMax = 512 << 10
+	HistoryDefault     = 16
+	HistoryMax         = 32
+	HistoryStages      = 16
+)
+
+// HistoryPage is a newest-first page of the operator's conversation.
+type HistoryPage struct {
+	Watermark     Watermark      `json:"watermark"`
+	UpperSeq      uint64         `json:"upper_seq"`
+	NextBeforeSeq uint64         `json:"next_before_seq"`
+	More          bool           `json:"more"`
+	Entries       []HistoryEntry `json:"entries"`
+}
+
+// HistoryEntry carries a message sent by or to the operator. When BodyOmitted
+// is set, the message has no payload field; its text isn't available here.
+type HistoryEntry struct {
+	Message           Message          `json:"message"`
+	Direction         string           `json:"direction"`
+	BodyOmitted       bool             `json:"body_omitted,omitempty"`
+	SenderSession     string           `json:"sender_session,omitempty"`
+	Recipients        []RecipientStage `json:"recipients,omitempty"`
+	ReceiptsTruncated bool             `json:"receipts_truncated,omitempty"`
+	OperatorStage     string           `json:"operator_stage,omitempty"`
 }

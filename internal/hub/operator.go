@@ -75,7 +75,11 @@ func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req
 		return h.operatorReceived(ctx, clients, req)
 	case protocol.TypeOperatorAck:
 		return h.operatorAck(ctx, clients, req)
-	case protocol.TypeOperatorSessionOpen, protocol.TypeOperatorSnapshot, protocol.TypeOperatorMessageStages:
+	case protocol.TypeOperatorHistory:
+		return h.operatorHistory(ctx, req)
+	case protocol.TypeOperatorMessageStages:
+		return h.messageStages(ctx, req)
+	case protocol.TypeOperatorSessionOpen, protocol.TypeOperatorSnapshot:
 		rerr := &routingError{protocol.ErrInvalidState, "this request needs an open operator session"}
 		h.auditRejected(ctx, "request", req, rerr)
 		return rerr.frame(req.msg.MessageID)
@@ -128,6 +132,9 @@ func (h *Hub) repeatOperator(ctx context.Context, send operatorSend, retry *stor
 
 // commitOperator freezes recipients, persists with the audit result, then delivers.
 func (h *Hub) commitOperator(ctx context.Context, clients map[string]*Client, send operatorSend) (protocol.Message, *routingError) {
+	if rerr := checkOperatorPayload(send.msg.Payload); rerr != nil {
+		return protocol.Message{}, rerr
+	}
 	out := operatorFrame(send, h.seq+1)
 	recipients, excluded, rerr := h.operatorRecipients(ctx, clients, out, send.scope)
 	if rerr == nil {
@@ -340,6 +347,19 @@ func checkFrameSize(out protocol.Message) *routingError {
 	}
 	if len(encoded)+1 > protocol.MaxFrameBytes {
 		return &routingError{protocol.ErrMalformedFrame, "routed message exceeds the 1 MiB frame limit"}
+	}
+	return nil
+}
+
+// checkOperatorPayload caps new operator sends on their encoded wire form, so
+// every new history entry fits a page. Exact retries resolve before this check.
+func checkOperatorPayload(payload json.RawMessage) *routingError {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return &routingError{protocol.ErrMalformedFrame, "payload is not valid JSON"}
+	}
+	if len(encoded) > protocol.OperatorPayloadMax {
+		return &routingError{protocol.ErrMalformedFrame, "payload too large; operator messages are limited to 512 KiB"}
 	}
 	return nil
 }
