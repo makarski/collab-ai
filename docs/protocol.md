@@ -165,9 +165,9 @@ The operator endpoint gains three one-shot requests:
 - The original sender session is notified only on the first transition.
 - Unknown request types return `unsupported_operation`.
 
-**PR1 limitation:** these one-shot requests have no exclusive owner, so two
-concurrent receives can return the same messages. A live operator session with
-a single owner comes next (#77). `collab status` and the dashboard show the
+Without a live session, these one-shot requests have no exclusive owner, so
+two concurrent receives can return the same messages. A live operator session
+(below) owns the inbox exclusively. `collab status` and the dashboard show the
 inbox's pending count; older brokers show it as unknown.
 
 ## Live operator session
