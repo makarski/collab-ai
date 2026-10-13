@@ -45,6 +45,19 @@ func sessionQueueEmpty(t *testing.T, s *OperatorSession) {
 	}
 }
 
+func sessionRequireQueueEvent(t *testing.T, msg protocol.Message, kind string, revision uint64) {
+	t.Helper()
+	if msg.Event == nil {
+		t.Fatalf("missing event: %+v", msg)
+	}
+	if msg.Event.Kind != kind {
+		t.Fatalf("event kind = %s, want %s", msg.Event.Kind, kind)
+	}
+	if msg.Event.Watermark.Revision != revision {
+		t.Fatalf("event revision = %d, want %d", msg.Event.Watermark.Revision, revision)
+	}
+}
+
 func TestOperatorSessionQueueOverflowRequiresSnapshotAndPreservesResponses(t *testing.T) {
 	s := NewOperatorSession(1)
 	sessionQueueCut(s, 0)
@@ -57,12 +70,7 @@ func TestOperatorSessionQueueOverflowRequiresSnapshotAndPreservesResponses(t *te
 		t.Fatalf("overflow dropped response: %+v", got)
 	}
 	marker := sessionQueueNext(t, s)
-	if marker.Event == nil || marker.Event.Kind != protocol.EventResyncRequired {
-		t.Fatalf("overflow wasn't explicit: %+v", marker)
-	}
-	if marker.Event.Watermark.Revision != 257 {
-		t.Fatalf("overflow watermark: %+v", marker.Event)
-	}
+	sessionRequireQueueEvent(t, marker, protocol.EventResyncRequired, 257)
 	// Once the marker is drained, more changes must stay suppressed until cut.
 	for i := 258; i <= 300; i++ {
 		s.pushEvent(sessionQueueEvent(uint64(i)))
@@ -72,9 +80,7 @@ func TestOperatorSessionQueueOverflowRequiresSnapshotAndPreservesResponses(t *te
 	if got := sessionQueueNext(t, s); got.Type != protocol.TypeOperatorSnapshot {
 		t.Fatalf("delta preceded resync response: %+v", got)
 	}
-	if got := sessionQueueNext(t, s); got.Event == nil || got.Event.Watermark.Revision != 301 {
-		t.Fatalf("resync failed to resume: %+v", got)
-	}
+	sessionRequireQueueEvent(t, sessionQueueNext(t, s), protocol.EventPresenceChanged, 301)
 	sessionQueueEmpty(t, s)
 }
 

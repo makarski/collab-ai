@@ -39,6 +39,15 @@ func (s *Store) acknowledgeDurable(ctx context.Context, ack Acknowledgment) (Ack
 		return AckReport{}, err
 	}
 	defer tx.Rollback()
+	report, err := applyDurableAck(ctx, tx, ack)
+	if err != nil {
+		return AckReport{}, err
+	}
+	return report, tx.Commit()
+}
+
+// applyDurableAck validates and records one acknowledgment inside tx.
+func applyDurableAck(ctx context.Context, tx *sql.Tx, ack Acknowledgment) (AckReport, error) {
 	receipt, err := readDurableReceipt(ctx, tx, ack)
 	if err != nil {
 		return AckReport{}, err
@@ -46,16 +55,15 @@ func (s *Store) acknowledgeDurable(ctx context.Context, ack Acknowledgment) (Ack
 	if err := receipt.validate(ack); err != nil {
 		return AckReport{}, err
 	}
-	first := receipt.firstTransition(ack.Stage)
-	if !receipt.acknowledged.Valid {
-		if err := updateDurableReceipt(ctx, tx, ack, time.Now().UTC()); err != nil {
-			return AckReport{}, err
-		}
+	report := AckReport{Sender: receipt.sender, FirstOperator: receipt.firstOperatorTransition(ack.Stage)}
+	if receipt.acknowledged.Valid {
+		return report, nil
 	}
-	if err := tx.Commit(); err != nil {
-		return AckReport{}, err
-	}
-	return AckReport{Sender: receipt.sender, FirstOperator: first && receipt.origin.String == protocol.OriginOperator}, nil
+	return report, updateDurableReceipt(ctx, tx, ack, time.Now().UTC())
+}
+
+func (r durableReceipt) firstOperatorTransition(stage string) bool {
+	return r.firstTransition(stage) && r.origin.String == protocol.OriginOperator
 }
 
 func (r durableReceipt) firstTransition(stage string) bool {

@@ -115,34 +115,43 @@ func TestOperatorSessionReaderRejectsDuplicateAndNinthInFlight(t *testing.T) {
 			opened := f.endpoint.hub.OpenOperatorSession(ctx, protocol.Message{Type: protocol.TypeOperatorSessionOpen, RequestID: "open"}, sess)
 			operatorEqual(t, "reader session open", opened.Type, protocol.TypeOperatorSession)
 			defer f.endpoint.hub.CloseOperatorSession(sess)
-			count := 9
-			if duplicate {
-				count = 2
-			}
-			var input bytes.Buffer
-			for i := 0; i < count; i++ {
-				id := fmt.Sprintf("request-%d", i)
-				if duplicate {
-					id = "duplicate"
-				}
-				operatorNoError(t, json.NewEncoder(&input).Encode(map[string]string{"type": "unknown-op", "request_id": id}))
-			}
+			input := sessionInflightInput(t, duplicate)
 			// No writer runs, so all accepted IDs remain in flight even after
 			// the hub has produced their responses.
-			f.endpoint.readSession(ctx, bufio.NewReader(&input), sess)
+			f.endpoint.readSession(ctx, bufio.NewReader(input), sess)
 			sess.Finish()
-			var violations int
-			for {
-				m, ok := sess.Next(ctx)
-				if !ok {
-					break
-				}
-				if m.Code == protocol.ErrMalformedFrame {
-					violations++
-				}
-			}
+			violations := sessionDrainViolations(ctx, sess)
 			operatorEqual(t, "one terminal in-flight error", violations, 1)
 			operatorNoError(t, ctx.Err())
 		})
+	}
+}
+
+func sessionInflightInput(t *testing.T, duplicate bool) *bytes.Buffer {
+	t.Helper()
+	ids := []string{"duplicate", "duplicate"}
+	if !duplicate {
+		ids = make([]string, 9)
+		for i := range ids {
+			ids[i] = fmt.Sprintf("request-%d", i)
+		}
+	}
+	var input bytes.Buffer
+	for _, id := range ids {
+		operatorNoError(t, json.NewEncoder(&input).Encode(map[string]string{"type": "unknown-op", "request_id": id}))
+	}
+	return &input
+}
+
+func sessionDrainViolations(ctx context.Context, sess *hub.OperatorSession) int {
+	var violations int
+	for {
+		m, ok := sess.Next(ctx)
+		if !ok {
+			return violations
+		}
+		if m.Code == protocol.ErrMalformedFrame {
+			violations++
+		}
 	}
 }

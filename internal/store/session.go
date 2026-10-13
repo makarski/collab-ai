@@ -21,45 +21,53 @@ func (s *Store) OperatorInboxState(ctx context.Context) (uint64, int, error) {
 }
 
 // RecentOperatorSent returns up to limit operator-sent messages, newest first,
-// each with up to stageLimit current recipient stages (stageLimit+1 marks more).
+// each with up to stageLimit current recipient stages.
 func (s *Store) RecentOperatorSent(ctx context.Context, limit, stageLimit int) ([]protocol.SentSummary, error) {
+	sent, err := s.recentSent(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	for i := range sent {
+		if err := s.attachStages(ctx, &sent[i], stageLimit); err != nil {
+			return nil, err
+		}
+	}
+	return sent, nil
+}
+
+func (s *Store) recentSent(ctx context.Context, limit int) ([]protocol.SentSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT mm.message_id, m.seq, m.ts, m.recipient FROM message_metadata mm JOIN messages m USING(seq) WHERE mm.origin = 'operator' ORDER BY m.seq DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	var sent []protocol.SentSummary
 	for rows.Next() {
 		var m protocol.SentSummary
 		if err := rows.Scan(&m.MessageID, &m.Seq, &m.TS, &m.To); err != nil {
-			rows.Close()
 			return nil, err
 		}
 		sent = append(sent, m)
 	}
-	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
-		return nil, err
+	return sent, rows.Err()
+}
+
+// attachStages reads one extra stage to mark truncated receipts.
+func (s *Store) attachStages(ctx context.Context, m *protocol.SentSummary, stageLimit int) error {
+	stages, err := s.recipientStages(ctx, m.MessageID, "", stageLimit+1)
+	if err != nil {
+		return err
 	}
-	for i := range sent {
-		stages, err := s.recipientStages(ctx, sent[i].MessageID, "", stageLimit+1)
-		if err != nil {
-			return nil, err
-		}
-		sent[i].ReceiptsTruncated = len(stages) > stageLimit
-		sent[i].Recipients = stages[:min(len(stages), stageLimit)]
-	}
-	return sent, nil
+	m.ReceiptsTruncated = len(stages) > stageLimit
+	m.Recipients = stages[:min(len(stages), stageLimit)]
+	return nil
 }
 
 // MessageStages pages current recipient stages of one operator-sent message
 // in agent-ID order. It changes nothing.
 func (s *Store) MessageStages(ctx context.Context, id, after string, limit int) (protocol.StagePage, error) {
 	page := protocol.StagePage{MessageID: id, Recipients: []protocol.RecipientStage{}, NextAfterAgent: after}
-	var origin sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT origin FROM message_metadata WHERE message_id = ?`, id).Scan(&origin)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && origin.String != protocol.OriginOperator) {
-		return page, ErrInvalidMessage
-	}
-	if err != nil {
+	if err := s.checkOperatorMessage(ctx, id); err != nil {
 		return page, err
 	}
 	if err := s.checkAgentCursor(ctx, id, after); err != nil {
@@ -75,6 +83,22 @@ func (s *Store) MessageStages(ctx context.Context, id, after string, limit int) 
 		page.NextAfterAgent = page.Recipients[n-1].AgentID
 	}
 	return page, nil
+}
+
+// checkOperatorMessage accepts only messages with the trusted operator origin.
+func (s *Store) checkOperatorMessage(ctx context.Context, id string) error {
+	var origin sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT origin FROM message_metadata WHERE message_id = ?`, id).Scan(&origin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrInvalidMessage
+	}
+	if err != nil {
+		return err
+	}
+	if origin.String != protocol.OriginOperator {
+		return ErrInvalidMessage
+	}
+	return nil
 }
 
 func (s *Store) checkAgentCursor(ctx context.Context, id, after string) error {
