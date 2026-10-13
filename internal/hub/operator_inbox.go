@@ -12,37 +12,35 @@ import (
 
 // operatorReceive returns a page and changes no receipts. Its audit row holds
 // bounds and counts only; without it, nothing is returned.
-func (h *Hub) operatorReceive(ctx context.Context, req operatorRequest) protocol.Message {
-	var out protocol.OperatorPage
-	read := func(page protocol.PageRequest) (string, error) {
-		var err error
-		out, err = h.store.ReadOperatorPage(ctx, page)
-		return fmt.Sprintf("after=%d upper=%d count=%d more=%t", page.AfterSeq, out.UpperSeq, len(out.Messages), out.More), err
-	}
-	if rerr := h.auditedRead(ctx, req, "receive", read); rerr != nil {
-		return rerr.frame("")
-	}
-	return protocol.Message{Type: protocol.TypeOperatorPage, Page: &out}
-}
+// pageRead reads one page that returns message text, as a response frame and
+// a payload-free audit detail.
+type pageRead func(context.Context, operatorRequest, protocol.PageRequest) (protocol.Message, string, error)
 
-// auditedRead runs a page read that returns message text. Its audit row holds
-// only the read's payload-free detail; without it, nothing is returned.
-func (h *Hub) auditedRead(ctx context.Context, req operatorRequest, action string, read func(protocol.PageRequest) (string, error)) *routingError {
+// operatorRead runs a page read and audits it; without the audit row, nothing
+// is returned.
+func (h *Hub) operatorRead(ctx context.Context, req operatorRequest, action string, read pageRead) protocol.Message {
 	var page protocol.PageRequest
 	if req.msg.PageRequest != nil {
 		page = *req.msg.PageRequest
 	}
-	detail, err := read(page)
+	resp, detail, err := read(ctx, req, page)
 	if err != nil {
 		rerr := h.inboxError(action, err)
 		h.auditRejected(ctx, action, req, rerr)
-		return rerr
+		return rerr.frame("")
 	}
 	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: action, PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
 		h.log.Error("operator read audit failed; page not returned", "action", action, "error", err)
-		return &routingError{protocol.ErrInternal, "operator audit unavailable"}
+		return (&routingError{protocol.ErrInternal, "operator audit unavailable"}).frame("")
 	}
-	return nil
+	return resp
+}
+
+// readInbox returns unacknowledged operator-inbox messages; it changes no receipts.
+func (h *Hub) readInbox(ctx context.Context, _ operatorRequest, page protocol.PageRequest) (protocol.Message, string, error) {
+	out, err := h.store.ReadOperatorPage(ctx, page)
+	detail := fmt.Sprintf("after=%d upper=%d count=%d more=%t", page.AfterSeq, out.UpperSeq, len(out.Messages), out.More)
+	return protocol.Message{Type: protocol.TypeOperatorPage, Page: &out}, detail, err
 }
 
 func (h *Hub) operatorReceived(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
@@ -134,19 +132,12 @@ func (h *Hub) inboxError(action string, err error) *routingError {
 	return &routingError{protocol.ErrInternal, "operator inbox unavailable; nothing changed"}
 }
 
-// operatorHistory returns a read-only page of the operator's conversation.
-func (h *Hub) operatorHistory(ctx context.Context, req operatorRequest) protocol.Message {
-	var out protocol.HistoryPage
-	read := func(page protocol.PageRequest) (string, error) {
-		var err error
-		out, err = h.store.ReadOperatorHistory(ctx, store.HistoryQuery{Page: page, Budget: h.historyBudget(req.msg.RequestID)})
-		return fmt.Sprintf("before=%d upper=%d count=%d more=%t", page.BeforeSeq, out.UpperSeq, len(out.Entries), out.More), err
-	}
-	if rerr := h.auditedRead(ctx, req, "history", read); rerr != nil {
-		return rerr.frame("")
-	}
+// readHistory returns a read-only page of the operator's conversation.
+func (h *Hub) readHistory(ctx context.Context, req operatorRequest, page protocol.PageRequest) (protocol.Message, string, error) {
+	out, err := h.store.ReadOperatorHistory(ctx, store.HistoryQuery{Page: page, Budget: h.historyBudget(req.msg.RequestID)})
 	out.Watermark = h.watermark()
-	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &out}
+	detail := fmt.Sprintf("before=%d upper=%d count=%d more=%t", page.BeforeSeq, out.UpperSeq, len(out.Entries), out.More)
+	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &out}, detail, err
 }
 
 // historyBudget is the frame limit minus the exact response envelope, with
