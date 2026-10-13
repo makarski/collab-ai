@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -11,26 +12,37 @@ import (
 
 // operatorReceive returns a page and changes no receipts. Its audit row holds
 // bounds and counts only; without it, nothing is returned.
-func (h *Hub) operatorReceive(ctx context.Context, req operatorRequest) protocol.Message {
+// pageRead reads one page that returns message text, as a response frame and
+// a payload-free audit detail.
+type pageRead func(context.Context, operatorRequest, protocol.PageRequest) (protocol.Message, string, error)
+
+// operatorRead runs a page read and audits it; without the audit row, nothing
+// is returned.
+func (h *Hub) operatorRead(ctx context.Context, req operatorRequest, action string, read pageRead) protocol.Message {
 	var page protocol.PageRequest
 	if req.msg.PageRequest != nil {
 		page = *req.msg.PageRequest
 	}
-	out, err := h.store.ReadOperatorPage(ctx, page)
+	resp, detail, err := read(ctx, req, page)
 	if err != nil {
-		rerr := h.inboxError("receive page", err)
-		h.auditRejected(ctx, "receive", req, rerr)
+		rerr := h.inboxError(action, err)
+		h.auditRejected(ctx, action, req, rerr)
 		return rerr.frame("")
 	}
-	detail := fmt.Sprintf("after=%d upper=%d count=%d more=%t", page.AfterSeq, out.UpperSeq, len(out.Messages), out.More)
-	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "receive", PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
-		h.log.Error("operator receive audit failed; page not returned", "error", err)
+	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: action, PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
+		h.log.Error("operator read audit failed; page not returned", "action", action, "error", err)
 		return (&routingError{protocol.ErrInternal, "operator audit unavailable"}).frame("")
 	}
-	return protocol.Message{Type: protocol.TypeOperatorPage, Page: &out}
+	return resp
 }
 
-// operatorReceived confirms that the client adopted these messages.
+// readInbox returns unacknowledged operator-inbox messages; it changes no receipts.
+func (h *Hub) readInbox(ctx context.Context, _ operatorRequest, page protocol.PageRequest) (protocol.Message, string, error) {
+	out, err := h.store.ReadOperatorPage(ctx, page)
+	detail := fmt.Sprintf("after=%d upper=%d count=%d more=%t", page.AfterSeq, out.UpperSeq, len(out.Messages), out.More)
+	return protocol.Message{Type: protocol.TypeOperatorPage, Page: &out}, detail, err
+}
+
 func (h *Hub) operatorReceived(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
 	if busy := h.ownerBusy(req); busy != nil {
 		h.auditRejected(ctx, "received", req, &routingError{busy.Code, busy.Detail})
@@ -118,4 +130,27 @@ func (h *Hub) inboxError(action string, err error) *routingError {
 	}
 	h.log.Error("operator inbox operation failed", "action", action, "error", err)
 	return &routingError{protocol.ErrInternal, "operator inbox unavailable; nothing changed"}
+}
+
+// readHistory returns a read-only page of the operator's conversation.
+func (h *Hub) readHistory(ctx context.Context, req operatorRequest, page protocol.PageRequest) (protocol.Message, string, error) {
+	out, err := h.store.ReadOperatorHistory(ctx, store.HistoryQuery{Page: page, Budget: h.historyBudget(req.msg.RequestID)})
+	out.Watermark = h.watermark()
+	detail := fmt.Sprintf("before=%d upper=%d count=%d more=%t", page.BeforeSeq, out.UpperSeq, len(out.Entries), out.More)
+	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &out}, detail, err
+}
+
+// historyBudget is the frame limit minus the exact response envelope, with
+// every numeric field at its widest. The first entry's comma (counted by the
+// store) offsets the trailing newline.
+func (h *Hub) historyBudget(requestID string) int {
+	widest := ^uint64(0)
+	envelope := protocol.Message{Type: protocol.TypeOperatorHistory, RequestID: requestID, History: &protocol.HistoryPage{
+		Watermark: protocol.Watermark{Epoch: h.epoch, Revision: widest}, UpperSeq: widest, NextBeforeSeq: widest, More: false, // "false" is the wider boolean
+		Entries: []protocol.HistoryEntry{}}}
+	data, err := json.Marshal(envelope)
+	if err != nil {
+		return 0
+	}
+	return protocol.MaxFrameBytes - len(data)
 }

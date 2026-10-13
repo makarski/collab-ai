@@ -131,7 +131,16 @@ func (s *Store) checkAgentCursor(ctx context.Context, q StageQuery) error {
 }
 
 func (s *Store) recipientStages(ctx context.Context, q StageQuery) ([]protocol.RecipientStage, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT r.agent_id, COALESCE(i.session_id, r.session_id), i.received_at, i.acknowledged_at FROM message_receipts r LEFT JOIN durable_inbox i ON i.message_id = r.message_id AND i.agent_id = r.agent_id WHERE r.message_id = ? AND r.agent_id > ? ORDER BY r.agent_id LIMIT ?`, q.MessageID, q.AfterAgent, q.Limit)
+	return stagesIn(ctx, s.db, q)
+}
+
+type querier interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+// stagesIn reads current recipient stages through db or an open transaction.
+func stagesIn(ctx context.Context, db querier, q StageQuery) ([]protocol.RecipientStage, error) {
+	rows, err := db.QueryContext(ctx, `SELECT r.agent_id, COALESCE(i.session_id, r.session_id), i.received_at, i.acknowledged_at FROM message_receipts r LEFT JOIN durable_inbox i ON i.message_id = r.message_id AND i.agent_id = r.agent_id WHERE r.message_id = ? AND r.agent_id > ? ORDER BY r.agent_id LIMIT ?`, q.MessageID, q.AfterAgent, q.Limit)
 	if err != nil {
 		return nil, err
 	}
