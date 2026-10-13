@@ -114,8 +114,11 @@ func fitEntry(row historyRow, budget int, first bool) (protocol.HistoryEntry, in
 	entry := row.entry
 	entry.Message.Payload = retainedPayload(row.payload)
 	size, err := entrySize(entry)
-	if err != nil || size <= budget || !first {
+	if err != nil {
 		return entry, size, err
+	}
+	if !mustOmitBody(size, budget, first) {
+		return entry, size, nil
 	}
 	entry.Message.Payload = nil
 	entry.BodyOmitted = true
@@ -125,6 +128,12 @@ func fitEntry(row historyRow, budget int, first bool) (protocol.HistoryEntry, in
 
 // entrySize counts the entry plus a separating comma; the comma is an exact
 // over-count of one byte only for the first entry.
+// mustOmitBody holds only for a first entry that can't fit an otherwise empty
+// page; any later entry that doesn't fit starts the next page instead.
+func mustOmitBody(size, budget int, first bool) bool {
+	return first && size > budget
+}
+
 func entrySize(entry protocol.HistoryEntry) (int, error) {
 	data, err := json.Marshal(entry)
 	return len(data) + 1, err

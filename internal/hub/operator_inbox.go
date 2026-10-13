@@ -13,25 +13,38 @@ import (
 // operatorReceive returns a page and changes no receipts. Its audit row holds
 // bounds and counts only; without it, nothing is returned.
 func (h *Hub) operatorReceive(ctx context.Context, req operatorRequest) protocol.Message {
-	var page protocol.PageRequest
-	if req.msg.PageRequest != nil {
-		page = *req.msg.PageRequest
+	var out protocol.OperatorPage
+	read := func(page protocol.PageRequest) (string, error) {
+		var err error
+		out, err = h.store.ReadOperatorPage(ctx, page)
+		return fmt.Sprintf("after=%d upper=%d count=%d more=%t", page.AfterSeq, out.UpperSeq, len(out.Messages), out.More), err
 	}
-	out, err := h.store.ReadOperatorPage(ctx, page)
-	if err != nil {
-		rerr := h.inboxError("receive page", err)
-		h.auditRejected(ctx, "receive", req, rerr)
+	if rerr := h.auditedRead(ctx, req, "receive", read); rerr != nil {
 		return rerr.frame("")
-	}
-	detail := fmt.Sprintf("after=%d upper=%d count=%d more=%t", page.AfterSeq, out.UpperSeq, len(out.Messages), out.More)
-	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "receive", PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
-		h.log.Error("operator receive audit failed; page not returned", "error", err)
-		return (&routingError{protocol.ErrInternal, "operator audit unavailable"}).frame("")
 	}
 	return protocol.Message{Type: protocol.TypeOperatorPage, Page: &out}
 }
 
-// operatorReceived confirms that the client adopted these messages.
+// auditedRead runs a page read that returns message text. Its audit row holds
+// only the read's payload-free detail; without it, nothing is returned.
+func (h *Hub) auditedRead(ctx context.Context, req operatorRequest, action string, read func(protocol.PageRequest) (string, error)) *routingError {
+	var page protocol.PageRequest
+	if req.msg.PageRequest != nil {
+		page = *req.msg.PageRequest
+	}
+	detail, err := read(page)
+	if err != nil {
+		rerr := h.inboxError(action, err)
+		h.auditRejected(ctx, action, req, rerr)
+		return rerr
+	}
+	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: action, PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
+		h.log.Error("operator read audit failed; page not returned", "action", action, "error", err)
+		return &routingError{protocol.ErrInternal, "operator audit unavailable"}
+	}
+	return nil
+}
+
 func (h *Hub) operatorReceived(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
 	if busy := h.ownerBusy(req); busy != nil {
 		h.auditRejected(ctx, "received", req, &routingError{busy.Code, busy.Detail})
@@ -122,23 +135,15 @@ func (h *Hub) inboxError(action string, err error) *routingError {
 }
 
 // operatorHistory returns a read-only page of the operator's conversation.
-// It returns message text, so it is audited; without the audit row, nothing
-// is returned.
 func (h *Hub) operatorHistory(ctx context.Context, req operatorRequest) protocol.Message {
-	var page protocol.PageRequest
-	if req.msg.PageRequest != nil {
-		page = *req.msg.PageRequest
+	var out protocol.HistoryPage
+	read := func(page protocol.PageRequest) (string, error) {
+		var err error
+		out, err = h.store.ReadOperatorHistory(ctx, store.HistoryQuery{Page: page, Budget: h.historyBudget(req.msg.RequestID)})
+		return fmt.Sprintf("before=%d upper=%d count=%d more=%t", page.BeforeSeq, out.UpperSeq, len(out.Entries), out.More), err
 	}
-	out, err := h.store.ReadOperatorHistory(ctx, store.HistoryQuery{Page: page, Budget: h.historyBudget(req.msg.RequestID)})
-	if err != nil {
-		rerr := h.inboxError("history", err)
-		h.auditRejected(ctx, "history", req, rerr)
+	if rerr := h.auditedRead(ctx, req, "history", read); rerr != nil {
 		return rerr.frame("")
-	}
-	detail := fmt.Sprintf("before=%d upper=%d count=%d more=%t", page.BeforeSeq, out.UpperSeq, len(out.Entries), out.More)
-	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "history", PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
-		h.log.Error("operator history audit failed; page not returned", "error", err)
-		return (&routingError{protocol.ErrInternal, "operator audit unavailable"}).frame("")
 	}
 	out.Watermark = h.watermark()
 	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &out}
