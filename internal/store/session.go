@@ -20,15 +20,28 @@ func (s *Store) OperatorInboxState(ctx context.Context) (uint64, int, error) {
 	return head, pending, err
 }
 
-// RecentOperatorSent returns up to limit operator-sent messages, newest first,
-// each with up to stageLimit current recipient stages.
-func (s *Store) RecentOperatorSent(ctx context.Context, limit, stageLimit int) ([]protocol.SentSummary, error) {
-	sent, err := s.recentSent(ctx, limit)
+// SentQuery bounds a recent-sent read: messages, and stages per message.
+type SentQuery struct {
+	Limit      int
+	StageLimit int
+}
+
+// StageQuery pages one message's recipient stages after an agent ID.
+type StageQuery struct {
+	MessageID  string
+	AfterAgent string
+	Limit      int
+}
+
+// RecentOperatorSent returns operator-sent messages, newest first, each with
+// its current recipient stages.
+func (s *Store) RecentOperatorSent(ctx context.Context, q SentQuery) ([]protocol.SentSummary, error) {
+	sent, err := s.recentSent(ctx, q.Limit)
 	if err != nil {
 		return nil, err
 	}
 	for i := range sent {
-		if err := s.attachStages(ctx, &sent[i], stageLimit); err != nil {
+		if err := s.attachStages(ctx, &sent[i], q.StageLimit); err != nil {
 			return nil, err
 		}
 	}
@@ -54,7 +67,7 @@ func (s *Store) recentSent(ctx context.Context, limit int) ([]protocol.SentSumma
 
 // attachStages reads one extra stage to mark truncated receipts.
 func (s *Store) attachStages(ctx context.Context, m *protocol.SentSummary, stageLimit int) error {
-	stages, err := s.recipientStages(ctx, m.MessageID, "", stageLimit+1)
+	stages, err := s.recipientStages(ctx, StageQuery{MessageID: m.MessageID, Limit: stageLimit + 1})
 	if err != nil {
 		return err
 	}
@@ -65,20 +78,22 @@ func (s *Store) attachStages(ctx context.Context, m *protocol.SentSummary, stage
 
 // MessageStages pages current recipient stages of one operator-sent message
 // in agent-ID order. It changes nothing.
-func (s *Store) MessageStages(ctx context.Context, id, after string, limit int) (protocol.StagePage, error) {
-	page := protocol.StagePage{MessageID: id, Recipients: []protocol.RecipientStage{}, NextAfterAgent: after}
-	if err := s.checkOperatorMessage(ctx, id); err != nil {
+func (s *Store) MessageStages(ctx context.Context, q StageQuery) (protocol.StagePage, error) {
+	page := protocol.StagePage{MessageID: q.MessageID, Recipients: []protocol.RecipientStage{}, NextAfterAgent: q.AfterAgent}
+	if err := s.checkOperatorMessage(ctx, q.MessageID); err != nil {
 		return page, err
 	}
-	if err := s.checkAgentCursor(ctx, id, after); err != nil {
+	if err := s.checkAgentCursor(ctx, q); err != nil {
 		return page, err
 	}
-	stages, err := s.recipientStages(ctx, id, after, limit+1)
+	extra := q
+	extra.Limit++
+	stages, err := s.recipientStages(ctx, extra)
 	if err != nil {
 		return page, err
 	}
-	page.More = len(stages) > limit
-	page.Recipients = stages[:min(len(stages), limit)]
+	page.More = len(stages) > q.Limit
+	page.Recipients = stages[:min(len(stages), q.Limit)]
 	if n := len(page.Recipients); n > 0 {
 		page.NextAfterAgent = page.Recipients[n-1].AgentID
 	}
@@ -101,12 +116,12 @@ func (s *Store) checkOperatorMessage(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Store) checkAgentCursor(ctx context.Context, id, after string) error {
-	if after == "" {
+func (s *Store) checkAgentCursor(ctx context.Context, q StageQuery) error {
+	if q.AfterAgent == "" {
 		return nil
 	}
 	var found int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_receipts WHERE message_id = ? AND agent_id = ?`, id, after).Scan(&found); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM message_receipts WHERE message_id = ? AND agent_id = ?`, q.MessageID, q.AfterAgent).Scan(&found); err != nil {
 		return err
 	}
 	if found == 0 {
@@ -115,8 +130,8 @@ func (s *Store) checkAgentCursor(ctx context.Context, id, after string) error {
 	return nil
 }
 
-func (s *Store) recipientStages(ctx context.Context, id, after string, limit int) ([]protocol.RecipientStage, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT r.agent_id, COALESCE(i.session_id, r.session_id), i.received_at, i.acknowledged_at FROM message_receipts r LEFT JOIN durable_inbox i ON i.message_id = r.message_id AND i.agent_id = r.agent_id WHERE r.message_id = ? AND r.agent_id > ? ORDER BY r.agent_id LIMIT ?`, id, after, limit)
+func (s *Store) recipientStages(ctx context.Context, q StageQuery) ([]protocol.RecipientStage, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT r.agent_id, COALESCE(i.session_id, r.session_id), i.received_at, i.acknowledged_at FROM message_receipts r LEFT JOIN durable_inbox i ON i.message_id = r.message_id AND i.agent_id = r.agent_id WHERE r.message_id = ? AND r.agent_id > ? ORDER BY r.agent_id LIMIT ?`, q.MessageID, q.AfterAgent, q.Limit)
 	if err != nil {
 		return nil, err
 	}

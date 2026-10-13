@@ -133,7 +133,7 @@ func (h *Hub) buildSnapshot(ctx context.Context, clients map[string]*Client) (pr
 	if snap.InboxHeadSeq, snap.InboxPending, err = h.store.OperatorInboxState(ctx); err != nil {
 		return snap, err
 	}
-	sent, err := h.store.RecentOperatorSent(ctx, protocol.SnapshotRecentSent+1, snapshotStages)
+	sent, err := h.store.RecentOperatorSent(ctx, store.SentQuery{Limit: protocol.SnapshotRecentSent + 1, StageLimit: snapshotStages})
 	if err != nil {
 		return snap, err
 	}
@@ -171,7 +171,7 @@ func (h *Hub) messageStages(ctx context.Context, req operatorRequest) protocol.M
 	if rerr != nil {
 		return rerr.frame(req.msg.MessageID)
 	}
-	page, err := h.store.MessageStages(ctx, req.msg.MessageID, req.msg.AfterAgent, limit)
+	page, err := h.store.MessageStages(ctx, store.StageQuery{MessageID: req.msg.MessageID, AfterAgent: req.msg.AfterAgent, Limit: limit})
 	switch {
 	case errors.Is(err, store.ErrInvalidMessage):
 		return (&routingError{protocol.ErrInvalidMessage, err.Error()}).frame(req.msg.MessageID)
