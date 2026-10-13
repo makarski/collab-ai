@@ -56,15 +56,23 @@ type expectation struct {
 	want, action string
 }
 
-// expect sends a request and reports transport failures and broker errors.
-func (c operatorCall) expect(ctx context.Context, req protocol.Message, exp expectation, stderr io.Writer) (protocol.Message, error) {
-	resp, err := c.send(ctx, req)
+// reportFailure reports a transport failure or an unexpected response type.
+func reportFailure(stderr io.Writer, exp expectation, resp protocol.Message, err error) bool {
 	if err != nil {
 		fmt.Fprintf(stderr, "%s failed: %v\n", exp.action, err)
-		return resp, errReported
+		return true
 	}
 	if resp.Type != exp.want {
 		reportBrokerError(stderr, exp.action+" rejected", resp)
+		return true
+	}
+	return false
+}
+
+// expect sends a request and reports transport failures and broker errors.
+func (c operatorCall) expect(ctx context.Context, req protocol.Message, exp expectation, stderr io.Writer) (protocol.Message, error) {
+	resp, err := c.send(ctx, req)
+	if reportFailure(stderr, exp, resp, err) {
 		return resp, errReported
 	}
 	return resp, nil
@@ -242,9 +250,12 @@ func confirmReceived(ctx context.Context, call operatorCall, page *protocol.Oper
 	for i, m := range page.Messages {
 		ids[i] = m.MessageID
 	}
-	const action = "receipt confirmation (the messages will be returned again)"
-	resp, err := call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorReceived, MessageIDs: ids}, expectation{protocol.TypeAck, action}, stderr)
-	if err != nil {
+	resp, err := call.send(ctx, protocol.Message{Type: protocol.TypeOperatorReceived, MessageIDs: ids})
+	if err == nil && resp.Code == protocol.ErrOwnerBusy {
+		fmt.Fprintln(stderr, "a live operator session owns the inbox; the messages were printed but not confirmed")
+		return 1
+	}
+	if reportFailure(stderr, expectation{protocol.TypeAck, "receipt confirmation (the messages will be returned again)"}, resp, err) {
 		return 1
 	}
 	if !receiptsCover(resp, ids) {

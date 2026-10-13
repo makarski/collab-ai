@@ -48,6 +48,11 @@ type Hub struct {
 	status     chan statusRequest
 	operator   chan operatorRequest
 	startedAt  time.Time
+	// Live operator session state, owned by the Run goroutine.
+	owner    *OperatorSession
+	epoch    string
+	revision uint64
+	gen      uint64
 }
 
 // New creates a Hub. startSeq is the last persisted sequence number
@@ -64,6 +69,7 @@ func New(st *store.Store, startSeq uint64, log *slog.Logger) *Hub {
 		status:     make(chan statusRequest),
 		operator:   make(chan operatorRequest),
 		startedAt:  time.Now().UTC(),
+		epoch:      uuid.NewString(),
 	}
 }
 
@@ -134,7 +140,7 @@ func (h *Hub) Run(ctx context.Context) {
 			req.reply <- h.snapshot(req.ctx, clients)
 
 		case req := <-h.operator:
-			req.reply <- h.routeOperator(req.ctx, clients, req)
+			h.handleOperator(req.ctx, clients, req)
 		}
 	}
 }
@@ -181,6 +187,7 @@ func (h *Hub) route(ctx context.Context, clients map[string]*Client, in Inbound)
 		h.enqueue(clients, in.From, err.frame(in.Msg.MessageID))
 		return
 	}
+	h.noteRouted(ctx, out)
 	if out.AckRequested {
 		h.enqueue(clients, in.From, protocol.Message{Type: protocol.TypeAck, MessageID: out.MessageID, Stage: protocol.StageAccepted, Seq: out.Seq, Recipients: publicRecipients(recipients), Durable: out.Durable})
 	}
@@ -358,7 +365,8 @@ func (h *Hub) acknowledge(ctx context.Context, clients map[string]*Client, in In
 		h.enqueue(clients, in.From, err.frame(msg.MessageID))
 		return
 	}
-	sender, err := h.store.Acknowledge(ctx, store.Acknowledgment{MessageID: msg.MessageID, Recipient: in.From.identity(), Stage: msg.Stage, ProtocolVersion: in.From.ProtocolVersion})
+	report, err := h.store.AcknowledgeReport(ctx, store.Acknowledgment{MessageID: msg.MessageID, Recipient: in.From.identity(), Stage: msg.Stage, ProtocolVersion: in.From.ProtocolVersion})
+	sender := report.Sender
 	if err != nil {
 		code, detail := protocol.ErrInternal, "acknowledgment not persisted"
 		if errors.Is(err, store.ErrInvalidAck) {
@@ -367,6 +375,7 @@ func (h *Hub) acknowledge(ctx context.Context, clients map[string]*Client, in In
 		h.sendError(clients, in.From, code, detail, msg.MessageID)
 		return
 	}
+	h.noteAck(in, report)
 	out := protocol.Message{Type: protocol.TypeAck, MessageID: msg.MessageID, Stage: msg.Stage, AgentID: in.From.ID, SessionID: in.From.SessionID}
 	// Adapter receipts are confirmed to the sender. Explicit agent acknowledgments
 	// are also confirmed to the acknowledging agent, only after the database commit.
@@ -412,6 +421,7 @@ func (h *Hub) disconnect(clients map[string]*Client, c *Client) {
 	}
 	close(c.Send)
 	h.recordDisconnect(c)
+	h.notePresence(c, "disconnected")
 	h.notifyDisconnect(clients, c)
 	h.log.Info("agent disconnected", "agent_id", c.ID, "online", len(clients))
 }

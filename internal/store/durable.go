@@ -139,28 +139,58 @@ func (s *Store) ClaimPending(ctx context.Context, recipient protocol.Recipient) 
 // below OriginVersion are not given operator messages: those stay pending,
 // unclaimed, for the next owner that can display their origin.
 func (s *Store) ClaimPendingFor(ctx context.Context, recipient protocol.Recipient, version int) ([]protocol.Message, error) {
+	messages, _, err := s.ClaimPendingReport(ctx, recipient, version)
+	return messages, err
+}
+
+// ClaimPendingReport also returns the operator-sent messages this claim moved
+// to the new session; their delivery stage is accepted again.
+func (s *Store) ClaimPendingReport(ctx context.Context, recipient protocol.Recipient, version int) ([]protocol.Message, []string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer tx.Rollback()
 	canShowOrigin := version >= protocol.OriginVersion
+	var reclaimed []string
+	if canShowOrigin {
+		if reclaimed, err = pendingOperatorIDs(ctx, tx, recipient.AgentID); err != nil {
+			return nil, nil, err
+		}
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE durable_inbox SET session_id = ?, received_at = NULL WHERE agent_id = ? AND acknowledged_at IS NULL AND (? OR NOT `+operatorRow+`)`, recipient.SessionID, recipient.AgentID, canShowOrigin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	messages, err := readPending(ctx, tx, recipient.AgentID, canShowOrigin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// A failed recovery must not make a new logical ID eligible for offline sends.
 	if _, err := tx.ExecContext(ctx, `INSERT INTO durable_agents (agent_id, protocol_version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET protocol_version = excluded.protocol_version`, recipient.AgentID, version); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return messages, reclaimed, nil
+}
+
+func pendingOperatorIDs(ctx context.Context, tx *sql.Tx, agentID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT message_id FROM durable_inbox WHERE agent_id = ? AND acknowledged_at IS NULL AND `+operatorRow+` ORDER BY message_id`, agentID)
+	if err != nil {
 		return nil, err
 	}
-	return messages, nil
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 const operatorRow = `EXISTS (SELECT 1 FROM message_metadata o WHERE o.message_id = durable_inbox.message_id AND o.origin = 'operator')`

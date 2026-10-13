@@ -170,6 +170,38 @@ concurrent receives can return the same messages. A live operator session with
 a single owner comes next (#77). `collab status` and the dashboard show the
 inbox's pending count; older brokers show it as unknown.
 
+## Live operator session
+
+The operator socket also accepts a long-lived session, which the operator chat
+(#77) uses. The full contract is in [operator chat](operator-chat.md), under
+"PR2 contract".
+
+- **Opening:** `operator_session_open {request_id, client}` is the first frame.
+  The response `operator_session` lists the session ID, epoch and
+  capabilities.
+- **One owner:** a single session owns the operator inbox; a second open gets
+  `owner_busy`. Closing the connection releases ownership. While a session is
+  open, one-shot `operator_received` and `operator_ack` are refused with
+  `owner_busy`; one-shot sends and receives still work.
+- **Requests:** every request carries a `request_id` (1 to 128 bytes, at most
+  8 in flight), and its response echoes it. Available: `operator_send`,
+  `operator_receive`, `operator_received`, `operator_ack`,
+  `operator_snapshot`, `operator_message_stages`.
+- **Events:** `{"type": "event"}` notifications, never payloads:
+  - `conversation_changed`
+  - `inbox_changed`
+  - `stage_changed`, which carries the recipient's session, including when a
+    reconnect moves a pending delivery back to `accepted`
+  - `presence_changed`
+- **Resync:** every event carries `{epoch, revision}`, and the revision
+  increases by one per event. Events start only after the first
+  `operator_snapshot`, a bounded view taken in the same hub step as the
+  baseline. A gap, a new epoch or `resync_required` (sent on queue overflow)
+  means: take a new snapshot.
+- **Flow control:** at most 256 queued events. A session that can't be written
+  within the write deadline is closed and releases ownership. An idle session
+  never expires.
+
 Test interactively with `nc -U /tmp/collab-ai.sock`.
 
 Frames are limited to 1 MiB including the newline. A reader whose 64-frame outgoing
