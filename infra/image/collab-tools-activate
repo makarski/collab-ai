@@ -1,0 +1,38 @@
+#!/usr/bin/python3
+"""Activate one tool generation from host-delivered artifacts (root only)."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+sys.path.insert(0, "/usr/local/lib/collab-ai")
+import tool_store  # noqa: E402
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("status", help="print the store state as JSON")
+    activate = commands.add_parser("activate", help="verify, stage and activate a generation")
+    activate.add_argument("manifest", type=Path)
+    activate.add_argument("--incoming", type=Path, default=tool_store.STORE / "incoming")
+    args = parser.parse_args()
+    store = tool_store.Store()
+    if args.command == "status":
+        print(json.dumps(store.status(), indent=2))
+        return
+    if os.geteuid() != 0:
+        raise tool_store.StoreError("activation runs as root")
+    manifest = json.loads(args.manifest.read_text())
+    generation = store.activate(manifest, args.incoming)
+    print(f"Activated tool generation {generation}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (tool_store.StoreError, OSError, KeyError, ValueError) as error:
+        print(f"collab-tools-activate: {error}", file=sys.stderr)
+        sys.exit(1)

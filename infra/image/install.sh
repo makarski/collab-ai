@@ -42,6 +42,13 @@ install -d /etc/collab-ai /etc/codex /etc/ssh/authorized_keys /usr/local/share/c
 install -m 0644 infra/image/codex-config.toml /etc/codex/config.toml
 cp infra/image/tools.lock.json /usr/local/share/collab-ai/
 cp build-source.json /usr/local/share/collab-ai/
+# The tool store (docs/sandbox-tools.md). "baked" keeps the tools in this image
+# while the store, activator and readiness gate are exercised.
+printf 'baked\n' >/usr/local/share/collab-ai/tools-mode
+install -d -m 0755 /usr/local/lib/collab-ai /var/lib/collab-ai-tools
+install -m 0644 infra/image/tool_lock.py infra/image/tool_store.py /usr/local/lib/collab-ai/
+install -m 0755 infra/image/collab-tools-activate infra/image/collab-tools-ready infra/image/collab-tool /usr/local/bin/
+cp infra/image/collab-tools-setup.service infra/image/collab-tools-ready.service /etc/systemd/system/
 bash infra/image/install-skill.sh docs/skills/collab-ai /usr/local/share/collab-ai
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
 python3 infra/image/install-mcp-tools.py
@@ -79,6 +86,7 @@ systemctl enable collab-broker.service collab-secured-setup.service
 systemctl enable collab-secured-broker.service collab-dev-executor.socket
 systemctl enable collab-client-setup.service
 systemctl enable collab-workspace-setup.service
+systemctl enable collab-tools-setup.service collab-tools-ready.service
 systemctl enable collab-rtk-setup.service
 systemctl enable collab-docker-session.service collab-docker-setup.service
 dpkg-query -W >/usr/local/share/collab-ai/os-packages.txt

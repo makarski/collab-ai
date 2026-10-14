@@ -34,6 +34,7 @@ def check_data(deployment):
               "assert '# retention-proof' in Path('/home/agent/.profile').read_text()\n")
     run(deployment.execute("workspace", "runuser", "-u", "agent", "--", "python3", "-c", script))
     check_volume_ownership(deployment)
+    check_tool_store_ownership(deployment)
     denied(deployment.execute("workspace", "cat", FILES[1], uid=65534))
     denied(deployment.execute("workspace", "ls", "/var/lib/collab-ai-docker", uid=65534))
 
@@ -46,6 +47,14 @@ def check_volume_ownership(deployment):
         observed = run(deployment.execute("workspace", "stat", "-c", "%a %u %g", path)).strip()
         if observed not in {f"{mode} 1001 1001" for mode in modes}:
             raise ValueError(f"Unsafe persistent volume ownership: {path}: {observed}")
+
+
+def check_tool_store_ownership(deployment):
+    # The tool store is root's: agents execute from it and never write to it.
+    for role in ("workspace", "secured"):
+        observed = run(deployment.execute(role, "stat", "-c", "%a %u %g", "/var/lib/collab-ai-tools")).strip()
+        if observed != "755 0 0":
+            raise ValueError(f"Tool store must be root-owned 0755 in {role}: {observed}")
 
 
 def verify(args, directory, project):
@@ -104,6 +113,6 @@ def check_ssh_replacement(args, directory, project):
 def allow_test_teardown(directory, project):
     if not project.startswith("collab-smoke-"):
         raise ValueError("Refusing to remove data protection outside a disposable smoke project")
-    recipe = directory / "storage.tf"
-    if recipe.exists():
+    # Every guarded volume (dev data, the tool stores) lives in a recipe file here.
+    for recipe in directory.glob("*.tf"):
         recipe.write_text(recipe.read_text().replace("prevent_destroy = true", "prevent_destroy = false"))

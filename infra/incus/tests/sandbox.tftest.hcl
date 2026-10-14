@@ -24,12 +24,13 @@ run "offline_workspace" {
 
   assert {
     condition = (
-      length(incus_profile.sandbox.device) == 4 &&
+      length(incus_profile.sandbox.device) == 5 &&
       alltrue([for device in incus_profile.sandbox.device : device.type == "disk" && device.properties.pool == "default"]) &&
       one([for device in incus_profile.sandbox.device : device if device.name == "root"]).properties.size == "10GiB" &&
       one([for device in incus_profile.sandbox.device : device if device.name == "workspace-data"]).properties.path == "/workspace" &&
       one([for device in incus_profile.sandbox.device : device if device.name == "agent-home"]).properties.path == "/home/agent" &&
       one([for device in incus_profile.sandbox.device : device if device.name == "docker-data"]).properties.path == "/var/lib/collab-ai-docker" &&
+      one([for device in incus_profile.sandbox.device : device if device.name == "workspace-tools"]).properties.path == "/var/lib/collab-ai-tools" &&
       alltrue([for volume in incus_storage_volume.dev_data : volume.config["security.shifted"] == "false"])
     )
     error_message = "Dev must have only a bounded root disk and private workspace/home volumes, with no host path or NIC."
@@ -62,6 +63,7 @@ run "configured_limits_and_stop" {
     workspace_gib  = 20
     agent_home_gib = 4
     docker_gib     = 12
+    tools_gib      = 6
     running        = false
   }
   assert {
@@ -72,6 +74,7 @@ run "configured_limits_and_stop" {
       incus_storage_volume.dev_data["workspace"].config["size"] == "20GiB" &&
       incus_storage_volume.dev_data["home"].config["size"] == "4GiB" &&
       incus_storage_volume.dev_data["docker"].config["size"] == "12GiB" &&
+      incus_storage_volume.dev_data["tools"].config["size"] == "6GiB" &&
       incus_instance.workspace.running == false
     )
     error_message = "Changing resources or desired power state must affect the planned workspace."
@@ -278,7 +281,9 @@ run "secured_runtime" {
   }
   assert {
     condition = (
-      length(incus_profile.secured[0].device) == 5 &&
+      length(incus_profile.secured[0].device) == 6 &&
+      one([for device in incus_profile.secured[0].device : device if device.name == "secured-tools"]).properties.path == "/var/lib/collab-ai-tools" &&
+      alltrue([for device in incus_profile.sandbox.device : device.name != "secured-tools"]) &&
       alltrue([for device in incus_profile.secured[0].device : device.type == "disk" && contains(keys(device.properties), "pool")]) &&
       alltrue([for device in incus_profile.sandbox.device : device.name != "secured-state"]) &&
       one([for device in incus_profile.sandbox.device : device if device.name == "budget-status"]).properties.readonly == "true" &&

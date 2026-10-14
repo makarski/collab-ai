@@ -30,6 +30,13 @@ def command(name):
             "--agent-id", "secured-" + name]
 
 
+def require_tools():
+    ready = subprocess.run(["/usr/bin/systemctl", "is-active", "--quiet", "collab-tools-ready.service"],
+                           env={"PATH": "/usr/bin:/bin"})
+    if ready.returncode:
+        raise ValueError("Sandbox tools are not released on this root; run the rollout")
+
+
 def require_executor():
     try:
         check = subprocess.run(["/usr/local/bin/collab-executor-connect", "--check"],
@@ -45,6 +52,7 @@ if __name__ == "__main__":
         sys.exit("Usage (secured administrator only): collab-supervised-codex BUDGET")
     try:
         args = command(sys.argv[1])
+        require_tools()
         require_executor()
     except ValueError as error:
         sys.exit(str(error))

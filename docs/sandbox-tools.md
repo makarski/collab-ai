@@ -365,9 +365,15 @@ happens only when every artifact exists. PRs in order:
    verification. No image change.
 2. **CI bundles:** playwright, chromium-deps and docker built in CI and
    attached to releases with their digests in the manifest. No image change.
-3. **Stores, activator, launchers, readiness, managed start.** The image
-   still carries the tools, so nothing is lost if activation fails; the
-   release gate exercises the whole path in CI.
+3. **Stores, activator, launchers, readiness, managed start**, in two PRs:
+   - **3a:** the `workspace-tools` and `secured-tools` volumes, `tool_store.py`
+     with the activator, readiness check and launcher, the gated units. The
+     image records `tools-mode = baked`: it still carries the tools and the
+     readiness gate passes, so nothing changes for agents while the store is
+     exercised end to end.
+   - **3b:** the host flow (cache → push → activate → release), the selection,
+     plan identity, the admission gate in `sandbox-ssh.py`, `tools-retry`, and
+     the selection-aware checks.
 4. **Slim image.** `install.sh` stops downloading vendor tools; the launchers
    take over. The default selection keeps today's feature set on (Docker and
    Playwright enabled) unless the operator decides otherwise; presets (#73)
