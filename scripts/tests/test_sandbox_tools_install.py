@@ -35,10 +35,10 @@ class FakeContainer(install.Container):
         elif args[:2] == ("collab-tools-activate", "activate"):
             self.activated = True
             self.state, self.current = {"state": "ready"}, self.expected
-        elif args[:2] == ("test", "-e"):
-            return subprocess.CompletedProcess(command, 0 if self.key else 1)
-        elif args[:2] == ("test", "-x"):
-            return subprocess.CompletedProcess(command, 0 if getattr(self, "activator", True) else 1)
+        elif args[:2] == ("sh", "-c") and "test" in args:
+            flag = args[args.index("test") + 1]
+            present = self.key if flag == "-e" else getattr(self, "activator", True)
+            return subprocess.CompletedProcess(command, 0, stdout="present\n" if present else "absent\n")
         return subprocess.CompletedProcess(command, 0, stdout=output)
 
 
@@ -117,16 +117,18 @@ class InstallTests(unittest.TestCase):
         self.assertFalse(container.activated)
 
     def test_probe_failures_are_errors_not_proof_of_absence(self):
-        container = FakeContainer("workspace")
-        original = container.fake_run
+        for outcome in (subprocess.CompletedProcess([], 255), subprocess.CompletedProcess([], 1, stdout=""),
+                        subprocess.CompletedProcess([], 0, stdout="Error: not found\n")):
+            container = FakeContainer("workspace")
+            original = container.fake_run
 
-        def failing(command, check=False, **kwargs):
-            if "test" in command:
-                return subprocess.CompletedProcess(command, 255)
-            return original(command, check=check, **kwargs)
-        container.run = failing
-        with self.assertRaisesRegex(ValueError, "could not probe"):
-            install.never_released(container, None)
+            def failing(command, check=False, **kwargs):
+                if "test" in command:
+                    return outcome
+                return original(command, check=check, **kwargs)
+            container.run = failing
+            with self.assertRaisesRegex(ValueError, "could not probe"):
+                install.never_released(container, None)
 
     def test_gated_units_are_released_after_activation_and_on_a_ready_root(self):
         container = FakeContainer("workspace")

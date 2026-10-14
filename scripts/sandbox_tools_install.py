@@ -78,13 +78,21 @@ def status(container):
     return json.loads(container.output("collab-tools-activate", "status"))
 
 
+# The probe exits 0 whenever it evaluated and names its verdict; the Incus
+# client also exits 1 on its own errors, so an exit code alone can't be trusted.
+PROBE_SCRIPT = 'if "$@"; then echo present; else echo absent; fi'
+
+
 def probe(container, *test):
-    """A `test` inside the container. Only its own verdict counts; an Incus or
-    transport failure is an error, never proof of absence."""
-    result = container.run(container.command + ["exec", container.target, "-T", "--", "test", *test])
-    if result.returncode in (0, 1):
-        return result.returncode == 0
-    raise ValueError(f"{container.name}: could not probe {' '.join(test)} (exit {result.returncode})")
+    """A `test` inside the container. Only an explicit verdict counts; any
+    other exit code or output is an error, never proof of absence."""
+    result = container.run(container.command + ["exec", container.target, "-T", "--", "sh", "-c", PROBE_SCRIPT,
+                                                "probe", "test", *test], capture_output=True, text=True)
+    verdict = (result.stdout or "").strip()
+    if result.returncode != 0 or verdict not in ("present", "absent"):
+        raise ValueError(f"{container.name}: could not probe {' '.join(test)} "
+                         f"(exit {result.returncode}, output {verdict!r})")
+    return verdict == "present"
 
 
 def agent_key_installed(container):
