@@ -33,11 +33,41 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(releases.resolve_release("owner/repo", "workspace-v1.2.3"), "workspace-v1.2.3")
         self.assertTrue(api.call_args.args[0].full_url.endswith("/releases/tags/workspace-v1.2.3"))
 
+    def test_release_lookup_authentication_and_token_precedence(self):
+        cases = (
+            ({}, None),
+            ({"GITHUB_TOKEN": "test-github"}, "Bearer test-github"),
+            ({"GH_TOKEN": "test-gh"}, "Bearer test-gh"),
+            ({"GITHUB_TOKEN": "test-github", "GH_TOKEN": "test-gh"}, "Bearer test-github"),
+            ({"GITHUB_TOKEN": "", "GH_TOKEN": "test-gh"}, "Bearer test-gh"),
+        )
+        for environment, expected in cases:
+            with self.subTest(environment=environment), patch.dict(releases.os.environ, environment, clear=True), \
+                 patch.object(releases, "urlopen", return_value=self.response()) as api:
+                self.assertEqual(releases.resolve_release("owner/repo", "latest"), "workspace-v1.2.3")
+                request = api.call_args.args[0]
+                self.assertEqual(request.get_header("Authorization"), expected)
+                self.assertEqual(request.full_url, "https://api.github.com/repos/owner/repo/releases/latest")
+
+    def test_rate_limit_errors_stop_before_asset_download(self):
+        for code in (403, 429):
+            error = HTTPError("url", code, "Rate limit", {"X-RateLimit-Remaining": "0"}, None)
+            with self.subTest(code=code), patch.object(releases, "urlopen", side_effect=error), \
+                 patch.object(releases, "prepare_image") as prepare:
+                with self.assertRaisesRegex(ValueError, "GitHub API rate limit reached") as raised:
+                    releases.download_release("aarch64")
+                self.assertIn("GITHUB_TOKEN", str(raised.exception))
+                self.assertNotIn("Cannot find published release", str(raised.exception))
+                prepare.assert_not_called()
+
     def test_missing_release_fails_before_download(self):
         error = HTTPError("url", 404, "Not found", {}, None)
         with patch.object(releases, "urlopen", side_effect=error), patch.object(releases, "prepare_image") as prepare:
-            with self.assertRaisesRegex(ValueError, "successful main release build"):
+            with self.assertRaisesRegex(ValueError, "Cannot find published release") as raised:
                 releases.download_release("aarch64")
+            self.assertIn("HTTP 404", str(raised.exception))
+            self.assertIn("successful main release build", str(raised.exception))
+            self.assertNotIn("rate limit", str(raised.exception))
         prepare.assert_not_called()
 
     def test_wrong_tag_and_moving_tag_are_rejected(self):

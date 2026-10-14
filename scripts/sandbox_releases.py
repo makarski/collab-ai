@@ -1,6 +1,7 @@
 """Resolve public workspace releases once, then download from the selected tag."""
 
 import json
+import os
 import re
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -26,15 +27,31 @@ def resolve_release(repo, selection):
     repository(repo)
     release_tag(selection)
     endpoint = "latest" if selection == "latest" else "tags/" + quote(selection, safe="")
-    request = Request(f"https://api.github.com/repos/{repo}/releases/{endpoint}",
-                      headers={"Accept": "application/vnd.github+json", "User-Agent": "collab-ai-sandbox"})
+    request = Request(f"https://api.github.com/repos/{repo}/releases/{endpoint}", headers=api_headers())
     try:
         with urlopen(request, timeout=30) as response:
             release = json.load(response)
     except HTTPError as error:
-        raise ValueError(f"Cannot find published release {selection} in {repo} (HTTP {error.code}). "
-                         "A successful main release build must finish before rollout.") from error
+        raise ValueError(release_error(error, repo, selection)) from error
     return published_tag(release, selection)
+
+
+def api_headers():
+    """Unauthenticated GitHub API calls share 60 requests per hour per address;
+    GITHUB_TOKEN or GH_TOKEN lifts that limit."""
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "collab-ai-sandbox"}
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    return headers
+
+
+def release_error(error, repo, selection):
+    if error.code in (403, 429) and error.headers.get("X-RateLimit-Remaining") == "0":
+        return (f"GitHub API rate limit reached while looking up release {selection} in {repo}. "
+                "Retry later, or set GITHUB_TOKEN (for example from gh auth token) to use your own limit.")
+    return (f"Cannot find published release {selection} in {repo} (HTTP {error.code}). "
+            "A successful main release build must finish before rollout.")
 
 
 def published_tag(release, selection):
