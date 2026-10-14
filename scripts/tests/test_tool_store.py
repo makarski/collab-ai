@@ -179,9 +179,6 @@ class GenerationTests(StoreHarness):
         self.assertFalse((self.store.generations / "half").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class DebsAndConfigurationTests(StoreHarness):
     def setUp(self):
@@ -254,3 +251,7 @@ class DebsAndConfigurationTests(StoreHarness):
         self.assertEqual(self.store.resolve_name("npm").read_text(), "m")
         self.assertEqual(self.store.resolve_name("go"), self.store.resolve("go"))
         self.assertIsNone(self.store.resolve_name("claude"))
+
+
+if __name__ == "__main__":
+    unittest.main()

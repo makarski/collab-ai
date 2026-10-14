@@ -13,19 +13,21 @@ BAKED = Path("/opt/collab-mcp")
 
 
 def launch(mode, store):
-    """(node, mcp cli, chromium) for the active mode."""
+    """(bundle root, chromium) for the active mode. The MCP's cli.js and the
+    browsers directory both live under the bundle root."""
     if mode == "baked":
-        return "/usr/local/bin/node", BAKED / "node_modules/@playwright/mcp/cli.js", Path("/usr/local/bin/collab-chromium")
+        return BAKED, Path("/usr/local/bin/collab-chromium")
     bundle = (store.current / "playwright").resolve()
     details = json.loads((bundle / "bundle.json").read_text())
-    return "/usr/local/bin/node", bundle / "node_modules/@playwright/mcp/cli.js", bundle / tool_store.normalized(details["chromium"])
+    return bundle, bundle / tool_store.normalized(details["chromium"])
 
 
 if __name__ == "__main__":
     try:
-        node, cli, chromium = launch(tool_store.mode(), tool_store.Store())
+        bundle, chromium = launch(tool_store.mode(), tool_store.Store())
     except (tool_store.StoreError, OSError, KeyError, ValueError) as error:
         sys.exit(f"collab-playwright: the Playwright MCP is not installed in this sandbox ({error})")
-    env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(cli.parent.parent.parent / "browsers"))
-    os.execve(node, [node, str(cli), "--headless", "--isolated", "--sandbox",
-                     "--executable-path", str(chromium), *sys.argv[1:]], env)
+    node = "/usr/local/bin/node"
+    env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(bundle / "browsers"))
+    os.execve(node, [node, str(bundle / "node_modules/@playwright/mcp/cli.js"), "--headless", "--isolated",
+                     "--sandbox", "--executable-path", str(chromium), *sys.argv[1:]], env)
