@@ -1,0 +1,16 @@
+[Unit]
+Description=Initialize permissions on the collab-ai tool store volume
+DefaultDependencies=no
+After=local-fs.target
+Before=collab-tools-ready.service multi-user.target
+ConditionPathIsMountPoint=/var/lib/collab-ai-tools
+
+[Service]
+Type=oneshot
+# Root installs into the store; agents only read and execute from it.
+ExecStart=/usr/bin/chown root:root /var/lib/collab-ai-tools
+ExecStart=/usr/bin/chmod 0755 /var/lib/collab-ai-tools
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,7 @@
 [Unit]
 Description=Release tool-dependent entry points only on an activated tool generation
-After=local-fs.target collab-workspace-setup.service collab-secured-setup.service
+Wants=collab-tools-setup.service
+After=local-fs.target collab-tools-setup.service collab-workspace-setup.service collab-secured-setup.service
 Before=multi-user.target
 
 [Service]
