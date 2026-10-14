@@ -76,8 +76,16 @@ class BundleTests(unittest.TestCase):
         builder = FakeBuilder()
         bundles.build_bundles(builder, "arm64", self.output, kinds=("playwright",))
         self.assertEqual([name for name, _ in builder.pushed],
-                         ["tool_download.py", "tool_lock.py", "tools.lock.json", "build-playwright-bundle.py",
-                          "package.json", "package-lock.json"])
+                         ["tool_download.py", "tool_lock.py", "build-playwright-bundle.py",
+                          "package.json", "package-lock.json", "tools.lock.json"])
+        self.assertEqual(builder.pushed[-1][1], "/root/bundle-src/tools.lock.json")
+
+    def test_a_custom_lock_file_governs_the_bundle_build(self):
+        builder = FakeBuilder()
+        custom = self.output / "custom-lock.json"
+        custom.write_text("{}")
+        bundles.BundleBuild(builder, "arm64", self.output, custom).build(("playwright",))
+        self.assertEqual(builder.pushed[-1], ("custom-lock.json", "/root/bundle-src/tools.lock.json"))
         self.assertFalse(any("--with-deps" in c for c in builder.commands))
 
 

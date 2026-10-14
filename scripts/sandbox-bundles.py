@@ -9,7 +9,7 @@ import sys
 
 from sandbox_artifacts import ARCHITECTURES
 from sandbox_builder import Builder, identifier, server_architecture
-from sandbox_bundles import BUNDLE_KINDS, ROOT, build_bundles
+from sandbox_bundles import BUNDLE_KINDS, ROOT, BundleBuild
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     builder = Builder(args.remote, "collab-bundles", args.storage_pool, args.network)
     try:
         builder.create(lock["architectures"][machine]["base_image"])
-        manifest = build_bundles(builder, ARCHITECTURES[machine], output, args.kinds)
+        manifest = BundleBuild(builder, ARCHITECTURES[machine], output, args.lock_file).build(args.kinds)
     finally:
         builder.cleanup()
     for kind, details in manifest["bundles"].items():

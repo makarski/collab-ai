@@ -62,8 +62,8 @@ class BundleBuild:
     """One bundle build: a started base-image container, the release
     architecture label and the asset output directory."""
 
-    def __init__(self, builder, arch, output, root=ROOT):
-        self.builder, self.arch, self.output, self.root = builder, arch, output, root
+    def __init__(self, builder, arch, output, lock_file=ROOT / "infra/image/tools.lock.json"):
+        self.builder, self.arch, self.output, self.lock_file = builder, arch, output, Path(lock_file)
 
     def archive(self, kind, source):
         name = bundle_file(kind, self.arch)
@@ -96,9 +96,11 @@ class BundleBuild:
 
     def playwright_bundle(self):
         self.builder.execute("mkdir", "-p", "/root/bundle-src")
-        for name in ("tool_download.py", "tool_lock.py", "tools.lock.json", "build-playwright-bundle.py",
+        for name in ("tool_download.py", "tool_lock.py", "build-playwright-bundle.py",
                      "mcp/package.json", "mcp/package-lock.json"):
-            self.builder.push(self.root / "infra/image" / name, "/root/bundle-src/" + Path(name).name)
+            self.builder.push(ROOT / "infra/image" / name, "/root/bundle-src/" + Path(name).name)
+        # The selected lock, so --lock-file governs Node here as it does in the image build.
+        self.builder.push(self.lock_file, "/root/bundle-src/tools.lock.json")
         self.builder.execute("apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "python3")
         self.builder.execute("python3", "/root/bundle-src/build-playwright-bundle.py")
         details = self.archive("playwright", "/root/playwright-bundle")
@@ -115,7 +117,7 @@ class BundleBuild:
             bundles["chromium-deps"] = self.deb_bundle("chromium-deps", CHROMIUM_LIBS + CHROMIUM_FONTS)
         if "docker" in kinds:
             self.docker_repository()
-            bundles["docker"] = self.deb_bundle("docker", docker_packages(self.root) + DOCKER_SUPPORT)
+            bundles["docker"] = self.deb_bundle("docker", docker_packages() + DOCKER_SUPPORT)
         manifest = {"architecture": self.arch, "bundles": bundles}
         (self.output / manifest_file(self.arch)).write_text(json.dumps(manifest, indent=2) + "\n")
         return manifest
