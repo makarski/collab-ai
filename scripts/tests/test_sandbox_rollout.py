@@ -115,3 +115,9 @@ class RolloutTests(unittest.TestCase):
              patch.object(rollout.importlib.util, "spec_from_file_location") as load:
             rollout.configure_ssh(self.args)
         load.assert_not_called()
+
+    def test_an_image_directory_without_a_manifest_yields_a_release_governed_by_the_root(self):
+        release = rollout.tool_release(self.image, "aarch64")
+        self.assertIsNone(release.lock)
+        self.assertEqual(release.machine, "aarch64")
+

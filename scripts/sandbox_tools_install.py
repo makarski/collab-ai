@@ -5,7 +5,7 @@ what a container's store lacks, and runs the in-container activator on a
 fresh, unreleased root. See docs/sandbox-tools.md.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from pathlib import Path
@@ -117,9 +117,10 @@ def never_released(container, state):
 
 @dataclass(frozen=True)
 class Release:
-    """What the host knows about the selected release: its lock, the server
-    architecture and, when the image manifest is at hand, its build provenance."""
-    lock: dict
+    """What the host knows about the selected release: the server architecture
+    and, when the image directory carries a manifest, the release's lock and
+    build provenance. Without a manifest the root's own lock governs."""
+    lock: dict | None
     machine: str
     provenance: dict | None = None
 
@@ -130,7 +131,7 @@ def build_manifest(container, release, selected):
     lock_text = container.output("cat", f"{SHARE}/tools.lock.json")
     source_text = container.output("cat", f"{SHARE}/build-source.json")
     lock = json.loads(lock_text)
-    if lock["artifacts"] != release.lock["artifacts"]:
+    if release.lock is not None and lock["artifacts"] != release.lock["artifacts"]:
         raise ValueError(f"{container.name}: the image's tool lock differs from the release manifest")
     if release.provenance is not None and json.loads(source_text) != release.provenance:
         raise ValueError(f"{container.name}: the root's build source differs from the release manifest")
@@ -152,7 +153,8 @@ def install(container, release, selected, cache=CACHE):
     """Activate the generation for container; returns the generation ID, or
     None when the released root already runs exactly this generation. Either
     way the gated units are (re)started, so an interrupted release completes."""
-    _, manifest = build_manifest(container, release, selected)
+    lock, manifest = build_manifest(container, release, selected)
+    release = replace(release, lock=lock)  # artifacts resolve from the root's verified lock
     generation = generation_id(manifest)
     current = status(container)
     if already_released(container, current, generation):

@@ -1,6 +1,7 @@
 """Download, stop managed runtimes, and apply a data-preserving replacement."""
 
 from copy import copy
+from pathlib import Path
 import importlib.util
 import json
 import subprocess
@@ -77,7 +78,11 @@ def install_tools(args, server, image_dir):
 
 
 def tool_release(image_dir, machine):
-    """The Release for image_dir, or None when its lock predates the artifact table."""
+    """The Release for image_dir, or None when its lock predates the artifact
+    table. An image directory without a manifest (a locally modified image)
+    leaves the root's own lock in charge."""
+    if not (Path(image_dir) / "manifest.json").exists():
+        return Release(None, machine)
     release_lock = release_lock_from(image_dir)
     if not supports_tool_store(release_lock):
         return None

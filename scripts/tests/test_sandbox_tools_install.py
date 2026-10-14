@@ -159,6 +159,14 @@ class InstallTests(unittest.TestCase):
         install.install(container, install.Release(LOCK, "aarch64", {"collab": "x"}), self.selected, self.cache)
         self.assertTrue(container.activated)
 
+    def test_an_image_without_a_manifest_installs_from_the_roots_own_lock(self):
+        container = FakeContainer("workspace")
+        unknown = install.Release(None, "aarch64")
+        _, manifest = install.build_manifest(container, unknown, self.selected)
+        container.expected = install.generation_id(manifest)
+        self.assertEqual(install.install(container, unknown, self.selected, self.cache), container.expected)
+        self.assertTrue(container.activated)
+
     def test_legacy_releases_without_an_artifact_table_keep_their_baked_tools(self):
         self.assertFalse(install.supports_tool_store({"go_version": "1.25.14"}))
         self.assertTrue(install.supports_tool_store(LOCK))
