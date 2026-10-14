@@ -209,9 +209,14 @@ def activate(container, manifest, selected):
     container.execute("rm", "-rf", INCOMING)
 
 
+def ready_for(current, generation):
+    """Whether a status report says ready for exactly this generation."""
+    state = current.get("state") or {}
+    return state.get("state") == "ready" and current.get("current") == generation
+
+
 def verify_ready(container, generation):
-    after = status(container)
-    if (after.get("state") or {}).get("state") != "ready" or after.get("current") != generation:
+    if not ready_for(status(container), generation):
         raise ValueError(f"{container.name}: tool activation did not reach ready for {generation}")
 
 
