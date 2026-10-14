@@ -60,13 +60,27 @@ def read_state(path=STATE):
         return None
 
 
+def fsync_path(path):
+    """Flush a file's contents, or a directory's entries, to stable storage."""
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def write_durable(path, text):
+    """Write text so that after a crash the file is either absent/old or complete."""
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(text)
+    fsync_path(temporary)
+    temporary.replace(path)
+    fsync_path(path.parent)
+
+
 def write_state(value, path=STATE):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(value, indent=2) + "\n")
-    with temporary.open("rb") as stream:
-        os.fsync(stream.fileno())
-    temporary.replace(path)
+    write_durable(path, json.dumps(value, indent=2) + "\n")
 
 
 def generation_id(manifest):
@@ -106,6 +120,11 @@ def validate_tool(name, tool):
     if "/" in tool["file"]:
         raise StoreError(f"Tool {name} has an invalid file name")
 
+
+# Durable commit order: every artifact's content and `.complete`, the
+# generation's manifest and its directory, then `current`, are flushed before
+# the terminal `ready` state is written; a crash at any point leaves a root
+# that is either not ready or ready with a complete store.
 
 # Archive member policy. Python's tarfile "data" filter is the second layer.
 
@@ -302,8 +321,10 @@ class Store:
         staging = Path(tempfile.mkdtemp(prefix=".stage-", dir=self.artifacts))
         try:
             install_artifact(tool["kind"], source, staging / "content", tool["entry"])
-            (staging / "content" / ".complete").write_text(json.dumps({"tool": name, "version": tool.get("version")}) + "\n")
+            write_durable(staging / "content" / ".complete",
+                          json.dumps({"tool": name, "version": tool.get("version")}) + "\n")
             (staging / "content").rename(destination)
+            fsync_path(self.artifacts)
         finally:
             shutil.rmtree(staging, ignore_errors=True)
 
@@ -317,14 +338,16 @@ class Store:
             (staging / name).symlink_to(Path("..") / ".." / "artifacts" / tool["sha256"])
             if not (staging / name / normalized(tool["entry"])).is_file():
                 raise StoreError(f"Generation validation failed: {name} has no entry {tool['entry']}")
-        (staging / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        write_durable(staging / "manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         staging.rename(target)
+        fsync_path(self.generations)
 
     def flip(self, generation):
         temporary = self.root / (".current-" + uuid.uuid4().hex)
         temporary.symlink_to(Path("generations") / generation, target_is_directory=True)
         try:
             os.replace(temporary, self.current)
+            fsync_path(self.root)
         finally:
             temporary.unlink(missing_ok=True)
 

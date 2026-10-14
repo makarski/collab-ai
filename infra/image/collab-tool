@@ -20,7 +20,7 @@ def environment(name, entry, base):
     env = dict(os.environ)
     env["PATH"] = f"{entry.parent}:{env.get('PATH', '/usr/bin:/bin')}"
     if name == "go":
-        env["GOROOT"] = str(base)
+        env["GOROOT"] = str(entry.parent.parent)  # the lock's entry is go/bin/go
     return env
 
 
