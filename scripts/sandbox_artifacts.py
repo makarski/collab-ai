@@ -106,20 +106,36 @@ def validate_bundles(manifest, architecture):
     if manifest.get("architecture") != ARCHITECTURES[architecture]:
         raise ValueError("bundle manifest is for another architecture")
     for name, details in manifest["bundles"].items():
-        if name not in BUNDLE_KINDS:
-            raise ValueError(f"unknown bundle {name!r}")
-        safe_file_name(details["file"], architecture)
-        if not re.fullmatch(r"[0-9a-f]{64}", details["sha256"]):
-            raise ValueError(f"bundle {name} has no SHA256")
-        if BUNDLE_KINDS[name] and not (isinstance(details.get("packages"), dict) and details["packages"]):
-            raise ValueError(f"bundle {name} has no package inventory")
+        validate_bundle(name, details, architecture)
+
+
+def validate_bundle(name, details, architecture):
+    if name not in BUNDLE_KINDS:
+        raise ValueError(f"unknown bundle {name!r}")
+    safe_file_name(details["file"], architecture)
+    if not re.fullmatch(r"[0-9a-f]{64}", details["sha256"]):
+        raise ValueError(f"bundle {name} has no SHA256")
+    if BUNDLE_KINDS[name] and not has_packages(details):
+        raise ValueError(f"bundle {name} has no package inventory")
+
+
+def has_packages(details):
+    packages = details.get("packages")
+    return isinstance(packages, dict) and bool(packages)
+
+
+SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*")  # dot-separated parts, never ".."
 
 
 def safe_file_name(value, architecture):
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value or "") or ".." in value:
+    if not SAFE_NAME.fullmatch(value or ""):
         raise ValueError(f"unsafe bundle file name {value!r}")
-    if value in RESERVED or value == bundles_name(architecture) or value.startswith(asset_name(architecture)):
+    if value in reserved_names(architecture) or value.startswith(asset_name(architecture)):
         raise ValueError(f"bundle file name {value!r} is reserved")
+
+
+def reserved_names(architecture):
+    return RESERVED | {bundles_name(architecture)}
 
 
 def confirmed_absent(error):
@@ -156,19 +172,30 @@ def fetch_bundles(output, architecture, obtain, base=None):
             raise
         source.write_text(json.dumps({"base": None}, indent=2) + "\n")  # remembered: no bundles
         return None
-    manifest = json.loads(manifest_path.read_text())
-    try:
-        validate_bundles(manifest, architecture)
-    except (ValueError, KeyError, TypeError) as error:
-        manifest_path.unlink()
-        raise ValueError(f"Invalid bundle manifest: {error}") from error
+    manifest = checked_manifest(manifest_path, architecture)
     if base is None:
-        for details in manifest["bundles"].values():
-            target = output / details["file"]
-            fresh(obtain, details["file"], target)
-            if sha256(target) != details["sha256"]:
-                target.unlink()
-                raise ValueError(f"Bundle {details['file']} does not match its digest")
+        copy_bundles(output, manifest, obtain)
         base = output.resolve().as_uri() + "/"
     source.write_text(json.dumps({"base": base}, indent=2) + "\n")
     return manifest
+
+
+def checked_manifest(path, architecture):
+    """The downloaded bundle manifest, or ValueError (and no manifest kept)."""
+    manifest = json.loads(path.read_text())
+    try:
+        validate_bundles(manifest, architecture)
+    except (ValueError, KeyError, TypeError) as error:
+        path.unlink()
+        raise ValueError(f"Invalid bundle manifest: {error}") from error
+    return manifest
+
+
+def copy_bundles(output, manifest, obtain):
+    """Copy every bundle file next to the image, each verified by digest."""
+    for details in manifest["bundles"].values():
+        target = output / details["file"]
+        fresh(obtain, details["file"], target)
+        if sha256(target) != details["sha256"]:
+            target.unlink()
+            raise ValueError(f"Bundle {details['file']} does not match its digest")
