@@ -87,8 +87,8 @@ def build_manifest(container, release_lock, machine, selected):
     lock = json.loads(lock_text)
     if lock["artifacts"] != release_lock["artifacts"]:
         raise ValueError(f"{container.name}: the image's tool lock differs from the release manifest")
-    tools = tools_for(container.name, selected)
-    return lock, manifest_for(lock, digest(lock_text.encode()), digest(source_text.encode()), machine, selected, tools)
+    release = {"release": digest(source_text.encode()), "lock_sha256": digest(lock_text.encode()), "architecture": machine}
+    return lock, manifest_for(lock, release, selected, tools_for(container.name, selected))
 
 
 def install(container, release_lock, machine, selected, cache=CACHE):
