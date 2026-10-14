@@ -1,7 +1,7 @@
 """Verified host cache of pinned tool artifacts, reused across rollouts."""
 
-import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 from urllib.parse import urlparse
@@ -39,15 +39,15 @@ def cache_artifact(item, cache=CACHE, obtain=fetch):
             return target
         target.unlink(missing_ok=True)
     directory.mkdir(parents=True, exist_ok=True)
-    handle, name = tempfile.mkstemp(prefix=".download-", dir=directory)
-    partial = Path(name)
+    # A private directory per attempt: obtain() still refuses to overwrite,
+    # and no other caller can name this file.
+    staging = Path(tempfile.mkdtemp(prefix=".download-", dir=directory))
     try:
-        os.close(handle)
-        partial.unlink()  # obtain() creates the file itself; the unique name is what matters.
+        partial = staging / target.name
         obtain(item["url"], partial)
         if sha256(partial) != item["sha256"]:
             raise ValueError(f"SHA256 mismatch for {item['name']} {item['version']}; nothing was cached")
         partial.replace(target)
     finally:
-        partial.unlink(missing_ok=True)
+        shutil.rmtree(staging, ignore_errors=True)
     return target
