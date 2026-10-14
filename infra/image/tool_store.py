@@ -387,12 +387,12 @@ class Store:
         return {path.name for path in self.artifacts.iterdir() if (path / ".complete").exists()}
 
     def resolve(self, tool):
-        """The absolute entry path of tool in the current generation."""
-        manifest = self.current_manifest()
-        if manifest is None or tool not in manifest["tools"] or manifest["tools"][tool]["kind"] == "debs":
+        """The absolute entry path of tool in the current generation; None for a
+        tool that isn't installed or has no executable (a deb set)."""
+        spec = (self.current_manifest() or {}).get("tools", {}).get(tool)
+        if spec is None or spec["kind"] == "debs":
             return None
-        entry = manifest["tools"][tool]["entry"]
-        return (self.current / tool).resolve() / normalized(entry)
+        return (self.current / tool).resolve() / normalized(spec["entry"])
 
     def resolve_name(self, name):
         """The executable for a launcher name: a tool's own entry, or a sibling
