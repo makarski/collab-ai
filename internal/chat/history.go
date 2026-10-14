@@ -104,7 +104,12 @@ func (m *Model) insertHistory(page *protocol.HistoryPage, arrivals bool) bool {
 	return overlap
 }
 
+// applyHistoryStages takes stages only from a page read in the current
+// epoch; a late page from before a broker restart keeps its bodies only.
 func (m *Model) applyHistoryStages(e *entry, h protocol.HistoryEntry, wm protocol.Watermark) {
+	if wm.Epoch != m.epoch {
+		return
+	}
 	if h.Direction == "received" {
 		if e.operatorStage != protocol.StageAgentAcknowledged {
 			e.operatorStage = h.OperatorStage
@@ -189,7 +194,7 @@ func (m *Model) stagesPage(req pendingRequest, resp protocol.Message) {
 		return
 	}
 	e := m.timeline.entries[page.MessageID]
-	if e == nil {
+	if e == nil || page.Watermark.Epoch != m.epoch {
 		return
 	}
 	for _, st := range page.Recipients {

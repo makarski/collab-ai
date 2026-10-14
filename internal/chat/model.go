@@ -111,6 +111,8 @@ type Model struct {
 	exitCode  int
 	quitArmed bool
 	fatal     string
+	ctx       context.Context // cancelled on quit, ending any connection attempt
+	cancel    context.CancelFunc
 
 	nextReq int
 	pending map[string]pendingRequest
@@ -150,6 +152,7 @@ func New(opts Options) *Model {
 		opts.Backoff = defaultBackoff()
 	}
 	m := &Model{opts: opts, conn: Connecting, pending: map[string]pendingRequest{}, focus: FocusEditor, width: 100, height: 30}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.timeline = newTimeline()
 	m.inbox.queuedAcks = map[string]*queuedAck{}
 	m.recipients = textinput.New()
@@ -171,9 +174,9 @@ func (m *Model) ExitCode() int { return m.exitCode }
 
 func (m *Model) dial() tea.Cmd {
 	m.gen++
-	gen, dial := m.gen, m.opts.Dial
+	gen, dial, ctx := m.gen, m.opts.Dial, m.ctx
 	return func() tea.Msg {
-		t, info, err := dial(context.Background())
+		t, info, err := dial(ctx)
 		return DialedMsg{Gen: gen, Session: info, Err: err, transport: t}
 	}
 }
@@ -396,6 +399,7 @@ func (m *Model) quit() tea.Cmd {
 		return nil
 	}
 	m.conn = Closed
+	m.cancel()
 	closeTransport(m.transport)
 	return tea.Quit
 }
@@ -414,6 +418,7 @@ func asOwnerBusy(err error, target **OwnerBusyError) bool {
 func Run(ctx context.Context, opts Options, input io.Reader, output io.Writer) (*Model, error) {
 	m := New(opts)
 	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
+	m.cancel()
 	closeTransport(m.transport)
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {
 		err = nil

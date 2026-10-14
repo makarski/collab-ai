@@ -153,6 +153,28 @@ func (h *chatHarness) reply(req, response protocol.Message) {
 	h.wire.in <- response
 }
 
+// holdResponse applies the response but deliberately withholds its commands,
+// so tests can inspect model admission before any receipt can be written.
+func (h *chatHarness) holdResponse(req, response protocol.Message) tea.Cmd {
+	h.t.Helper()
+	h.reply(req, response)
+	timer := time.NewTimer(4 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case msg := <-h.results:
+			if frame, ok := msg.(chat.FrameMsg); ok && frame.Frame.RequestID == req.RequestID {
+				return h.update(frame)
+			}
+			h.input(msg)
+		case request := <-h.wire.writes:
+			h.requests = append(h.requests, request)
+		case <-timer.C:
+			h.t.Fatal("response was not delivered to the model")
+		}
+	}
+}
+
 func (h *chatHarness) baseline() (protocol.Message, protocol.Message) {
 	h.t.Helper()
 	req := h.take(protocol.TypeOperatorSnapshot)

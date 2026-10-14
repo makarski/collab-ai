@@ -64,16 +64,18 @@ func SocketDialer(path string, timeout time.Duration) Dialer {
 	}
 }
 
+// openSession runs the open handshake; cancelling ctx interrupts it.
 func openSession(ctx context.Context, conn net.Conn) (Transport, protocol.SessionInfo, error) {
 	if deadline, ok := ctx.Deadline(); ok {
 		conn.SetDeadline(deadline)
 	}
+	stop := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Now()) })
 	t := &socketTransport{conn: conn, r: bufio.NewReader(conn), incoming: make(chan protocol.Message, 64), done: make(chan struct{})}
-	if err := t.write(protocol.Message{Type: protocol.TypeOperatorSessionOpen, RequestID: "open", Client: "chat"}); err != nil {
-		return nil, protocol.SessionInfo{}, err
+	resp, err := t.handshake()
+	if !stop() {
+		return nil, protocol.SessionInfo{}, ctx.Err()
 	}
-	var resp protocol.Message
-	if err := protocol.ReadFrame(t.r, &resp); err != nil {
+	if err != nil {
 		return nil, protocol.SessionInfo{}, err
 	}
 	conn.SetDeadline(time.Time{})
@@ -83,6 +85,15 @@ func openSession(ctx context.Context, conn net.Conn) (Transport, protocol.Sessio
 	}
 	go t.read()
 	return t, info, nil
+}
+
+func (t *socketTransport) handshake() (protocol.Message, error) {
+	var resp protocol.Message
+	if err := t.write(protocol.Message{Type: protocol.TypeOperatorSessionOpen, RequestID: "open", Client: "chat"}); err != nil {
+		return resp, err
+	}
+	err := protocol.ReadFrame(t.r, &resp)
+	return resp, err
 }
 
 // sessionInfo validates the open response and the capability handshake.

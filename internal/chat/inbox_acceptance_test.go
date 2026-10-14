@@ -21,7 +21,12 @@ func TestChatAdmissionPrecedesReceiptAndExplicitAckKeepsItsIdentity(t *testing.T
 	h := newChatHarness(t, chat.Bounds{})
 	inbox, history := h.baseline()
 	h.reply(history, chatHistory())
-	h.reply(inbox, chatInbox(chatIncoming("first", 1), chatIncoming("second", 2)))
+	commands := h.holdResponse(inbox, chatInbox(chatIncoming("first", 1), chatIncoming("second", 2)))
+	admitted := h.m.State()
+	if len(admitted.Entries) != 2 || admitted.Entries[0].Body != "body first" || admitted.Entries[1].Body != "body second" {
+		t.Fatalf("complete bodies not adopted before receipt command: %+v", admitted.Entries)
+	}
+	h.launch(commands)
 	receipt := h.take(protocol.TypeOperatorReceived)
 	if !reflect.DeepEqual(receipt.MessageIDs, []string{"first", "second"}) {
 		t.Fatalf("receipt IDs=%v", receipt.MessageIDs)

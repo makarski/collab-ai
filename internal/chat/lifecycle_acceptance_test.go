@@ -111,3 +111,31 @@ func TestChatMalformedDisconnectStopsAutomaticReconnect(t *testing.T) {
 		t.Fatal("malformed error not reported distinctly")
 	}
 }
+
+func TestChatQuitCancelsOutstandingDial(t *testing.T) {
+	started := make(chan context.Context, 1)
+	release := make(chan struct{})
+	defer close(release)
+	m := chat.New(chat.Options{Dial: func(ctx context.Context) (chat.Transport, protocol.SessionInfo, error) {
+		started <- ctx
+		select {
+		case <-ctx.Done():
+		case <-release:
+		}
+		return nil, protocol.SessionInfo{}, context.Canceled
+	}})
+	cmd := m.Init()
+	go cmd()
+	var ctx context.Context
+	select {
+	case ctx = <-started:
+	case <-time.After(time.Second):
+		t.Fatal("dial never started")
+	}
+	m.Update(chatKey('q', tea.ModCtrl))
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("quit did not cancel outstanding connection attempt")
+	}
+}
