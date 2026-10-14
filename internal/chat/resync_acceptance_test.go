@@ -75,25 +75,25 @@ func TestChatConflictingBodyPreservesRenderedContentAndSuspendsAck(t *testing.T)
 	}
 }
 
-func chatSentHistory(id string, seq uint64, revision uint64, stage, session string) protocol.Message {
+func chatSentHistory(id string, seq uint64, revision uint64, stage protocol.RecipientStage) protocol.Message {
 	msg := chatIncoming(id, seq)
 	msg.From = protocol.OperatorID
 	msg.To = "author"
 	msg.Origin = protocol.OriginOperator
-	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &protocol.HistoryPage{Watermark: protocol.Watermark{Epoch: "epoch", Revision: revision}, UpperSeq: seq, NextBeforeSeq: seq, Entries: []protocol.HistoryEntry{{Message: msg, Direction: "sent", Recipients: []protocol.RecipientStage{{AgentID: "author", SessionID: session, Stage: stage}}}}}}
+	return protocol.Message{Type: protocol.TypeOperatorHistory, History: &protocol.HistoryPage{Watermark: protocol.Watermark{Epoch: "epoch", Revision: revision}, UpperSeq: seq, NextBeforeSeq: seq, Entries: []protocol.HistoryEntry{{Message: msg, Direction: "sent", Recipients: []protocol.RecipientStage{stage}}}}}
 }
 
 func TestChatLateHistoryCannotUndoNewerRecipientReclaim(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
 	inbox, history := h.baseline()
 	h.reply(inbox, chatInbox())
-	h.reply(history, chatSentHistory("sent", 1, 1, protocol.StageAdapterReceived, "old-session"))
+	h.reply(history, chatSentHistory("sent", 1, 1, protocol.RecipientStage{AgentID: "author", Stage: protocol.StageAdapterReceived, SessionID: "old-session"}))
 	h.await(func() bool { return len(h.m.State().Entries) == 1 && h.m.State().InFlight == 0 })
 	h.event(protocol.EventConversationChanged, "epoch", 2)
 	catchup := h.take(protocol.TypeOperatorHistory)
 	h.wire.in <- protocol.Message{Type: protocol.TypeEvent, Event: &protocol.SessionEvent{Kind: protocol.EventStageChanged, Watermark: protocol.Watermark{Epoch: "epoch", Revision: 3}, MessageID: "sent", AgentID: "author", SessionID: "new-session", Stage: protocol.StageAccepted}}
 	h.await(func() bool { return h.m.State().Revision == 3 })
-	h.reply(catchup, chatSentHistory("sent", 1, 2, protocol.StageAdapterReceived, "old-session"))
+	h.reply(catchup, chatSentHistory("sent", 1, 2, protocol.RecipientStage{AgentID: "author", Stage: protocol.StageAdapterReceived, SessionID: "old-session"}))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	stage := h.m.State().Entries[0].Stages[0]
 	if stage.SessionID != "new-session" || stage.Stage != protocol.StageAccepted {
@@ -155,7 +155,7 @@ func TestChatLatePageFromPreviousEpochCannotOverwriteNewBaseline(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
 	inbox, history := h.baseline()
 	h.reply(inbox, chatInbox())
-	h.reply(history, chatSentHistory("sent", 1, 1, protocol.StageAdapterReceived, "old-session"))
+	h.reply(history, chatSentHistory("sent", 1, 1, protocol.RecipientStage{AgentID: "author", Stage: protocol.StageAdapterReceived, SessionID: "old-session"}))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	h.event(protocol.EventConversationChanged, "epoch", 2)
 	oldRequest := h.take(protocol.TypeOperatorHistory)
@@ -166,7 +166,7 @@ func TestChatLatePageFromPreviousEpochCannotOverwriteNewBaseline(t *testing.T) {
 		RecentSent: []protocol.SentSummary{{MessageID: "sent", Seq: 1, Recipients: []protocol.RecipientStage{{AgentID: "author", SessionID: "new-session", Stage: protocol.StageAccepted}}}},
 	}})
 	h.await(func() bool { return h.m.State().Baseline && h.m.State().Epoch == "new-epoch" })
-	h.reply(oldRequest, chatSentHistory("sent", 1, 999, protocol.StageAgentAcknowledged, "old-session"))
+	h.reply(oldRequest, chatSentHistory("sent", 1, 999, protocol.RecipientStage{AgentID: "author", Stage: protocol.StageAgentAcknowledged, SessionID: "old-session"}))
 	// Completing the stale scan must schedule the fresh catch-up requested by resync.
 	h.take(protocol.TypeOperatorHistory)
 	stage := h.m.State().Entries[0].Stages[0]

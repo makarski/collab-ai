@@ -64,19 +64,31 @@ func newEntry(msg protocol.Message, direction string, omitted bool) *entry {
 	return e
 }
 
-// upsert inserts a message, or reports a conflict when the same ID arrives
-// with different content; rendered content is never rewritten.
+// upsert inserts a message, or merges it into the known entry with that ID.
 func (t *timeline) upsert(fresh *entry) (*entry, bool) {
 	if known, ok := t.entries[fresh.msg.MessageID]; ok {
-		if !known.omitted && !fresh.omitted && known.hash != fresh.hash {
-			known.conflict = true
-		}
-		if known.omitted && !fresh.omitted {
-			t.bytes += fresh.size - known.size
-			known.msg.Payload, known.omitted, known.hash, known.size = fresh.msg.Payload, false, fresh.hash, fresh.size
-		}
+		t.merge(known, fresh)
 		return known, false
 	}
+	t.insert(fresh)
+	return fresh, true
+}
+
+// merge completes an omitted body, or flags a conflict when the same ID
+// arrives with different content; rendered content is never rewritten.
+func (t *timeline) merge(known, fresh *entry) {
+	switch {
+	case fresh.omitted:
+	case known.omitted:
+		t.bytes += fresh.size - known.size
+		known.msg.Payload, known.omitted, known.hash, known.size = fresh.msg.Payload, false, fresh.hash, fresh.size
+	case known.hash != fresh.hash:
+		known.conflict = true
+	}
+}
+
+// insert places a new entry in seq order, keeping the selection on its entry.
+func (t *timeline) insert(fresh *entry) {
 	t.entries[fresh.msg.MessageID] = fresh
 	t.bytes += fresh.size
 	i := sort.Search(len(t.order), func(i int) bool { return t.order[i].msg.Seq > fresh.msg.Seq })
@@ -86,7 +98,14 @@ func (t *timeline) upsert(fresh *entry) (*entry, bool) {
 	if t.selected >= i && t.selected >= 0 {
 		t.selected++
 	}
-	return fresh, true
+}
+
+// sent returns the sent entry with id, if any.
+func (t *timeline) sent(id string) *entry {
+	if e := t.entries[id]; e != nil && e.direction == "sent" {
+		return e
+	}
+	return nil
 }
 
 // fits reports whether one more entry of size fits after evicting old,

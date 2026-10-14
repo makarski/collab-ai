@@ -37,10 +37,21 @@ func reportChatExit(state chat.StateView, stderr io.Writer) int {
 	if state.Fatal != "" {
 		fmt.Fprintln(stderr, "operator chat:", state.Fatal)
 	}
-	if in := state.Intent; in != nil && (in.State == chat.IntentSending || in.State == chat.IntentUnknown) {
+	if in := state.Intent; unresolved(in) {
 		fmt.Fprintf(stderr, "send %q: outcome unknown; this chat can't resolve it after exit. collab operator history shows it if the broker accepted it.\n", in.MessageID)
 	}
 	return state.ExitCode
+}
+
+func unresolved(in *chat.IntentView) bool {
+	if in == nil {
+		return false
+	}
+	switch in.State {
+	case chat.IntentSending, chat.IntentUnknown:
+		return true
+	}
+	return false
 }
 
 func parseChat(args []string, stderr io.Writer) (string, time.Duration, int) {

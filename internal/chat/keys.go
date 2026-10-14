@@ -56,27 +56,39 @@ func (m *Model) confirmKey(k string) tea.Cmd {
 // editorKey: Enter sends; the textarea's newline binding is shift+enter,
 // alt+enter and ctrl+j.
 func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
+	return m.fieldKey(msg, m.submit, m.updateEditor)
+}
+
+// recipientKey: Enter moves on to the editor.
+func (m *Model) recipientKey(msg tea.KeyPressMsg) tea.Cmd {
+	return m.fieldKey(msg, m.toEditor, m.updateRecipients)
+}
+
+// fieldKey runs enter, returns to the timeline on Esc, and passes every other
+// key to the focused field.
+func (m *Model) fieldKey(msg tea.KeyPressMsg, enter func() tea.Cmd, update func(tea.Msg) tea.Cmd) tea.Cmd {
 	switch msg.String() {
 	case "enter":
-		return m.submit()
+		return enter()
 	case "esc":
 		m.setFocus(FocusTimeline)
 		return nil
 	}
+	return update(msg)
+}
+
+func (m *Model) toEditor() tea.Cmd {
+	m.setFocus(FocusEditor)
+	return nil
+}
+
+func (m *Model) updateEditor(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.editor, cmd = m.editor.Update(msg)
 	return cmd
 }
 
-func (m *Model) recipientKey(msg tea.KeyPressMsg) tea.Cmd {
-	switch msg.String() {
-	case "enter":
-		m.setFocus(FocusEditor)
-		return nil
-	case "esc":
-		m.setFocus(FocusTimeline)
-		return nil
-	}
+func (m *Model) updateRecipients(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	m.recipients, cmd = m.recipients.Update(msg)
 	return cmd
@@ -142,14 +154,13 @@ func (m *Model) pageUp() tea.Cmd {
 // paste inserts pasted text as one insertion into the focused field; an
 // embedded newline never sends.
 func (m *Model) paste(msg tea.PasteMsg) tea.Cmd {
-	var cmd tea.Cmd
 	switch m.focus {
 	case FocusEditor:
-		m.editor, cmd = m.editor.Update(msg)
+		return m.updateEditor(msg)
 	case FocusRecipients:
-		m.recipients, cmd = m.recipients.Update(msg)
+		return m.updateRecipients(msg)
 	}
-	return cmd
+	return nil
 }
 
 func (m *Model) cycleFocus(step int) {

@@ -30,27 +30,23 @@ func TestChatPasteAndFallbackNewlinesNeverSend(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
 	h.ready()
 	h.draft("author", "first\nsecond")
-	if h.m.State().Draft != "first\nsecond" || h.m.State().Intent != nil {
-		t.Fatalf("paste acted as send: %+v", h.m.State())
-	}
+	chatEqual(t, "multiline paste", h.m.State().Draft, "first\nsecond")
+	chatEqual(t, "paste never sends", h.m.State().Intent, nil)
 	h.input(tea.KeyboardEnhancementsMsg{})
 	for _, key := range []tea.KeyPressMsg{chatKey(tea.KeyEnter, tea.ModShift), chatKey(tea.KeyEnter, tea.ModAlt), chatKey('j', tea.ModCtrl)} {
 		h.input(key)
 	}
-	if h.m.State().Draft != "first\nsecond\n\n\n" || h.m.State().Intent != nil {
-		t.Fatalf("newline shortcut sent or lost text: %+v", h.m.State())
-	}
+	chatEqual(t, "newline shortcuts", h.m.State().Draft, "first\nsecond\n\n\n")
+	chatEqual(t, "newlines never send", h.m.State().Intent, nil)
 	h.input(chatKey('?', 0))
 	h.input(chatKey('a', 0))
 	h.input(chatKey('r', 0))
 	h.input(chatKey('s', 0))
-	if h.m.State().Help || !strings.HasSuffix(h.m.State().Draft, "?ars") {
-		t.Fatal("timeline/help key intercepted editor text")
-	}
+	chatEqual(t, "editor help literal", h.m.State().Help, false)
+	chatEqual(t, "editor keys literal", strings.HasSuffix(h.m.State().Draft, "?ars"), true)
 	h.input(chatKey(tea.KeyF1, 0))
-	if !h.m.State().Help || h.m.State().KeyDisambiguation {
-		t.Fatal("legacy keyboard capability misreported")
-	}
+	chatEqual(t, "global help", h.m.State().Help, true)
+	chatEqual(t, "legacy capability", h.m.State().KeyDisambiguation, false)
 	h.input(chatKey(tea.KeyF1, 0))
 	h.input(chatKey(tea.KeyEnter, 0))
 	req := h.take(protocol.TypeOperatorSend)
@@ -73,24 +69,21 @@ func TestChatBroadcastConfirmationPreservesDraftOnCancel(t *testing.T) {
 			h.ready()
 			h.draft("@all", "broadcast\nbody")
 			h.input(chatKey(tea.KeyEnter, 0))
-			if h.m.State().Confirm == nil || h.m.State().Intent != nil {
-				t.Fatal("broadcast dispatched before confirmation")
-			}
+			chatEqual(t, "broadcast confirmation", h.m.State().Confirm != nil, true)
+			chatEqual(t, "no unconfirmed send", h.m.State().Intent, nil)
 			h.input(cancel)
-			if h.m.State().Confirm != nil || h.m.State().Draft != "broadcast\nbody" || h.m.State().Recipients != "@all" {
-				t.Fatalf("cancel lost draft: %+v", h.m.State())
-			}
+			chatEqual(t, "cancel prompt", h.m.State().Confirm, nil)
+			chatEqual(t, "cancel preserves draft", h.m.State().Draft, "broadcast\nbody")
+			chatEqual(t, "cancel preserves recipients", h.m.State().Recipients, "@all")
 			h.input(chatKey(tea.KeyEnter, 0))
 			h.input(chatKey('y', 0))
 			req := h.take(protocol.TypeOperatorSend)
-			if req.To != protocol.Broadcast || len(req.Group) != 0 {
-				t.Fatalf("broadcast narrowed to preview: %+v", req)
-			}
+			chatEqual(t, "broker broadcast", req.To, protocol.Broadcast)
+			chatEqual(t, "no preview group", len(req.Group), 0)
 			h.reply(req, protocol.Message{Type: protocol.TypeAck, MessageID: req.MessageID, Stage: protocol.StageAccepted, Seq: 1, Recipients: []protocol.Recipient{{AgentID: "new-member", SessionID: "new-session"}}, Excluded: []string{"old-client"}})
 			h.await(func() bool { return h.m.State().Intent.State == chat.IntentAccepted })
-			if len(h.m.State().Intent.Recipients) != 1 || !reflect.DeepEqual(h.m.State().Intent.Excluded, []string{"old-client"}) {
-				t.Fatal("authoritative accepted membership lost")
-			}
+			chatEqual(t, "accepted member count", len(h.m.State().Intent.Recipients), 1)
+			chatEqual(t, "authoritative exclusions", reflect.DeepEqual(h.m.State().Intent.Excluded, []string{"old-client"}), true)
 		})
 	}
 }

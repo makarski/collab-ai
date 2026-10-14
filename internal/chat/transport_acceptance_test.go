@@ -104,21 +104,7 @@ func TestChatHandshakeRequiresEveryReadCapability(t *testing.T) {
 
 func TestChatTransportPreservesModelRequestIDAndClearsOpenDeadline(t *testing.T) {
 	written := make(chan protocol.Message, 1)
-	path := chatSocket(t, func(c net.Conn) {
-		r := bufio.NewReader(c)
-		var req protocol.Message
-		if protocol.ReadFrame(r, &req) != nil {
-			return
-		}
-		protocol.WriteFrame(c, chatHandshake())
-		if protocol.ReadFrame(r, &req) != nil {
-			return
-		}
-		written <- req
-		// A response after the handshake timeout is still valid on an idle session.
-		time.Sleep(100 * time.Millisecond)
-		protocol.WriteFrame(c, protocol.Message{Type: protocol.TypeOperatorSnapshot, RequestID: req.RequestID, Snapshot: &protocol.OperatorSnapshot{Watermark: protocol.Watermark{Epoch: "epoch"}}})
-	})
+	path := chatSocket(t, func(c net.Conn) { chatDelayedSnapshot(c, written) })
 	tr, _, err := chat.SocketDialer(path, 50*time.Millisecond)(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -131,20 +117,36 @@ func TestChatTransportPreservesModelRequestIDAndClearsOpenDeadline(t *testing.T)
 	if id != "model-q7" {
 		t.Fatalf("request ID replaced: %q", id)
 	}
-	select {
-	case req := <-written:
-		if req.RequestID != id {
-			t.Fatalf("wire ID %q != returned ID %q", req.RequestID, id)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("request not written")
+	req := chatReadTransportFrame(t, written)
+	chatEqual(t, "wire request ID", req.RequestID, id)
+	frame := chatReadTransportFrame(t, tr.Incoming())
+	chatEqual(t, "idle connection response ID", frame.RequestID, id)
+}
+
+func chatDelayedSnapshot(c net.Conn, written chan<- protocol.Message) {
+	r := bufio.NewReader(c)
+	var req protocol.Message
+	if protocol.ReadFrame(r, &req) != nil {
+		return
 	}
+	protocol.WriteFrame(c, chatHandshake())
+	if protocol.ReadFrame(r, &req) != nil {
+		return
+	}
+	written <- req
+	// A response after the handshake timeout is still valid on an idle session.
+	time.Sleep(100 * time.Millisecond)
+	protocol.WriteFrame(c, protocol.Message{Type: protocol.TypeOperatorSnapshot, RequestID: req.RequestID, Snapshot: &protocol.OperatorSnapshot{Watermark: protocol.Watermark{Epoch: "epoch"}}})
+}
+
+func chatReadTransportFrame(t *testing.T, incoming <-chan protocol.Message) protocol.Message {
+	t.Helper()
 	select {
-	case frame, ok := <-tr.Incoming():
-		if !ok || frame.RequestID != id {
-			t.Fatalf("idle connection lost: open=%v frame=%+v", ok, frame)
-		}
+	case frame, ok := <-incoming:
+		chatEqual(t, "transport open", ok, true)
+		return frame
 	case <-time.After(time.Second):
-		t.Fatal("response not delivered")
+		t.Fatal("transport frame not delivered")
+		return protocol.Message{}
 	}
 }

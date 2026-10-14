@@ -23,9 +23,9 @@ func TestChatAdmissionPrecedesReceiptAndExplicitAckKeepsItsIdentity(t *testing.T
 	h.reply(history, chatHistory())
 	commands := h.holdResponse(inbox, chatInbox(chatIncoming("first", 1), chatIncoming("second", 2)))
 	admitted := h.m.State()
-	if len(admitted.Entries) != 2 || admitted.Entries[0].Body != "body first" || admitted.Entries[1].Body != "body second" {
-		t.Fatalf("complete bodies not adopted before receipt command: %+v", admitted.Entries)
-	}
+	chatEqual(t, "adopted entry count", len(admitted.Entries), 2)
+	chatEqual(t, "first complete body", admitted.Entries[0].Body, "body first")
+	chatEqual(t, "second complete body", admitted.Entries[1].Body, "body second")
 	h.launch(commands)
 	receipt := h.take(protocol.TypeOperatorReceived)
 	if !reflect.DeepEqual(receipt.MessageIDs, []string{"first", "second"}) {
@@ -74,26 +74,24 @@ func TestChatHistoryIsNonConsumingButReceiveDedupStillConfirms(t *testing.T) {
 }
 
 func TestChatRejectsEntireMalformedInboxPageBeforeAdoption(t *testing.T) {
-	for _, name := range []string{"missing body", "wrong recipient", "wrong type", "descending sequence", "duplicate ID", "cursor skips row"} {
-		t.Run(name, func(t *testing.T) {
+	cases := []struct {
+		name   string
+		change func(*protocol.OperatorPage)
+	}{
+		{"missing body", func(p *protocol.OperatorPage) { p.Messages[1].Payload = nil }},
+		{"wrong recipient", func(p *protocol.OperatorPage) { p.Messages[1].To = "someone-else" }},
+		{"wrong type", func(p *protocol.OperatorPage) { p.Messages[1].Type = protocol.TypeAck }},
+		{"descending sequence", func(p *protocol.OperatorPage) { p.Messages[1].Seq = 1 }},
+		{"duplicate ID", func(p *protocol.OperatorPage) { p.Messages[1].MessageID = "first" }},
+		{"cursor skips row", func(p *protocol.OperatorPage) { p.NextAfterSeq = 3 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			h := newChatHarness(t, chat.Bounds{})
 			inbox, history := h.baseline()
 			h.reply(history, chatHistory())
 			page := chatInbox(chatIncoming("first", 1), chatIncoming("second", 2))
-			switch name {
-			case "missing body":
-				page.Page.Messages[1].Payload = nil
-			case "wrong recipient":
-				page.Page.Messages[1].To = "someone-else"
-			case "wrong type":
-				page.Page.Messages[1].Type = protocol.TypeAck
-			case "descending sequence":
-				page.Page.Messages[1].Seq = 1
-			case "duplicate ID":
-				page.Page.Messages[1].MessageID = "first"
-			case "cursor skips row":
-				page.Page.NextAfterSeq = 3
-			}
+			tc.change(page.Page)
 			h.reply(inbox, page)
 			h.await(func() bool { return h.m.State().Status != "" })
 			if len(h.m.State().Entries) != 0 {

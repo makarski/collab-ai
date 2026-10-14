@@ -98,21 +98,33 @@ func (t *socketTransport) handshake() (protocol.Message, error) {
 
 // sessionInfo validates the open response and the capability handshake.
 func sessionInfo(resp protocol.Message) (protocol.SessionInfo, error) {
-	if resp.Type == protocol.TypeError && resp.RequestID == "open" && resp.Code == protocol.ErrOwnerBusy && resp.Owner != nil {
-		return protocol.SessionInfo{}, &OwnerBusyError{Owner: *resp.Owner}
-	}
 	if resp.Type == protocol.TypeError && resp.RequestID == "open" {
-		return protocol.SessionInfo{}, fmt.Errorf("open rejected: %q: %q", resp.Code, resp.Detail)
+		return protocol.SessionInfo{}, openRejected(resp)
 	}
 	if !validOpen(resp) {
 		return protocol.SessionInfo{}, fmt.Errorf("%w: unexpected open response", ErrMalformed)
 	}
-	for _, want := range requiredCapabilities {
-		if !hasCapability(resp.Session.Capabilities, want) {
-			return protocol.SessionInfo{}, fmt.Errorf("broker lacks the %q capability; upgrade the sandbox", want)
-		}
+	if want := missingCapability(resp.Session.Capabilities); want != "" {
+		return protocol.SessionInfo{}, fmt.Errorf("broker lacks the %q capability; upgrade the sandbox", want)
 	}
 	return *resp.Session, nil
+}
+
+// openRejected reports owner_busy distinctly from other open errors.
+func openRejected(resp protocol.Message) error {
+	if resp.Code == protocol.ErrOwnerBusy && resp.Owner != nil {
+		return &OwnerBusyError{Owner: *resp.Owner}
+	}
+	return fmt.Errorf("open rejected: %q: %q", resp.Code, resp.Detail)
+}
+
+func missingCapability(caps []string) string {
+	for _, want := range requiredCapabilities {
+		if !hasCapability(caps, want) {
+			return want
+		}
+	}
+	return ""
 }
 
 func validOpen(resp protocol.Message) bool {
@@ -186,11 +198,18 @@ func (t *socketTransport) read() {
 
 // closeReason separates a malformed frame from an ordinary disconnect.
 func closeReason(err error) error {
-	var netErr *net.OpError
-	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.As(err, &netErr) {
+	if isDisconnect(err) {
 		return err
 	}
 	return fmt.Errorf("%w: %v", ErrMalformed, err)
+}
+
+func isDisconnect(err error) bool {
+	var netErr *net.OpError
+	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	return errors.As(err, &netErr)
 }
 
 // transportErr returns a transport's close reason when it reports one.

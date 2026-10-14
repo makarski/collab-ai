@@ -50,18 +50,38 @@ func (m *Model) catchupPage(req protocol.PageRequest, page *protocol.HistoryPage
 	overlap := m.insertHistory(page, true)
 	m.history.pages++
 	m.history.count += len(page.Entries)
-	if first && m.history.scrollUpper == 0 {
-		m.history.scrollUpper = page.UpperSeq
-		m.history.olderDone = !page.More
+	if first {
+		m.startScroll(page)
 	}
-	if first || overlap || !page.More {
+	if catchupDone(first, overlap, page) {
 		return m.finishCatchup()
 	}
-	if m.history.pages >= m.opts.Bounds.CatchupPages || m.history.count >= m.opts.Bounds.CatchupEntries {
+	if m.catchupCapped() {
 		m.markGap(page.NextBeforeSeq, page.UpperSeq)
 		return m.finishCatchup()
 	}
 	return m.historyPage(kindCatchup, page.NextBeforeSeq, page.UpperSeq)
+}
+
+// catchupDone: the first page sets the baseline, and overlap or the end of
+// history closes the scan.
+func catchupDone(first, overlap bool, page *protocol.HistoryPage) bool {
+	if first || overlap {
+		return true
+	}
+	return !page.More
+}
+
+func (m *Model) catchupCapped() bool {
+	return m.history.pages >= m.opts.Bounds.CatchupPages || m.history.count >= m.opts.Bounds.CatchupEntries
+}
+
+// startScroll freezes the bound for scrolling into older history once.
+func (m *Model) startScroll(page *protocol.HistoryPage) {
+	if m.history.scrollUpper == 0 {
+		m.history.scrollUpper = page.UpperSeq
+		m.history.olderDone = !page.More
+	}
 }
 
 func (m *Model) finishCatchup() tea.Cmd {
@@ -96,8 +116,8 @@ func (m *Model) insertHistory(page *protocol.HistoryPage, arrivals bool) bool {
 			break
 		}
 		e, inserted := m.upsert(fresh)
-		if inserted && arrivals && !m.timeline.atBottom() {
-			m.timeline.unread++
+		if arrivals {
+			m.arrived(inserted)
 		}
 		m.applyHistoryStages(e, h, page.Watermark)
 	}
@@ -147,7 +167,8 @@ func (m *Model) olderPage(req protocol.PageRequest, page *protocol.HistoryPage) 
 	}
 	gapEntry := m.timeline.entries[seqID(m.timeline, req.BeforeSeq)]
 	overlap := m.insertHistory(page, false)
-	if gapEntry != nil && gapEntry.gapBelow && (overlap || !page.More) {
+	filled := overlap || !page.More
+	if gapEntry != nil && filled {
 		gapEntry.gapBelow = false
 	}
 	if req.BeforeSeq <= m.timeline.oldestSeq() || !page.More {
@@ -187,18 +208,26 @@ func lastAgent(e *entry) string {
 	return last
 }
 
-func (m *Model) stagesPage(req pendingRequest, resp protocol.Message) {
-	page := resp.Stages
-	if resp.Type != protocol.TypeOperatorMessageStages || page == nil || page.MessageID != req.ids[0] || !validStages(page.Recipients) {
+func (m *Model) stagesPage(req pendingRequest, resp protocol.Message) tea.Cmd {
+	if !validStagesPage(req.ids[0], resp) {
 		m.status = "stages not loaded: " + brokerReason(resp)
-		return
+		return nil
 	}
-	e := m.timeline.entries[page.MessageID]
+	page := resp.Stages
+	e := m.timeline.sent(page.MessageID)
 	if e == nil || page.Watermark.Epoch != m.epoch {
-		return
+		return nil
 	}
 	for _, st := range page.Recipients {
 		e.applyStage(st, page.Watermark)
 	}
 	e.stagesTruncated = page.More
+	return nil
+}
+
+func validStagesPage(id string, resp protocol.Message) bool {
+	if resp.Type != protocol.TypeOperatorMessageStages || resp.Stages == nil {
+		return false
+	}
+	return resp.Stages.MessageID == id && validStages(resp.Stages.Recipients)
 }

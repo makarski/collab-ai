@@ -31,26 +31,31 @@ type operatorSend struct {
 	text                         string
 }
 
+type operatorCommand func(ctx context.Context, args []string, stdout, stderr io.Writer) int
+
+var operatorCommands = map[string]operatorCommand{
+	"send":    runOperatorSend,
+	"receive": runOperatorReceive,
+	"ack":     runOperatorAck,
+	"history": runOperatorHistory,
+	"chat":    runOperatorChat,
+}
+
 func runOperator(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, operatorUsage)
 		return 2
 	}
-	switch args[0] {
-	case "receive":
-		return runOperatorReceive(ctx, args[1:], stdout, stderr)
-	case "ack":
-		return runOperatorAck(ctx, args[1:], stdout, stderr)
-	case "history":
-		return runOperatorHistory(ctx, args[1:], stdout, stderr)
-	case "chat":
-		return runOperatorChat(ctx, args[1:], stdout, stderr)
-	case "send":
-	default:
+	run, ok := operatorCommands[args[0]]
+	if !ok {
 		fmt.Fprintln(stderr, operatorUsage)
 		return 2
 	}
-	cfg, code := parseOperatorSend(args[1:], stderr)
+	return run(ctx, args[1:], stdout, stderr)
+}
+
+func runOperatorSend(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	cfg, code := parseOperatorSend(args, stderr)
 	if code != -1 {
 		return code
 	}

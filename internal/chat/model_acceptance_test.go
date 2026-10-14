@@ -207,8 +207,17 @@ func chatHistory(messages ...protocol.Message) protocol.Message {
 
 func chatKey(code rune, mod tea.KeyMod) tea.KeyPressMsg {
 	key := tea.KeyPressMsg{Code: code, Mod: mod}
-	if code >= 32 && code < 127 && mod == 0 {
+	if printableChatKey(code) && mod == 0 {
 		key.Text = string(code)
 	}
 	return key
+}
+
+func printableChatKey(code rune) bool { return code >= 32 && code < 127 }
+
+func chatEqual[T comparable](t *testing.T, label string, got, want T) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s = %v, want %v", label, got, want)
+	}
 }

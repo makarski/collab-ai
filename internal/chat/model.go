@@ -214,11 +214,18 @@ func (m *Model) request(kind string, msg protocol.Message, ids ...string) tea.Cm
 // requested reports whether a request of kind for id is in flight or queued.
 func (m *Model) requested(kind, id string) bool {
 	for _, req := range m.pending {
-		if req.kind == kind && len(req.ids) > 0 && req.ids[0] == id {
+		if req.is(kind, id) {
 			return true
 		}
 	}
 	return false
+}
+
+func (r pendingRequest) is(kind, id string) bool {
+	if r.kind != kind || len(r.ids) == 0 {
+		return false
+	}
+	return r.ids[0] == id
 }
 
 func (m *Model) inFlight() int {
@@ -249,31 +256,44 @@ func (m *Model) release(id string) (pendingRequest, tea.Cmd) {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if cmd, ok := m.connectionUpdate(msg); ok {
+		return m, cmd
+	}
+	return m, m.terminalUpdate(msg)
+}
+
+// connectionUpdate handles broker connection messages.
+func (m *Model) connectionUpdate(msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case DialedMsg:
-		return m, m.dialed(msg)
+		return m.dialed(msg), true
 	case FrameMsg:
-		return m, m.frame(msg)
+		return m.frame(msg), true
 	case ClosedMsg:
-		return m, m.closed(msg.Gen, msg.Err)
+		return m.closed(msg.Gen, msg.Err), true
 	case SentMsg:
-		return m, m.sent(msg)
+		return m.sent(msg), true
 	case RetryMsg:
-		return m, m.retry(msg)
+		return m.retry(msg), true
 	case receiptRetryMsg:
-		return m, m.retryReceipts(msg)
+		return m.retryReceipts(msg), true
+	}
+	return nil, false
+}
+
+// terminalUpdate handles input and terminal messages.
+func (m *Model) terminalUpdate(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
-		return m, nil
 	case tea.KeyboardEnhancementsMsg:
 		m.keyboard = msg.SupportsKeyDisambiguation()
-		return m, nil
 	case tea.PasteMsg:
-		return m, m.paste(msg)
+		return m.paste(msg)
 	case tea.KeyPressMsg:
-		return m, m.key(msg)
+		return m.key(msg)
 	}
-	return m, nil
+	return nil
 }
 
 func (m *Model) dialed(msg DialedMsg) tea.Cmd {

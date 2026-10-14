@@ -52,9 +52,9 @@ func TestChatOmittedBodyPromotionCannotBypassMemoryBound(t *testing.T) {
 	h.reply(inbox, chatInbox(msg))
 	h.await(func() bool { return h.m.State().Paused || !h.m.State().Entries[0].BodyOmitted })
 	state := h.m.State()
-	if !state.Paused || !state.Entries[0].BodyOmitted || state.Entries[0].Receipt != chat.ReceiptNone {
-		t.Fatalf("promotion bypassed byte capacity: paused=%v omitted=%v receipt=%q body bytes=%d", state.Paused, state.Entries[0].BodyOmitted, state.Entries[0].Receipt, len(state.Entries[0].Body))
-	}
+	chatEqual(t, "capacity pause", state.Paused, true)
+	chatEqual(t, "body stays omitted", state.Entries[0].BodyOmitted, true)
+	chatEqual(t, "no premature receipt", state.Entries[0].Receipt, chat.ReceiptNone)
 }
 
 func TestChatDuplicateHistoryDoesNotEvictExistingBody(t *testing.T) {
@@ -74,16 +74,16 @@ func TestChatDuplicateHistoryDoesNotEvictExistingBody(t *testing.T) {
 	h.reply(req, page)
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	state := h.m.State()
-	if len(state.Entries) != 1 || state.Entries[0].Body != "body known" || !state.Entries[0].Conflict {
-		t.Fatalf("capacity eviction concealed conflicting duplicate: %+v", state.Entries)
-	}
+	chatEqual(t, "retained count", len(state.Entries), 1)
+	chatEqual(t, "original body", state.Entries[0].Body, "body known")
+	chatEqual(t, "content conflict", state.Entries[0].Conflict, true)
 }
 
 func TestChatRepeatedStageFetchIsCoalesced(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
 	inbox, history := h.baseline()
 	h.reply(inbox, chatInbox())
-	h.reply(history, chatSentHistory("sent", 1, 1, protocol.StageAccepted, "session"))
+	h.reply(history, chatSentHistory("sent", 1, 1, protocol.RecipientStage{AgentID: "author", Stage: protocol.StageAccepted, SessionID: "session"}))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	h.input(chatKey(tea.KeyEscape, 0))
 	h.input(chatKey(tea.KeyDown, 0))

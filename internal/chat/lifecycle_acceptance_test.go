@@ -86,9 +86,9 @@ func TestChatQuitExplainsUnknownOutcomeAndClosesTransport(t *testing.T) {
 	req := h.take(protocol.TypeOperatorSend)
 	cmd := h.update(chatKey('q', tea.ModCtrl))
 	state := h.m.State()
-	if cmd != nil || !strings.Contains(state.Status, req.MessageID) || !strings.Contains(state.Status, "unknown") {
-		t.Fatalf("quit hid uncertain send: %+v", state)
-	}
+	chatEqual(t, "quit warning before exit", cmd == nil, true)
+	chatEqual(t, "unknown send ID", strings.Contains(state.Status, req.MessageID), true)
+	chatEqual(t, "unknown outcome", strings.Contains(state.Status, "unknown"), true)
 	if strings.Contains(state.Status, "discarded") {
 		t.Fatal("quit claimed send was discarded")
 	}

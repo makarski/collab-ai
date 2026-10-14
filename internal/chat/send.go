@@ -139,7 +139,7 @@ func (m *Model) sendResult(req pendingRequest, resp protocol.Message) tea.Cmd {
 		return nil
 	}
 	m.quitArmed = false
-	if resp.Type == protocol.TypeAck && resp.Stage == protocol.StageAccepted && resp.MessageID == in.ID {
+	if sendAccepted(resp, in.ID) {
 		in.State, in.Recipients, in.Excluded = IntentAccepted, resp.Recipients, resp.Excluded
 		return m.startCatchup()
 	}
@@ -153,6 +153,13 @@ func (m *Model) sendResult(req pendingRequest, resp protocol.Message) tea.Cmd {
 		m.editor.SetValue(payloadText(in.Payload))
 	}
 	return nil
+}
+
+func sendAccepted(resp protocol.Message, id string) bool {
+	if resp.Type != protocol.TypeAck {
+		return false
+	}
+	return resp.Stage == protocol.StageAccepted && resp.MessageID == id
 }
 
 // reply addresses the sender of a received message; sent messages carry no

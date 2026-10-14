@@ -42,6 +42,13 @@ func (s *inboxState) disconnected() {
 	s.draining, s.drainAgain = false, false
 }
 
+// suspend holds one queued acknowledgment, keeping the first reason.
+func (s *inboxState) suspend(id, reason string) {
+	if q := s.queuedAcks[id]; q != nil && q.suspended == "" {
+		q.suspended = reason
+	}
+}
+
 func (s *inboxState) suspendAll(reason string) {
 	for _, q := range s.queuedAcks {
 		q.suspended = reason
@@ -106,9 +113,7 @@ func (m *Model) adopt(messages []protocol.Message) ([]string, bool) {
 			return ids, false
 		}
 		e, inserted := m.upsert(fresh)
-		if inserted && !m.timeline.atBottom() {
-			m.timeline.unread++
-		}
+		m.arrived(inserted)
 		if e.receipt != ReceiptConfirmed {
 			e.receipt = ReceiptPending
 		}
@@ -138,10 +143,17 @@ func (m *Model) room(fresh *entry) bool {
 // queued acknowledgment for that ID at once.
 func (m *Model) upsert(fresh *entry) (*entry, bool) {
 	e, inserted := m.timeline.upsert(fresh)
-	if q := m.inbox.queuedAcks[e.msg.MessageID]; e.conflict && q != nil && q.suspended == "" {
-		q.suspended = "content changed"
+	if e.conflict {
+		m.inbox.suspend(e.msg.MessageID, "content changed")
 	}
 	return e, inserted
+}
+
+// arrived counts a new message as unread while the selection is scrolled up.
+func (m *Model) arrived(inserted bool) {
+	if inserted && !m.timeline.atBottom() {
+		m.timeline.unread++
+	}
 }
 
 // pinned entries are never evicted: unconfirmed admissions, queued
@@ -270,14 +282,22 @@ func (m *Model) sendQueuedAck(e *entry) tea.Cmd {
 	return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: e.msg.MessageID}, e.msg.MessageID)
 }
 
-func (m *Model) acknowledged(req pendingRequest, resp protocol.Message) {
+func (m *Model) acknowledged(req pendingRequest, resp protocol.Message) tea.Cmd {
 	id := req.ids[0]
-	if resp.Type != protocol.TypeAck || resp.MessageID != id || resp.Stage != protocol.StageAgentAcknowledged {
+	if !ackConfirms(resp, id) {
 		m.status = "acknowledgment not confirmed: " + brokerReason(resp)
-		return
+		return nil
 	}
 	if e := m.timeline.entries[id]; e != nil {
 		e.operatorStage = protocol.StageAgentAcknowledged
 	}
 	m.status = "acknowledged by operator (received, not approval)"
+	return nil
+}
+
+func ackConfirms(resp protocol.Message, id string) bool {
+	if resp.Type != protocol.TypeAck {
+		return false
+	}
+	return resp.MessageID == id && resp.Stage == protocol.StageAgentAcknowledged
 }
