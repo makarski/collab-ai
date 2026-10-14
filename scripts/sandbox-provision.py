@@ -14,7 +14,7 @@ from sandbox_operator_config import deployment_directory, remember
 from sandbox_operator_workflow import run_operation
 from sandbox_operator_recovery import recover
 from sandbox_releases import release_tag, repository
-from sandbox_rollout import rollout
+from sandbox_rollout import rollout, tools_retry
 
 
 def identifier(value):
@@ -25,7 +25,7 @@ def identifier(value):
 
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["rollout", "plan", "apply", "recover"])
+    parser.add_argument("action", choices=["rollout", "plan", "apply", "recover", "tools-retry"])
     parser.add_argument("--remote", default="colima-collab-ai" if platform.system() == "Darwin" else "local")
     parser.add_argument("--image-dir", type=Path, help="Verified workspace image directory; remembered after first selection")
     parser.add_argument("--state-dir", type=Path, help="Select an existing operator checkout once; otherwise discover it")
@@ -35,6 +35,8 @@ def arguments():
     parser.add_argument("--release", type=release_tag, help="Rollout release tag; defaults to latest")
     parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
     parser.add_argument("--ssh-state-dir", type=Path, default=Path(__file__).resolve().parents[1] / "infra/incus/ssh")
+    parser.add_argument("--tools", nargs="*", default=["cs-mcp"], metavar="TOOL",
+                        help="Optional tools to install (default: cs-mcp); required tools are always installed")
     changes = parser.add_mutually_exclusive_group()
     changes.add_argument("--replace", action="store_true", help="Plan replacement of the dev container")
     changes.add_argument("--destroy", action="store_true", help="Explicitly plan deletion; volume guards must be removed first")
@@ -55,7 +57,7 @@ def main():
     metadata = json.loads(subprocess.check_output(["incus", "query", args.remote + ":/1.0"]))
     directory = deployment_directory(args.state_dir, args.project)
     remember(directory, args.project)
-    operation = {"recover": recover, "rollout": rollout}.get(args.action, run_operation)
+    operation = {"recover": recover, "rollout": rollout, "tools-retry": tools_retry}.get(args.action, run_operation)
     operation(args, directory, metadata["environment"])
 
 

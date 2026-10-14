@@ -11,6 +11,7 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
+from sandbox_tools_install import Container, RETRY_COMMAND, install, never_released, release_lock_from, selection, status
 
 
 def managed_instances(directory, project):
@@ -62,6 +63,36 @@ def configure_ssh(args):
                               state_dir=args.ssh_state_dir, refresh_host_key=True))
 
 
+def install_tools(args, server, image_dir):
+    """Activate this release's tool generation in every running instance,
+    before any agent is admitted. A stopped instance installs at its rollout."""
+    selected = selection(getattr(args, "tools", None) or [])
+    release_lock = release_lock_from(image_dir)
+    statuses = instances(args)
+    for name in ("workspace", "secured"):
+        if statuses.get(name) != "Running":
+            if name in statuses:
+                print(f"{name} is stopped; its tools install at the next rollout.", flush=True)
+            continue
+        generation = install(Container(args.remote, args.project, name), release_lock, server["architectures"][0], selected)
+        print(f"{name}: tool generation {generation or 'already'} active", flush=True)
+
+
+def tools_retry(args, directory, server):
+    """Rerun a crashed activation, only on roots no agent could have used."""
+    with deployment_lock(directory):
+        require_recovered(directory)
+        _, _, variables = image_selection(directory, args.image_dir)
+        for name, state in instances(args).items():
+            if state != "Running":
+                continue
+            container = Container(args.remote, args.project, name)
+            if not never_released(container, status(container).get("state")):
+                raise ValueError(f"{name} was released to agents; run rollout to change its tools")
+        install_tools(args, server, variables.parent)
+        configure_ssh(args)
+
+
 def rollout(args, directory, server):
     # One lock covers download through SSH: no competing plan/apply can change the selection.
     with deployment_lock(directory):
@@ -83,6 +114,11 @@ def rollout(args, directory, server):
             run_locked_operation(selected, directory, server)
         except BaseException:
             print("Rollout incomplete. Inspect the error before restarting containers; host state and data are retained.", flush=True)
+            raise
+        try:
+            install_tools(args, server, selected.image_dir)
+        except BaseException:
+            print(f"Tools not activated; agents are not admitted. Fix the cause, then run: {RETRY_COMMAND}", flush=True)
             raise
         # Re-trust the key through authenticated Incus only after a successful apply.
         configure_ssh(args)

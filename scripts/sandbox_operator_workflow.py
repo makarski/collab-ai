@@ -71,10 +71,14 @@ def prepare(args, directory, server):
     image, fingerprint, variables = image_selection(directory, args.image_dir)
     files = provisioning_files(directory)
     options = {"remote": args.remote, "project": args.project,
-               "pool": args.storage_pool, "network": args.network, "replace": args.replace, "destroy": args.destroy}
+               "pool": args.storage_pool, "network": args.network, "replace": args.replace, "destroy": args.destroy,
+               "tools": sorted(getattr(args, "tools", None) or [])}
     identity = plan_identity(files, fingerprint, server["certificate_fingerprint"], options)
     identity["operator_lock"] = file_sha(ROOT / "infra/operator/tools.lock.json")
     identity["operator_runner"] = file_sha(ROOT / "infra/operator/run.py")
+    # A plan can't change what the tool store installs without showing it.
+    identity["tools_lock"] = file_sha(image.parent / "manifest.json") if (image.parent / "manifest.json").exists() else None
+    identity["tools_activator"] = file_sha(ROOT / "infra/image/tool_store.py")
     if args.action == "apply":
         require_saved_plan(directory, identity)
     write_json(directory / "operator-image.json", {"variables": str(variables)})

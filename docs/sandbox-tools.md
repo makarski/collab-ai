@@ -371,9 +371,13 @@ happens only when every artifact exists. PRs in order:
      image records `tools-mode = baked`: it still carries the tools and the
      readiness gate passes, so nothing changes for agents while the store is
      exercised end to end.
-   - **3b:** the host flow (cache → push → activate → release), the selection,
-     plan identity, the admission gate in `sandbox-ssh.py`, `tools-retry`, and
-     the selection-aware checks.
+   - **3b:** the host flow (cache → push → activate → release) in
+     `scripts/sandbox_tools_install.py`, run by `rollout` between apply and
+     the SSH key install; `--tools` selects optional vendor tools (bundles
+     follow in PR 4); plan identity covers the selection, the release lock and
+     the activator; `sandbox-ssh.py` refuses the agent key while
+     `collab-tools-ready` fails; `tools-retry` reruns a crashed activation on
+     never-released roots only.
 4. **Slim image.** `install.sh` stops downloading vendor tools; the launchers
    take over. The default selection keeps today's feature set on (Docker and
    Playwright enabled) unless the operator decides otherwise; presets (#73)
