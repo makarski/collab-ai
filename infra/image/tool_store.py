@@ -136,6 +136,8 @@ def validate_members(members):
     normalization, including case-insensitively."""
     seen, folded, regular = set(), set(), set()
     for member in members:
+        if is_archive_root(member):
+            continue
         path = normalized(member.name)
         key = str(path)
         if key in seen or key.lower() in folded:
@@ -143,6 +145,11 @@ def validate_members(members):
         validate_member_type(member, path, regular)
         seen.add(key)
         folded.add(key.lower())
+
+
+def is_archive_root(member):
+    """`tar -C dir .` records the directory itself as `.`; harmless, not a name."""
+    return member.isdir() and PurePosixPath(member.name).parts in ((), (".",))
 
 
 def validate_member_type(member, path, regular):
@@ -252,13 +259,13 @@ class Store:
 
     def activate(self, manifest, incoming):
         validate_manifest(manifest)
-        state = read_state(self.state_path)
-        if state is not None and state.get("state") == "ready":
-            raise StoreError("This root already has an activated generation; tools change only on a new root")
         generation = generation_id(manifest)
         self.root.mkdir(parents=True, exist_ok=True)
         with (self.root / "lock").open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
+            # Decided under the lock: a concurrent activation that just
+            # released this root must not be followed by a second one.
+            self.require_unreleased()
             write_state({"state": "maintenance", "generation": generation, "started": time.time()}, self.state_path)
             self.remove_incomplete()
             for name, tool in manifest["tools"].items():
@@ -270,6 +277,11 @@ class Store:
             self.prune()
             write_state({"state": "ready", "generation": generation, "activated": time.time()}, self.state_path)
         return generation
+
+    def require_unreleased(self):
+        state = read_state(self.state_path)
+        if state is not None and state.get("state") == "ready":
+            raise StoreError("This root already has an activated generation; tools change only on a new root")
 
     def remove_incomplete(self):
         for directory in (self.artifacts, self.generations):

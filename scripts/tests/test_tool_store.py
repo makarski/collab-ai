@@ -140,6 +140,19 @@ class ArchivePolicyTests(StoreHarness):
         self.assertEqual((self.store.resolve("go").parent / "alias").read_text(), "a")
 
 
+class RealTarTests(StoreHarness):
+    def test_archive_made_with_tar_dash_c_dot_is_accepted(self):
+        source = Path(self.temporary.name) / "src"
+        (source / "bin").mkdir(parents=True)
+        (source / "bin/tool").write_text("ok")
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+            tar.add(source, arcname=".")  # the layout `tar -C source .` produces, root entry "."
+        tools = self.deliver("go", buffer.getvalue())
+        self.store.activate(self.manifest(tools), self.incoming)
+        self.assertEqual(self.store.resolve("go").read_text(), "ok")
+
+
 class GenerationTests(StoreHarness):
     def activate_fresh(self, data):
         self.store.state_path.unlink(missing_ok=True)  # a new root
