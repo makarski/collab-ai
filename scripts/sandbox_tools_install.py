@@ -33,6 +33,11 @@ OPTIONAL_TOOLS = ("cs-mcp", "playwright", "docker")
 BUNDLE_TOOLS = ("playwright", "docker")
 MODE_FILE = f"{SHARE}/tools-mode"
 PLAYWRIGHT_ENTRY = "node_modules/@playwright/mcp/cli.js"
+# The release bundles each bundle-backed tool consists of: (bundle, kind, entry).
+BUNDLE_PARTS = {
+    "playwright": (("playwright", "archive", PLAYWRIGHT_ENTRY), ("chromium-deps", "debs", ".")),
+    "docker": (("docker", "debs", "."),),
+}
 SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
 # Units that wait for collab-tools-ready; started by the host once a root is released.
@@ -93,13 +98,8 @@ def bundle_entries(release, selected, role, store_mode):
     if release.bundles is None:
         raise ValueError(f"the selected tools need release bundles ({', '.join(wanted)}) that this release does not carry")
     bundles = release.bundles["manifest"]["bundles"]
-    entries = {}
-    if "playwright" in wanted:
-        entries["playwright"] = bundle_entry(bundles["playwright"], "archive", PLAYWRIGHT_ENTRY)
-        entries["chromium-deps"] = bundle_entry(bundles["chromium-deps"], "debs", ".")
-    if "docker" in wanted:
-        entries["docker"] = bundle_entry(bundles["docker"], "debs", ".")
-    return entries
+    return {name: bundle_entry(bundles[name], kind, entry)
+            for tool in wanted for name, kind, entry in BUNDLE_PARTS[tool]}
 
 
 def bundle_entry(details, kind, entry):

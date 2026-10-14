@@ -12,7 +12,7 @@ import sys
 import zipfile
 
 from sandbox_artifacts import from_zip
-from sandbox_image_cache import prepare_image
+from sandbox_image_cache import prepare_image, record_bundles
 from sandbox_releases import download_release, release_tag, repository
 
 
@@ -43,7 +43,8 @@ def main():
         manifest = json.loads((output / "manifest.json").read_text())
         obtain = None
     if obtain is not None:
-        output, manifest = prepare_image(architecture, obtain, args.output, bundles_base=bundles_base)
+        output, manifest = prepare_image(architecture, obtain, args.output)
+        record_bundles(output.resolve(), architecture, obtain, bundles_base)
     print(f"Verified {architecture} image: {manifest['image_fingerprint']}")
     print(f"Image variables: {output / 'image.tfvars.json'}")
     command = ["python3", "scripts/sandbox-provision.py", "plan", "--image-dir", str(output),

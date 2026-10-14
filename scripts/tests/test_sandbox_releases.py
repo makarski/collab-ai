@@ -15,16 +15,18 @@ class ReleaseTests(unittest.TestCase):
         return BytesIO(json.dumps(dict(tag_name=tag, draft=False, **kwargs)).encode())
 
     def test_latest_is_resolved_once_and_both_assets_use_the_same_tag(self):
-        def prepare(arch, obtain, output, bundles_base=None):
+        def prepare(arch, obtain, output):
             obtain("image.json", Path("manifest"))
             obtain("image.tar.gz", Path("archive"))
             return Path("/cache/current"), {"image_fingerprint": "a" * 64}
         with patch.object(releases, "urlopen", return_value=self.response()) as api, \
-             patch.object(releases, "prepare_image", side_effect=prepare), patch.object(releases, "fetch") as fetch:
+             patch.object(releases, "prepare_image", side_effect=prepare), patch.object(releases, "fetch") as fetch, \
+             patch.object(releases, "record_bundles") as bundles:
             directory = releases.download_release("aarch64")
         self.assertEqual(api.call_count, 1)
         self.assertTrue(api.call_args.args[0].full_url.endswith("/releases/latest"))
         self.assertEqual(directory, Path("/cache") / ("a" * 64))
+        self.assertEqual(bundles.call_args.args[0], directory)  # bundles are recorded for the frozen selection
         for call in fetch.call_args_list:
             self.assertIn("/releases/download/workspace-v1.2.3/", call.args[0])
 

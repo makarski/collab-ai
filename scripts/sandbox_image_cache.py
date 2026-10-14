@@ -9,13 +9,11 @@ import uuid
 from sandbox_artifacts import fetch_bundles, fetch_image, fetch_manifest, image_variables, install_artifact, sha256
 
 
-def prepare_image(architecture, obtain, output=None, cache=Path("dist/images"), bundles_base=None):
+def prepare_image(architecture, obtain, output=None, cache=Path("dist/images")):
     if output is not None:
         output = output.resolve()
         output.mkdir(parents=True, exist_ok=False)
-        manifest = install_artifact(output, architecture, obtain)
-        fetch_bundles(output, architecture, obtain, bundles_base)
-        return output, manifest
+        return output, install_artifact(output, architecture, obtain)
     cache.mkdir(parents=True, exist_ok=True)
     current = cache / "current"
     if current.exists() and not current.is_symlink():
@@ -31,10 +29,14 @@ def prepare_image(architecture, obtain, output=None, cache=Path("dist/images"), 
             fetch_image(staging, architecture, manifest, obtain)
             image_variables(staging, manifest["image_fingerprint"], destination)
             staging.rename(destination)
-    if not (destination / "bundle-source.json").exists():
-        fetch_bundles(destination, architecture, obtain, bundles_base)
     select_image(current, destination)
     return current.absolute(), manifest
+
+
+def record_bundles(directory, architecture, obtain, bundles_base=None):
+    """Record once per image directory where its optional tool bundles come from."""
+    if not (Path(directory) / "bundle-source.json").exists():
+        fetch_bundles(Path(directory), architecture, obtain, bundles_base)
 
 
 def verify_cached(destination, manifest):
