@@ -90,16 +90,19 @@ def tools_for(role, selected, store_mode=False):
 def bundle_entries(release, selected, role, store_mode):
     """Manifest entries for the selected bundle-backed tools, from the
     release's bundle manifest. Only a store-mode workspace installs them."""
-    if role != "workspace" or not store_mode:
-        return {}
-    wanted = [name for name in BUNDLE_TOOLS if selected[name]]
-    if not wanted:
+    parts = bundle_parts(selected) if role == "workspace" and store_mode else []
+    if not parts:
         return {}
     if release.bundles is None:
-        raise ValueError(f"the selected tools need release bundles ({', '.join(wanted)}) that this release does not carry")
+        wanted = ", ".join(tool for tool in BUNDLE_TOOLS if selected[tool])
+        raise ValueError(f"the selected tools need release bundles ({wanted}) that this release does not carry")
     bundles = release.bundles["manifest"]["bundles"]
-    return {name: bundle_entry(bundles[name], kind, entry)
-            for tool in wanted for name, kind, entry in BUNDLE_PARTS[tool]}
+    return {name: bundle_entry(bundles[name], kind, entry) for name, kind, entry in parts}
+
+
+def bundle_parts(selected):
+    """(bundle, kind, entry) for every bundle the selected tools consist of."""
+    return [part for tool in BUNDLE_TOOLS if selected[tool] for part in BUNDLE_PARTS[tool]]
 
 
 def bundle_entry(details, kind, entry):
