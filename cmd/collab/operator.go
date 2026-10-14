@@ -21,7 +21,7 @@ import (
 // The operator endpoint exists only in secured and serves only the operator UID.
 const defaultOperatorSocket = "/run/collab-ai-operator/operator.sock"
 
-const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID\n       collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator chat [--socket PATH]"
+const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID\n       collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator chat [--socket PATH] [--timeout 5s]"
 
 type operatorSend struct {
 	socket, to, group, messageID string
