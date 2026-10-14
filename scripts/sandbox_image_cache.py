@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import uuid
 
-from sandbox_artifacts import image_variables, install_artifact, sha256
+from sandbox_artifacts import fetch_image, fetch_manifest, image_variables, install_artifact, sha256
 
 
 def prepare_image(architecture, obtain, output=None, cache=Path("dist/images")):
@@ -20,24 +20,27 @@ def prepare_image(architecture, obtain, output=None, cache=Path("dist/images")):
         raise ValueError(f"Refusing to replace {current}; it must be a managed image link")
     with tempfile.TemporaryDirectory(prefix=".download-", dir=cache) as temporary:
         staging = Path(temporary)
-        manifest = install_artifact(staging, architecture, obtain)
+        manifest = fetch_manifest(staging, architecture, obtain)
         destination = (cache / manifest["image_fingerprint"]).absolute()
-        retain_image(staging, destination, manifest)
+        if destination.exists():
+            verify_cached(destination, manifest)
+            print(f"Reusing cached image {destination.name}", flush=True)
+        else:
+            fetch_image(staging, architecture, manifest, obtain)
+            image_variables(staging, manifest["image_fingerprint"], destination)
+            staging.rename(destination)
     select_image(current, destination)
     return current.absolute(), manifest
 
 
-def retain_image(staging, destination, manifest):
-    if destination.exists():
-        if destination.is_symlink():
-            raise ValueError(f"Refusing symlinked cached image: {destination}")
-        if json.loads((destination / "manifest.json").read_text()) != manifest:
-            raise ValueError(f"Cached image metadata differs: {destination}")
-        if sha256(destination / "workspace.tar.gz") != manifest["image_fingerprint"]:
-            raise ValueError(f"Cached image checksum mismatch: {destination}")
-        return
-    image_variables(staging, manifest["image_fingerprint"], destination)
-    staging.rename(destination)
+def verify_cached(destination, manifest):
+    """A cached image is reused only when it is exactly what the release names."""
+    if destination.is_symlink():
+        raise ValueError(f"Refusing symlinked cached image: {destination}")
+    if json.loads((destination / "manifest.json").read_text()) != manifest:
+        raise ValueError(f"Cached image metadata differs: {destination}")
+    if sha256(destination / "workspace.tar.gz") != manifest["image_fingerprint"]:
+        raise ValueError(f"Cached image checksum mismatch: {destination}")
 
 
 def select_image(current, destination):

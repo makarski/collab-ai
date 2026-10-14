@@ -55,17 +55,28 @@ def from_zip(archive, name, destination):
 
 
 def install_artifact(output, architecture, obtain):
-    name = asset_name(architecture)
-    obtain(f"{name}.json", output / "manifest.json")
+    manifest = fetch_manifest(output, architecture, obtain)
+    fetch_image(output, architecture, manifest, obtain)
+    return manifest
+
+
+def fetch_manifest(output, architecture, obtain):
+    """The small manifest names the image fingerprint, so a cached image can be
+    recognised before the large download starts."""
+    obtain(f"{asset_name(architecture)}.json", output / "manifest.json")
     manifest = json.loads((output / "manifest.json").read_text())
     if manifest["architecture"] != architecture:
         raise ValueError("Image manifest architecture does not match the Incus server")
-    expected = fingerprint(manifest["image_fingerprint"])
+    fingerprint(manifest["image_fingerprint"])
+    return manifest
+
+
+def fetch_image(output, architecture, manifest, obtain):
+    expected = manifest["image_fingerprint"]
     partial = output / "workspace.tar.gz.partial"
-    obtain(f"{name}.tar.gz", partial)
+    obtain(f"{asset_name(architecture)}.tar.gz", partial)
     if sha256(partial) != expected:
         partial.unlink()
         raise ValueError("Workspace image checksum mismatch; nothing was imported")
     partial.rename(output / "workspace.tar.gz")
     image_variables(output, expected)
-    return manifest

@@ -29,8 +29,12 @@ class ImageCacheTests(unittest.TestCase):
             bundle.writestr("../outside", "must not extract")
         return archive
 
-    def prepare(self, archive):
-        return prepare_image("aarch64", lambda name, target: from_zip(archive, name, target), cache=self.cache)[0]
+    def prepare(self, archive, fetched=None):
+        def obtain(name, target):
+            if fetched is not None:
+                fetched.append(name)
+            from_zip(archive, name, target)
+        return prepare_image("aarch64", obtain, cache=self.cache)[0]
 
     def test_zip_is_verified_without_extracting_unrelated_paths(self):
         current = self.prepare(self.bundle())
@@ -53,8 +57,10 @@ class ImageCacheTests(unittest.TestCase):
         archive = self.bundle()
         current = self.prepare(archive)
         before = (current / "workspace.tar.gz").stat().st_ino
-        self.prepare(archive)
+        fetched = []
+        self.prepare(archive, fetched)
         self.assertEqual((current / "workspace.tar.gz").stat().st_ino, before)
+        self.assertEqual(fetched, [asset_name("aarch64") + ".json"], "the image was downloaded again")
 
     def test_bad_download_leaves_current_selection_unchanged(self):
         current = self.prepare(self.bundle(b"keep"))
