@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -94,6 +95,33 @@ def bundles_name(architecture):
     return f"collab-ai-bundles-linux-{ARCHITECTURES[architecture]}.json"
 
 
+BUNDLE_KINDS = {"playwright": False, "chromium-deps": True, "docker": True}  # name: is a deb set
+RESERVED = {"workspace.tar.gz", "manifest.json", "image.tfvars.json", "bundle-source.json"}
+
+
+def validate_bundles(manifest, architecture):
+    """Check a bundle manifest before any file named in it is written: the
+    architecture, known bundle names, plain file names that cannot leave the
+    image directory or replace its own files, digests and package inventories."""
+    if manifest.get("architecture") != ARCHITECTURES[architecture]:
+        raise ValueError("bundle manifest is for another architecture")
+    for name, details in manifest["bundles"].items():
+        if name not in BUNDLE_KINDS:
+            raise ValueError(f"unknown bundle {name!r}")
+        safe_file_name(details["file"], architecture)
+        if not re.fullmatch(r"[0-9a-f]{64}", details["sha256"]):
+            raise ValueError(f"bundle {name} has no SHA256")
+        if BUNDLE_KINDS[name] and not (isinstance(details.get("packages"), dict) and details["packages"]):
+            raise ValueError(f"bundle {name} has no package inventory")
+
+
+def safe_file_name(value, architecture):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value or "") or ".." in value:
+        raise ValueError(f"unsafe bundle file name {value!r}")
+    if value in RESERVED or value == bundles_name(architecture) or value.startswith(asset_name(architecture)):
+        raise ValueError(f"bundle file name {value!r} is reserved")
+
+
 def confirmed_absent(error):
     """Only a missing file or an HTTP 404 proves a release has no bundles;
     any other failure must be retried, never remembered."""
@@ -129,6 +157,11 @@ def fetch_bundles(output, architecture, obtain, base=None):
         source.write_text(json.dumps({"base": None}, indent=2) + "\n")  # remembered: no bundles
         return None
     manifest = json.loads(manifest_path.read_text())
+    try:
+        validate_bundles(manifest, architecture)
+    except (ValueError, KeyError, TypeError) as error:
+        manifest_path.unlink()
+        raise ValueError(f"Invalid bundle manifest: {error}") from error
     if base is None:
         for details in manifest["bundles"].values():
             target = output / details["file"]

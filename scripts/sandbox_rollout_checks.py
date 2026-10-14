@@ -30,6 +30,10 @@ def changed_image(source, destination):
     fingerprint = file_sha(archive)
     (destination / "image.tfvars.json").write_text(json.dumps({
         "image_file": str(archive.resolve()), "image_fingerprint": fingerprint}))
+    # Same rootfs, same tools: the upgrade keeps the release's bundle source.
+    for metadata in [*source.glob("collab-ai-bundles-linux-*.json"), source / "bundle-source.json"]:
+        if metadata.exists():
+            shutil.copyfile(metadata, destination / metadata.name)
     return fingerprint
 
 
