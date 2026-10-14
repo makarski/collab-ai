@@ -41,10 +41,12 @@ class Builder:
     """One unprivileged container in its own UUID project; `cleanup` is the
     whole cleanup boundary, and only runs after the project was created."""
 
-    def __init__(self, remote, prefix, storage_pool, network, name="builder"):
+    NAME = "builder"
+
+    def __init__(self, remote, prefix, storage_pool, network):
         self.remote = remote
         self.project = prefix + "-" + uuid.uuid4().hex[:12]
-        self.target = f"{remote}:{name}"
+        self.target = f"{remote}:{self.NAME}"
         self.command = ["incus", "--project", self.project]
         self.storage_pool, self.network = storage_pool, network
         self.created = False

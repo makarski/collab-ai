@@ -58,61 +58,68 @@ def deb_inventory(listing):
     return inventory
 
 
-def archive(builder, kind, source, arch, output):
-    name = bundle_file(kind, arch)
-    builder.execute("tar", *TAR_FLAGS, "-czf", "/root/" + name, "-C", source, ".")
-    builder.pull("/root/" + name, output / name)
-    return {"file": name, "sha256": sha256(output / name)}
+class BundleBuild:
+    """One bundle build: a started base-image container, the release
+    architecture label and the asset output directory."""
+
+    def __init__(self, builder, arch, output, root=ROOT):
+        self.builder, self.arch, self.output, self.root = builder, arch, output, root
+
+    def archive(self, kind, source):
+        name = bundle_file(kind, self.arch)
+        self.builder.execute("tar", *TAR_FLAGS, "-czf", "/root/" + name, "-C", source, ".")
+        self.builder.pull("/root/" + name, self.output / name)
+        return {"file": name, "sha256": sha256(self.output / name)}
+
+    def deb_bundle(self, kind, packages):
+        """Download packages plus the dependencies the base image lacks; the
+        archive holds .deb files only, installed offline with dpkg later."""
+        self.builder.execute("rm", "-rf", DEBS)
+        self.builder.execute("mkdir", "-p", DEBS)
+        self.builder.execute("apt-get", "-o", f"Dir::Cache::archives={DEBS}", "install", "--download-only", "-y",
+                             "--no-install-recommends", *packages)
+        self.builder.execute("sh", "-c", f"rm -rf {DEBS}/partial {DEBS}/lock")
+        details = self.archive(kind, DEBS)
+        details["packages"] = deb_inventory(self.builder.output("ls", DEBS))
+        return details
+
+    def docker_repository(self):
+        execute = self.builder.execute
+        execute("apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "curl")
+        execute("install", "-d", "-m", "0755", "/etc/apt/keyrings")
+        execute("curl", "--fail", "--silent", "--show-error", "--location", "--retry", "3",
+                DOCKER_KEY, "-o", "/etc/apt/keyrings/docker.asc")
+        arch = self.builder.output("dpkg", "--print-architecture").strip()
+        execute("sh", "-c", f"printf 'deb [arch={arch} signed-by=/etc/apt/keyrings/docker.asc] "
+                "https://download.docker.com/linux/ubuntu noble stable\n' >/etc/apt/sources.list.d/docker.list")
+        execute("apt-get", "-o", "APT::Update::Error-Mode=any", "-o", "Acquire::Retries=3", "update")
+
+    def playwright_bundle(self):
+        self.builder.execute("mkdir", "-p", "/root/bundle-src")
+        for name in ("tool_download.py", "tool_lock.py", "tools.lock.json", "build-playwright-bundle.py",
+                     "mcp/package.json", "mcp/package-lock.json"):
+            self.builder.push(self.root / "infra/image" / name, "/root/bundle-src/" + Path(name).name)
+        self.builder.execute("apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "python3")
+        self.builder.execute("python3", "/root/bundle-src/build-playwright-bundle.py")
+        details = self.archive("playwright", "/root/playwright-bundle")
+        details.update(json.loads(self.builder.output("cat", "/root/playwright-bundle/bundle.json")))
+        return details
+
+    def build(self, kinds=BUNDLE_KINDS):
+        """Build the requested bundles and write their manifest next to them."""
+        self.builder.execute("apt-get", "-o", "APT::Update::Error-Mode=any", "-o", "Acquire::Retries=3", "update")
+        bundles = {}
+        if "playwright" in kinds:
+            bundles["playwright"] = self.playwright_bundle()
+        if "chromium-deps" in kinds:
+            bundles["chromium-deps"] = self.deb_bundle("chromium-deps", CHROMIUM_LIBS + CHROMIUM_FONTS)
+        if "docker" in kinds:
+            self.docker_repository()
+            bundles["docker"] = self.deb_bundle("docker", docker_packages(self.root) + DOCKER_SUPPORT)
+        manifest = {"architecture": self.arch, "bundles": bundles}
+        (self.output / manifest_file(self.arch)).write_text(json.dumps(manifest, indent=2) + "\n")
+        return manifest
 
 
-def deb_bundle(builder, kind, packages, arch, output):
-    """Download packages plus the dependencies the base image lacks; the
-    archive holds .deb files only, installed offline with dpkg later."""
-    builder.execute("rm", "-rf", DEBS)
-    builder.execute("mkdir", "-p", DEBS)
-    builder.execute("apt-get", "-o", f"Dir::Cache::archives={DEBS}", "install", "--download-only", "-y",
-                    "--no-install-recommends", *packages)
-    builder.execute("sh", "-c", f"rm -rf {DEBS}/partial {DEBS}/lock")
-    details = archive(builder, kind, DEBS, arch, output)
-    details["packages"] = deb_inventory(builder.output("ls", DEBS))
-    return details
-
-
-def docker_repository(builder):
-    builder.execute("apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "curl")
-    builder.execute("install", "-d", "-m", "0755", "/etc/apt/keyrings")
-    builder.execute("curl", "--fail", "--silent", "--show-error", "--location", "--retry", "3",
-                    DOCKER_KEY, "-o", "/etc/apt/keyrings/docker.asc")
-    arch = builder.output("dpkg", "--print-architecture").strip()
-    builder.execute("sh", "-c", f"printf 'deb [arch={arch} signed-by=/etc/apt/keyrings/docker.asc] "
-                    "https://download.docker.com/linux/ubuntu noble stable\\n' "
-                    ">/etc/apt/sources.list.d/docker.list")
-    builder.execute("apt-get", "-o", "APT::Update::Error-Mode=any", "-o", "Acquire::Retries=3", "update")
-
-
-def playwright_bundle(builder, arch, output, root=ROOT):
-    builder.execute("mkdir", "-p", "/root/bundle-src")
-    for name in ("tool_download.py", "tool_lock.py", "tools.lock.json", "build-playwright-bundle.py",
-                 "mcp/package.json", "mcp/package-lock.json"):
-        builder.push(root / "infra/image" / name, "/root/bundle-src/" + Path(name).name)
-    builder.execute("apt-get", "install", "-y", "--no-install-recommends", "ca-certificates", "python3")
-    builder.execute("python3", "/root/bundle-src/build-playwright-bundle.py")
-    details = archive(builder, "playwright", "/root/playwright-bundle", arch, output)
-    details.update(json.loads(builder.output("cat", "/root/playwright-bundle/bundle.json")))
-    return details
-
-
-def build_bundles(builder, arch, output, kinds=BUNDLE_KINDS, root=ROOT):
-    """Build the requested bundles and write their manifest next to them."""
-    builder.execute("apt-get", "-o", "APT::Update::Error-Mode=any", "-o", "Acquire::Retries=3", "update")
-    bundles = {}
-    if "playwright" in kinds:
-        bundles["playwright"] = playwright_bundle(builder, arch, output, root)
-    if "chromium-deps" in kinds:
-        bundles["chromium-deps"] = deb_bundle(builder, "chromium-deps", CHROMIUM_LIBS + CHROMIUM_FONTS, arch, output)
-    if "docker" in kinds:
-        docker_repository(builder)
-        bundles["docker"] = deb_bundle(builder, "docker", docker_packages(root) + DOCKER_SUPPORT, arch, output)
-    manifest = {"architecture": arch, "bundles": bundles}
-    (output / manifest_file(arch)).write_text(json.dumps(manifest, indent=2) + "\n")
-    return manifest
+def build_bundles(builder, arch, output, kinds=BUNDLE_KINDS):
+    return BundleBuild(builder, arch, output).build(kinds)
