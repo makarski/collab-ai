@@ -11,7 +11,8 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
-from sandbox_tools_install import Container, RETRY_COMMAND, install, release_lock_from, selection
+from sandbox_tools_install import (Container, RETRY_COMMAND, install, release_lock_from, release_provenance,
+                                   selection, supports_tool_store)
 
 
 def managed_instances(directory, project):
@@ -68,13 +69,21 @@ def install_tools(args, server, image_dir):
     before any agent is admitted. A stopped instance installs at its rollout."""
     selected = selection(getattr(args, "tools", None) or [])
     release_lock = release_lock_from(image_dir)
+    if not supports_tool_store(release_lock):
+        print("This release predates the tool store; its tools stay baked into the image.", flush=True)
+        return
+    provenance, architecture = release_provenance(image_dir)
+    machine = server["architectures"][0]
+    if architecture not in (None, machine):
+        raise ValueError(f"Release image is for {architecture}, the server is {machine}")
     statuses = instances(args)
     for name in ("workspace", "secured"):
         if statuses.get(name) != "Running":
             if name in statuses:
                 print(f"{name} is stopped; its tools install at the next rollout.", flush=True)
             continue
-        generation = install(Container(args.remote, args.project, name), release_lock, server["architectures"][0], selected)
+        generation = install(Container(args.remote, args.project, name), release_lock, machine, selected,
+                             provenance=provenance)
         print(f"{name}: tool generation {generation or 'already'} active", flush=True)
 
 

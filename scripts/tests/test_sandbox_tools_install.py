@@ -126,6 +126,29 @@ class InstallTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "could not probe"):
             install.never_released(container, None)
 
+    def test_gated_units_are_released_after_activation_and_on_a_ready_root(self):
+        container = FakeContainer("workspace")
+        container.expected = self.expected(container)
+        install.install(container, LOCK, "aarch64", self.selected, self.cache)
+        self.assertIn(("systemctl", "start", *install.GATED_UNITS["workspace"]), container.executed)
+        ready = FakeContainer("secured")
+        ready.state, ready.current = {"state": "ready"}, self.expected(ready)
+        install.install(ready, LOCK, "aarch64", self.selected, self.cache)
+        self.assertIn(("systemctl", "start", "collab-tools-ready.service"), ready.executed)
+
+    def test_build_provenance_must_match_the_release_when_given(self):
+        container = FakeContainer("workspace")
+        with self.assertRaisesRegex(ValueError, "build source differs"):
+            install.install(container, LOCK, "aarch64", self.selected, self.cache, provenance={"collab": "other"})
+        container = FakeContainer("workspace")
+        container.expected = self.expected(container)
+        install.install(container, LOCK, "aarch64", self.selected, self.cache, provenance={"collab": "x"})
+        self.assertTrue(container.activated)
+
+    def test_legacy_releases_without_an_artifact_table_keep_their_baked_tools(self):
+        self.assertFalse(install.supports_tool_store({"go_version": "1.25.14"}))
+        self.assertTrue(install.supports_tool_store(LOCK))
+
     def test_never_released_requires_no_ready_state_and_no_agent_key(self):
         self.assertTrue(install.never_released(FakeContainer("workspace"), None))
         self.assertTrue(install.never_released(FakeContainer("workspace"), {"state": "maintenance"}))
