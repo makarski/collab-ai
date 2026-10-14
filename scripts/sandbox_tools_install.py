@@ -70,13 +70,23 @@ def status(container):
     return json.loads(container.output("collab-tools-activate", "status"))
 
 
+def agent_key_installed(container):
+    """Whether the host ever admitted an agent to this root. Only the probe's
+    own verdict counts; an Incus or transport failure is an error, not proof."""
+    probe = container.run(container.command + ["exec", container.target, "-T", "--", "test", "-e", AGENT_KEY])
+    if probe.returncode == 0:
+        return True
+    if probe.returncode == 1:
+        return False
+    raise ValueError(f"{container.name}: could not probe the agent key (exit {probe.returncode})")
+
+
 def never_released(container, state):
     """True only for a root no agent could have used: no ready state, and the
     host never installed the agent's SSH key."""
     if state is not None and state.get("state") == "ready":
         return False
-    probe = container.run(container.command + ["exec", container.target, "-T", "--", "test", "-e", AGENT_KEY])
-    return probe.returncode != 0
+    return not agent_key_installed(container)
 
 
 def build_manifest(container, release_lock, machine, selected):
@@ -103,6 +113,10 @@ def install(container, release_lock, machine, selected, cache=CACHE):
             return None
         raise ValueError(f"{container.name} already runs a released tool generation; "
                          "changing tools needs a rollout (a new root)")
+    # Every mutation requires a root no agent could have used.
+    if agent_key_installed(container):
+        raise ValueError(f"{container.name} was released to agents without a ready tool state; "
+                         "run rollout to replace the root")
     container.execute("install", "-d", "-m", "0700", INCOMING)
     for name, tool in manifest["tools"].items():
         if tool["sha256"] in current.get("complete", []):

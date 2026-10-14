@@ -108,6 +108,24 @@ class InstallTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "differs from the release"):
             install.install(container, LOCK, "aarch64", self.selected, self.cache)
 
+    def test_a_root_that_admitted_agents_is_never_mutated_even_without_ready_state(self):
+        container = FakeContainer("workspace", state={"state": "maintenance"}, key=True)
+        with self.assertRaisesRegex(ValueError, "released to agents without a ready tool state"):
+            install.install(container, LOCK, "aarch64", self.selected, self.cache)
+        self.assertFalse(container.activated)
+
+    def test_probe_failures_are_errors_not_proof_of_absence(self):
+        container = FakeContainer("workspace")
+        original = container.fake_run
+
+        def failing(command, check=False, **kwargs):
+            if "test" in command:
+                return subprocess.CompletedProcess(command, 255)
+            return original(command, check=check, **kwargs)
+        container.run = failing
+        with self.assertRaisesRegex(ValueError, "could not probe"):
+            install.never_released(container, None)
+
     def test_never_released_requires_no_ready_state_and_no_agent_key(self):
         self.assertTrue(install.never_released(FakeContainer("workspace"), None))
         self.assertTrue(install.never_released(FakeContainer("workspace"), {"state": "maintenance"}))

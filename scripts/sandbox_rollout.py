@@ -11,7 +11,7 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
-from sandbox_tools_install import Container, RETRY_COMMAND, install, never_released, release_lock_from, selection, status
+from sandbox_tools_install import Container, RETRY_COMMAND, install, release_lock_from, selection
 
 
 def managed_instances(directory, project):
@@ -79,16 +79,11 @@ def install_tools(args, server, image_dir):
 
 
 def tools_retry(args, directory, server):
-    """Rerun a crashed activation, only on roots no agent could have used."""
+    """Rerun a crashed activation. install() verifies a ready peer without
+    touching it and refuses any mutation of a root that admitted agents."""
     with deployment_lock(directory):
         require_recovered(directory)
         _, _, variables = image_selection(directory, args.image_dir)
-        for name, state in instances(args).items():
-            if state != "Running":
-                continue
-            container = Container(args.remote, args.project, name)
-            if not never_released(container, status(container).get("state")):
-                raise ValueError(f"{name} was released to agents; run rollout to change its tools")
         install_tools(args, server, variables.parent)
         configure_ssh(args)
 
