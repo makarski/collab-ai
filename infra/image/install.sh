@@ -52,6 +52,14 @@ cp infra/image/collab-tools-setup.service infra/image/collab-tools-ready.service
 bash infra/image/install-skill.sh docs/skills/collab-ai /usr/local/share/collab-ai
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
 python3 infra/image/install-mcp-tools.py
+# The activator rewrites the agents' MCP configuration from the tool selection;
+# these are its base files. A baked image has every optional tool, so its
+# markers are present until an activation says otherwise.
+cp infra/image/claude-mcp.json /usr/local/share/collab-ai/claude-mcp.base.json
+cp infra/image/codex-config.toml /usr/local/share/collab-ai/codex-config.base.toml
+cp infra/image/mcp/servers.json /usr/local/share/collab-ai/mcp-servers.json
+install -d /etc/collab-ai/tools
+touch /etc/collab-ai/tools/cs-mcp.enabled /etc/collab-ai/tools/playwright.enabled /etc/collab-ai/tools/docker.enabled
 install -m 0755 infra/image/collab-playwright infra/image/collab-codescene-login /usr/local/bin/
 install -m 0644 infra/image/collab-chromium.apparmor /etc/apparmor.d/collab-chromium
 cs-mcp --version

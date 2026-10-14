@@ -3,6 +3,7 @@ Description=Initialize rootless Docker in the persistent agent home
 Requires=collab-docker-session.service
 After=collab-docker-session.service
 ConditionPathIsMountPoint=/var/lib/collab-ai-docker
+ConditionPathExists=/etc/collab-ai/tools/docker.enabled
 
 [Service]
 Type=oneshot
