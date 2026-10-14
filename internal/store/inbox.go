@@ -134,6 +134,7 @@ func pageMessages(ctx context.Context, tx *sql.Tx, page protocol.OperatorPage, l
 		if err != nil {
 			return nil, err
 		}
+		msg.Payload = retainedPayload(string(msg.Payload))
 		size, err := json.Marshal(msg)
 		if err != nil {
 			return nil, err

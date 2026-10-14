@@ -202,6 +202,9 @@ The operator socket also accepts a long-lived session, which the operator chat
   within the write deadline is closed and releases ownership. An idle session
   never expires.
 
+`collab operator chat` is the interactive client of this session; see
+[secured runtime](secured-runtime.md#interactive-chat).
+
 ## Operator history
 
 `operator_history {page_request: {before_seq, upper_seq, limit}}` returns the

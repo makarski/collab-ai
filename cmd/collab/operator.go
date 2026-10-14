@@ -21,7 +21,7 @@ import (
 // The operator endpoint exists only in secured and serves only the operator UID.
 const defaultOperatorSocket = "/run/collab-ai-operator/operator.sock"
 
-const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID\n       collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json]"
+const operatorUsage = "usage: collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] [--timeout 5s] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID\n       collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator chat [--socket PATH] [--timeout 5s]"
 
 type operatorSend struct {
 	socket, to, group, messageID string
@@ -31,24 +31,31 @@ type operatorSend struct {
 	text                         string
 }
 
+type operatorCommand func(ctx context.Context, args []string, stdout, stderr io.Writer) int
+
+var operatorCommands = map[string]operatorCommand{
+	"send":    runOperatorSend,
+	"receive": runOperatorReceive,
+	"ack":     runOperatorAck,
+	"history": runOperatorHistory,
+	"chat":    runOperatorChat,
+}
+
 func runOperator(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, operatorUsage)
 		return 2
 	}
-	switch args[0] {
-	case "receive":
-		return runOperatorReceive(ctx, args[1:], stdout, stderr)
-	case "ack":
-		return runOperatorAck(ctx, args[1:], stdout, stderr)
-	case "history":
-		return runOperatorHistory(ctx, args[1:], stdout, stderr)
-	case "send":
-	default:
+	run, ok := operatorCommands[args[0]]
+	if !ok {
 		fmt.Fprintln(stderr, operatorUsage)
 		return 2
 	}
-	cfg, code := parseOperatorSend(args[1:], stderr)
+	return run(ctx, args[1:], stdout, stderr)
+}
+
+func runOperatorSend(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	cfg, code := parseOperatorSend(args, stderr)
 	if code != -1 {
 		return code
 	}

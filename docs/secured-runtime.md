@@ -80,8 +80,37 @@ message; it is not approval.
 - **Audit:** every send and every rejected connection is recorded in
   `operator_audit` in the control database, without message text. Use
   `--message-id` to retry a send safely.
-- **Not available yet:** the interactive chat and live session (#77), `attach`
-  and seat control (#69). See [protocol](protocol.md#origin-and-operator-messages-v4).
+- **Not available yet:** `attach` and seat control (#69). See
+  [protocol](protocol.md#origin-and-operator-messages-v4).
+
+### Interactive chat
+
+```sh
+incus --project collab-ai exec -t colima-collab-ai:secured -- collab operator chat
+```
+
+The chat needs an interactive terminal (`-t`). It shows connected agents, the
+operator conversation and a composer, and it updates live.
+
+- **Recipients:** one ID, a comma-separated group, or `@all` (alias `*`).
+  `@all` asks "Send to N agents (current preview)? y/n" first. A JSON array
+  such as `["a,b"]` addresses IDs literally.
+- **Keys:**
+  - Enter sends. Shift+Enter inserts a new line, as do Alt+Enter and Ctrl+J
+    if your terminal passes them through. Pasting never sends.
+  - Tab moves between the timeline, recipients and editor.
+  - In the timeline: ↑/↓ select, `a` acknowledges (received, not approval),
+    `r` replies to a received message, `s` shows more recipient stages,
+    PgUp loads older history or fills a gap.
+  - F1 shows help and whether your terminal reports Shift+Enter distinctly.
+    Ctrl+Q quits.
+- **One chat at a time:** a second chat exits with `owner_busy`. While a chat
+  is open, one-shot `collab operator receive` and `ack` are refused; `send`
+  and `history` still work.
+- **Reconnects** retry with backoff. A malformed broker frame stops retrying;
+  press Ctrl+R to retry. If you quit while a send's outcome is unknown, the
+  chat says so; `collab operator history` shows whether the broker accepted
+  it.
 
 ## Status, stop and restart
 

@@ -709,3 +709,201 @@ nothing is returned, and the watermark is unchanged.
 - prints the continuation (`--before`/`--upper`), and states plainly when a
   body was omitted and isn't available
 - peer text is quoted, and a correlation is labeled as a claim
+
+## PR3 contract: `collab operator chat` (final, Claude/Codex and the operator, 2026-10-13)
+
+**Goal:** the interactive interface on top of the inbox (PR1), the live
+session (PR2) and history (PR2b). It runs in `secured` (`incus exec … secured
+-- collab operator chat`) and needs a TTY. Built with Bubble Tea v2, Lip Gloss
+v2 and the Bubbles v2 `textarea`, in the dashboard's style. All network work
+runs outside `Update`, as commands.
+
+### 1. Admission and receipts
+
+- An `operator_receive` page is validated **as a whole** first. Complete
+  message bodies are then inserted into the model, deduplicated by ID. Only
+  after that is `operator_received` queued, for exactly the IDs adopted from
+  that page.
+- **Non-consuming reads:** history, snapshot and stage reads never confirm
+  receipt, even for entries that are still pending. An omitted body is not
+  adopted content.
+- **Receipt state per message:** pending, confirmed or failed, shown
+  distinctly. A failed confirmation retries the same IDs.
+- **Dedup still confirms.** A body already loaded through history that also
+  arrives in an `operator_receive` page counts as adopted, and is confirmed
+  even though nothing new is inserted.
+- **Explicit acknowledgment** (`a`) is available only after `adapter_received`
+  is confirmed. An earlier press becomes a visible, cancellable **queued
+  intent**:
+  - It's bound to the message ID and a content identity (a hash of the adopted
+    body), never to a selection index. Moving the selection never retargets
+    it.
+  - On an epoch change or content conflict, it's suspended rather than sent
+    for different data.
+  - Rendering, focus or selection never acknowledges.
+
+### 2. Draining and scheduling
+
+- **Draining:** the pending inbox is drained page by page under a fixed
+  `upper_seq` until `more = false`. Arrivals during a scan schedule a new scan
+  after it completes.
+- **Resync** reloads the pending inbox as well as the snapshot and the history
+  head.
+- **Request budget:** fewer than 8 requests in flight. Local fetch requests
+  are coalesced; revision updates on the wire are never coalesced.
+- **Quitting** cancels outstanding work. Replies from an older connection
+  generation are ignored.
+
+### 3. Resync semantics
+
+- Rendered message bodies are kept. Authoritative metadata (presence, stages)
+  is reset to the new snapshot baseline:
+  - Agents left out of a truncated snapshot become "unknown", never offline.
+  - Older receipt states become stale or unknown, never accepted.
+- The per-entity watermark keeps older page responses from overwriting newer
+  state. An epoch change clears revision comparisons.
+- **Changed content under an existing ID** (possible after a database restore)
+  never silently rewrites rendered content; it's flagged.
+- Request-local errors don't count as event gaps.
+
+### 4. History catch-up and scrolling
+
+- After a resync or reconnect, a **bounded catch-up scan** reads newest first
+  until it overlaps known messages.
+- If the cap is reached first, the timeline shows an explicit **history gap**
+  marker, which can be paged.
+- The frozen `upper`/`before` cursor for scrolling into older history is
+  separate from the live catch-up cursor.
+- New messages increase an unread counter and never move a scrolled-away
+  selection.
+
+### 5. Memory bounds
+
+**Defaults:**
+
+| Bound | Value |
+| --- | --- |
+| unresolved outbound intents | 1 |
+| requests in flight | 4 |
+| receipt batch | 32 IDs |
+| history catch-up | 8 pages or 256 entries |
+| retained entries | 1024 |
+| retained bodies | 32 MiB |
+
+- **Capacity pause:** when pinned or unconfirmed data leaves no room, adoption
+  and receipt confirmation pause. The scan doesn't advance past unadopted
+  rows. The chat shows a capacity pause instead of spinning on retries or
+  breaking a bound.
+- Eviction drops the oldest rendered history only. It never acknowledges, and
+  never evicts unconfirmed admissions or unresolved sends. Evicted history can
+  be paged in again.
+- A truncated presence preview stays marked as partial. `@all` means the
+  broker-defined eligible set, not the visible list.
+
+### 6. Sending and retry
+
+- **At send time** the intent is frozen: generated `message_id`, canonical
+  scope, exact payload and `in_reply_to`.
+- **States:** draft, sending, unknown, accepted, rejected. No optimistic
+  success.
+- **An unknown outcome** survives a reconnect and is retried only with the
+  exact same intent. Editing creates a new draft and never changes an
+  uncertain attempt.
+- **For `@all` (everyone),** the preview is advisory; membership is decided at
+  acceptance. Accepted recipients and exclusions are shown afterwards.
+- Text over 512 KiB encoded is reported before sending.
+
+### 7. Quitting and ownership
+
+- **Quitting with an unresolved send** says the outcome is unknown and shows
+  its `message_id`. This chat can't resolve it automatically after exit, but
+  the broker keeps an accepted message, and `collab operator history` shows
+  it. Cancelling local work never claims to cancel a submitted mutation;
+  draft and queued-acknowledgment warnings say the same.
+- No draft persistence (MVP).
+- **`owner_busy` at startup:** show the owner and exit 1.
+- **`owner_busy` on reconnect:** stop retrying, keep the draft and any intent,
+  and offer an explicit retry or quit.
+
+### 8. Keys and recipients
+
+- `a`, `r` and `s` work only when the timeline has focus.
+- **Help:** `?` is plain text while editing, so help is also on F1, which
+  works everywhere.
+- **`r` works only on received messages** and sets the recipient to the
+  sender. On a sent message it does nothing, and the status line says "choose
+  recipients for a new send". The wire carries no trusted original scope, so
+  it's never inferred from `to` or partial recipients.
+- **Recipient field (canonical scope, validated before preview and send):**
+  - **`@all` is everyone** (operator decision, 2026-10-13); `*` is accepted
+    as an alias. It's a chat keyword, not a protocol reservation.
+  - A plain ID, or comma-separated plain IDs, form a direct or group send.
+  - A JSON array such as `["@all", "a,b"]` addresses literal IDs: one actually
+    named `@all`, or IDs containing commas. `ValidateAgentID` allows those, so
+    they stay addressable.
+  - Display-escaped strings are never used as IDs.
+- **Send key (operator decision, 2026-10-13):** Enter sends; Shift+Enter
+  inserts a new line.
+  - Many terminals report Shift+Enter as plain Enter. The chat requests
+    Bubble Tea v2's keyboard enhancements, which Ghostty, kitty, WezTerm and
+    iTerm2 support.
+  - **Alt+Enter and Ctrl+J also insert a new line,** as fallbacks. Terminals
+    and multiplexers can remap them, so they aren't guaranteed.
+  - F1 shows the negotiated key-disambiguation capability
+    (`KeyboardEnhancementsMsg.SupportsKeyDisambiguation`), not a promise that
+    a particular physical shortcut is detected.
+  - **Pasted text** that contains newlines is one editor insertion. An embedded
+    newline never triggers a send.
+  - Sending an empty or whitespace-only draft does nothing.
+- **Broadcast confirmation (operator decision, 2026-10-13):** sending to
+  `@all` asks "Send to N agents (current preview)? y/n" before the request
+  goes out.
+  - N is the advisory preview; the broker decides membership at acceptance.
+  - `n` or Esc returns to the draft unchanged.
+  - The operator will judge in use whether this is convenient enough.
+
+### Safety and display
+
+- Every peer-controlled string is escaped before styling: IDs, bodies,
+  details and stages.
+- Origin and provenance are shown outside the message text. Agent text
+  claiming operator authority is shown as agent text.
+- `in_reply_to` is shown quoted, as a correlation claim.
+- Rendering, focus and scrolling never acknowledge.
+- `{"text": …}` payloads are shown as text; any other JSON is shown escaped
+  and compact.
+- A malformed broker response is reported. It's never retried indefinitely as
+  if it were a transport failure.
+
+### 9. Validation and transport
+
+- The client validates:
+  - types and request IDs
+  - page bounds and omission flags
+  - stage values
+  - the capability handshake (`events`, `snapshot`, `history`,
+    `message_stages`)
+- Transport errors, timeouts and malformed broker responses are reported
+  distinctly.
+- **Reconnect:** exponential backoff with a ceiling, reset after a healthy
+  period. Idle reading never times out, as in PR2.
+
+### Tests
+
+- Model-level tests: Bubble Tea updates with a scripted session client,
+  covering:
+  - startup order
+  - `owner_busy` at startup and on reconnect
+  - admission before receipt, and acknowledgment only after confirmed receipt
+  - draining with arrivals during a scan
+  - resync and epoch handling, including catch-up gaps
+  - stage ordering by watermark, including reclaims
+  - the frozen intent and retry states, and quitting with an unknown send
+  - recipient parsing, including IDs like `@all` or `a,b` via JSON arrays
+  - multi-line paste, which never sends; and legacy terminals without key
+    disambiguation
+  - escaping
+  - memory bounds and eviction rules
+  - narrow terminals
+- An integration test against a real broker on a temporary socket.
+- A manual end-to-end demonstration after rollout.
