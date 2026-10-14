@@ -12,8 +12,8 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
-from sandbox_tools_install import (Container, Release, RETRY_COMMAND, has_tool_store, install, release_lock_from,
-                                   release_provenance, selection, supports_tool_store)
+from sandbox_tools_install import (Container, Release, RETRY_COMMAND, has_tool_store, install, load_bundles,
+                                   release_lock_from, release_provenance, selection, supports_tool_store)
 
 
 def managed_instances(directory, project):
@@ -81,15 +81,16 @@ def tool_release(image_dir, machine):
     """The Release for image_dir, or None when its lock predates the artifact
     table. An image directory without a manifest (a locally modified image)
     leaves the root's own lock in charge."""
+    bundles = load_bundles(image_dir, machine)
     if not (Path(image_dir) / "manifest.json").exists():
-        return Release(None, machine)
+        return Release(None, machine, bundles=bundles)
     release_lock = release_lock_from(image_dir)
     if not supports_tool_store(release_lock):
         return None
     provenance, architecture = release_provenance(image_dir)
     if architecture not in (None, machine):
         raise ValueError(f"Release image is for {architecture}, the server is {machine}")
-    return Release(release_lock, machine, provenance)
+    return Release(release_lock, machine, provenance, bundles)
 
 
 def running_targets(args):

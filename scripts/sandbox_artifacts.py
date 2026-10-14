@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -80,3 +81,34 @@ def fetch_image(output, architecture, manifest, obtain):
         raise ValueError("Workspace image checksum mismatch; nothing was imported")
     partial.rename(output / "workspace.tar.gz")
     image_variables(output, expected)
+
+
+def bundles_name(architecture):
+    return f"collab-ai-bundles-linux-{ARCHITECTURES[architecture]}.json"
+
+
+def fetch_bundles(output, architecture, obtain, base=None):
+    """Record where this image's optional tool bundles come from.
+
+    The small bundle manifest is kept next to the image. With `base` (a URL
+    prefix the bundle files can be fetched from on demand) nothing else is
+    downloaded; without it, the bundle files are copied here and `base` becomes
+    this directory. A release without bundles leaves nothing behind."""
+    manifest_path = output / bundles_name(architecture)
+    source = output / "bundle-source.json"
+    try:
+        obtain(bundles_name(architecture), manifest_path)
+    except (FileNotFoundError, KeyError, ValueError, urllib.error.HTTPError):
+        source.write_text(json.dumps({"base": None}, indent=2) + "\n")  # remembered: no bundles
+        return None
+    manifest = json.loads(manifest_path.read_text())
+    if base is None:
+        for details in manifest["bundles"].values():
+            target = output / details["file"]
+            obtain(details["file"], target)
+            if sha256(target) != details["sha256"]:
+                target.unlink()
+                raise ValueError(f"Bundle {details['file']} does not match its digest")
+        base = output.resolve().as_uri() + "/"
+    source.write_text(json.dumps({"base": base}, indent=2) + "\n")
+    return manifest

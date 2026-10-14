@@ -15,7 +15,7 @@ class ReleaseTests(unittest.TestCase):
         return BytesIO(json.dumps(dict(tag_name=tag, draft=False, **kwargs)).encode())
 
     def test_latest_is_resolved_once_and_both_assets_use_the_same_tag(self):
-        def prepare(arch, obtain, output):
+        def prepare(arch, obtain, output, bundles_base=None):
             obtain("image.json", Path("manifest"))
             obtain("image.tar.gz", Path("archive"))
             return Path("/cache/current"), {"image_fingerprint": "a" * 64}

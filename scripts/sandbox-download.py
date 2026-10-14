@@ -32,16 +32,18 @@ def main():
     server = subprocess.run(["incus", "query", f"{args.remote}:/1.0"],
                             check=True, capture_output=True, text=True)
     architecture = json.loads(server.stdout)["environment"]["architectures"][0]
+    bundles_base = None
     if args.from_zip:
         obtain = lambda name, target: from_zip(args.from_zip.expanduser(), name, target)
     elif args.from_dir:
         obtain = lambda name, target: shutil.copyfile(args.from_dir / name, target)
+        bundles_base = args.from_dir.resolve().as_uri() + "/"
     else:
         output = download_release(architecture, args.release, args.repo, args.output)
         manifest = json.loads((output / "manifest.json").read_text())
         obtain = None
     if obtain is not None:
-        output, manifest = prepare_image(architecture, obtain, args.output)
+        output, manifest = prepare_image(architecture, obtain, args.output, bundles_base=bundles_base)
     print(f"Verified {architecture} image: {manifest['image_fingerprint']}")
     print(f"Image variables: {output / 'image.tfvars.json'}")
     command = ["python3", "scripts/sandbox-provision.py", "plan", "--image-dir", str(output),

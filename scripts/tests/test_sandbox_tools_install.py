@@ -20,6 +20,7 @@ class FakeContainer(install.Container):
     def __init__(self, name, **overrides):
         super().__init__("local", "proof", name, run=self.fake_run)
         self.state, self.current, self.complete, self.key, self.lock, self.activator = None, None, [], False, LOCK, True
+        self.mode = "baked"
         self.pushed, self.executed, self.activated = [], [], False
         for attribute, value in overrides.items():
             setattr(self, attribute, value)
@@ -35,6 +36,8 @@ class FakeContainer(install.Container):
     def answer(self, args):
         if args[:2] == ("collab-tools-activate", "status"):
             return json.dumps({"state": self.state, "current": self.current, "complete": self.complete})
+        if args[:2] == ("sh", "-c") and "tools-mode" in args[2]:
+            return self.mode + "\n"
         if args[:1] == ("cat",):
             return json.dumps(self.lock) if args[1].endswith("tools.lock.json") else '{"collab": "x"}'
         if args[:2] == ("collab-tools-activate", "activate"):
@@ -188,6 +191,57 @@ class InstallTests(unittest.TestCase):
         self.assertTrue(install.never_released(FakeContainer("workspace"), {"state": "maintenance"}))
         self.assertFalse(install.never_released(FakeContainer("workspace", key=True), None))
         self.assertFalse(install.never_released(FakeContainer("workspace"), {"state": "ready"}))
+
+
+
+BUNDLES = {"manifest": {"architecture": "arm64", "bundles": {
+    "playwright": {"file": "collab-ai-bundle-playwright-linux-arm64.tar.gz", "sha256": "1" * 64, "playwright_mcp": "0.0.83"},
+    "chromium-deps": {"file": "collab-ai-bundle-chromium-deps-linux-arm64.tar.gz", "sha256": "2" * 64, "packages": {"libnss3": "2:3.98"}},
+    "docker": {"file": "collab-ai-bundle-docker-linux-arm64.tar.gz", "sha256": "3" * 64, "packages": {"docker-ce": "5:29"}}}},
+    "base": "file:///release/"}
+
+
+class BundleDeliveryTests(unittest.TestCase):
+    def setUp(self):
+        self.selected = install.selection(["cs-mcp", "playwright", "docker"])
+        self.release = install.Release(LOCK, "aarch64", bundles=BUNDLES)
+
+    def test_baked_roots_get_no_bundle_entries(self):
+        self.assertEqual(install.bundle_entries(self.release, self.selected, "workspace", False), {})
+        self.assertNotIn("node", install.tools_for("workspace", self.selected, False))
+
+    def test_store_mode_workspace_gets_bundles_and_node(self):
+        entries = install.bundle_entries(self.release, self.selected, "workspace", True)
+        self.assertEqual(set(entries), {"playwright", "chromium-deps", "docker"})
+        self.assertEqual(entries["playwright"]["entry"], install.PLAYWRIGHT_ENTRY)
+        self.assertEqual(entries["chromium-deps"]["kind"], "debs")
+        self.assertEqual(entries["docker"]["packages"], {"docker-ce": "5:29"})
+        self.assertIn("node", install.tools_for("workspace", self.selected, True))
+        self.assertEqual(install.bundle_entries(self.release, self.selected, "secured", True), {})
+
+    def test_selecting_bundles_without_a_bundled_release_is_an_error(self):
+        bare = install.Release(LOCK, "aarch64")
+        with self.assertRaisesRegex(ValueError, "does not carry"):
+            install.bundle_entries(bare, self.selected, "workspace", True)
+        self.assertEqual(install.bundle_entries(bare, install.selection([]), "workspace", True), {})
+
+    def test_bundle_items_resolve_from_the_recorded_source(self):
+        entries = install.bundle_entries(self.release, self.selected, "workspace", True)
+        item = install.artifact_item(self.release, "docker", entries["docker"])
+        self.assertEqual(item["url"], "file:///release/collab-ai-bundle-docker-linux-arm64.tar.gz")
+        self.assertEqual(item["sha256"], "3" * 64)
+        go = install.artifact_item(self.release, "go", {"version": "x", "kind": "archive", "entry": "go/bin/go", "file": "f", "sha256": "0" * 64})
+        self.assertTrue(go["url"].startswith("https://go.dev/"))
+
+    def test_load_bundles_requires_manifest_and_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertIsNone(install.load_bundles(root, "aarch64"))
+            (root / "collab-ai-bundles-linux-arm64.json").write_text(json.dumps(BUNDLES["manifest"]))
+            (root / "bundle-source.json").write_text(json.dumps({"base": None}))
+            self.assertIsNone(install.load_bundles(root, "aarch64"))
+            (root / "bundle-source.json").write_text(json.dumps({"base": "https://x/"}))
+            self.assertEqual(install.load_bundles(root, "aarch64")["base"], "https://x/")
 
 
 if __name__ == "__main__":
