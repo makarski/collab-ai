@@ -85,7 +85,7 @@ def activate_instances(args, image_dir, machine, instances):
         return
     selected = selection(getattr(args, "tools", None) or [])
     for name, role in instances.items():
-        install_in(Container(args.remote, args.project, name, role=role), release, selected)
+        install_in(Container(args.remote, args.project, name).as_role(role), release, selected)
 
 
 def tool_release(image_dir, machine):

@@ -12,6 +12,7 @@ import tempfile
 import uuid
 
 import sandbox_mount_checks
+import sandbox_rollout
 import sandbox_network_checks
 import sandbox_secured_checks
 import sandbox_storage_checks

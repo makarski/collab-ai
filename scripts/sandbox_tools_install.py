@@ -52,12 +52,16 @@ RETRY_COMMAND = "python3 scripts/sandbox-provision.py tools-retry"
 class Container:
     """One managed instance, driven through the authenticated Incus endpoint."""
 
-    def __init__(self, remote, project, name, run=subprocess.run, role=None):
+    def __init__(self, remote, project, name, run=subprocess.run):
         self.name = name
-        self.role = role or name  # a disposable test instance can play a role under another name
+        self.role = name  # a disposable test instance can play a role under another name (as_role)
         self.command = ["incus", "--project", project]
         self.target = f"{remote}:{name}"
         self.run = run
+
+    def as_role(self, role):
+        self.role = role
+        return self
 
     def execute(self, *args, **kwargs):
         return self.run(self.command + ["exec", self.target, "-T", "--", *args], check=True, **kwargs)
