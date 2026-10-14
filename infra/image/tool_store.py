@@ -13,6 +13,7 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
+import subprocess
 import tarfile
 import tempfile
 import time
@@ -21,12 +22,19 @@ import zipfile
 
 STORE = Path("/var/lib/collab-ai-tools")
 STATE = Path("/var/lib/collab-ai/tools-state.json")
+ROOT_DEPS = Path("/var/lib/collab-ai/root-deps.json")
 SHARE = Path("/usr/local/share/collab-ai")
+ETC = Path("/etc")
 MODE_FILE = SHARE / "tools-mode"
 LOCK_FILE = SHARE / "tools.lock.json"
 SOURCE_FILE = SHARE / "build-source.json"
-KINDS = ("archive", "binary", "zip")
+KINDS = ("archive", "binary", "zip", "debs")
 REQUIRED_MANIFEST = ("release", "lock_sha256", "architecture", "selection", "tools")
+# Optional tools and the MCP server each one provides (None: no server).
+OPTIONAL_TOOLS = {"cs-mcp": "codescene", "playwright": "playwright", "docker": None}
+# Launcher names that are not a tool's own entry: (tool, path in the artifact
+# or a sibling of the entry).
+TOOL_NAMES = {"gofmt": ("go", "go/bin/gofmt"), "npm": ("node", "npm"), "npx": ("node", "npx")}
 
 
 class StoreError(ValueError):
@@ -53,11 +61,15 @@ def mode(path=MODE_FILE):
     return value
 
 
-def read_state(path=STATE):
+def read_json(path, default=None):
     try:
         return json.loads(path.read_text())
     except FileNotFoundError:
-        return None
+        return default
+
+
+def read_state(path=STATE):
+    return read_json(path)
 
 
 def fsync_path(path):
@@ -67,15 +79,6 @@ def fsync_path(path):
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-
-
-def write_durable(path, text):
-    """Write text so that after a crash the file is either absent/old or complete."""
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(text)
-    fsync_path(temporary)
-    temporary.replace(path)
-    fsync_path(path.parent)
 
 
 def fsync_tree(root):
@@ -89,8 +92,17 @@ def fsync_tree(root):
         fsync_path(directory)
 
 
-def write_state(value, path=STATE):
+def write_durable(path, text):
+    """Write text so that after a crash the file is either absent/old or complete."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(text)
+    fsync_path(temporary)
+    temporary.replace(path)
+    fsync_path(path.parent)
+
+
+def write_state(value, path=STATE):
     write_durable(path, json.dumps(value, indent=2) + "\n")
 
 
@@ -225,18 +237,27 @@ def extract_zip(archive, destination, entry):
 
 def install_artifact(kind, source, destination, entry):
     destination.mkdir()
-    if kind == "archive":
+    if kind in ("archive", "debs"):
         extract_tar(source, destination)
     elif kind == "zip":
         extract_zip(source, destination, entry)
     else:
         shutil.copyfile(source, destination / entry)
+    check_entry(kind, destination, entry)
+    root_owned(destination)
+
+
+def check_entry(kind, destination, entry):
+    """A deb set holds packages; every other kind has its executable entry."""
+    if kind == "debs":
+        if not any(destination.glob("*.deb")):
+            raise StoreError("Package artifact holds no .deb files")
+        return
     target = destination / normalized(entry)
     if not target.is_file():
         raise StoreError(f"Artifact lacks its entry {entry}")
     if kind != "archive":
         target.chmod(0o755)
-    root_owned(destination)
 
 
 def root_owned(directory):
@@ -245,24 +266,105 @@ def root_owned(directory):
     for path in [directory, *directory.rglob("*")]:
         if path.is_symlink():
             continue
-        os.chown(path, 0, 0, follow_symlinks=False) if os.geteuid() == 0 else None
+        if os.geteuid() == 0:
+            os.chown(path, 0, 0, follow_symlinks=False)
         path.chmod(path.stat().st_mode & ~(stat.S_IWGRP | stat.S_IWOTH))
 
 
-def remove_unless_marked(directory, marker):
-    """Entries without their completion marker are garbage from a crash."""
-    for path in directory.iterdir():
-        if not (path / marker).exists():
-            shutil.rmtree(path)
+# Root dependencies: deb sets change the root disk, not the store, so each root
+# records what it installed and re-verifies the packages on every activation.
+
+POLICY_RC = Path("/usr/sbin/policy-rc.d")
+
+
+def dpkg_environment():
+    return dict(os.environ, DEBIAN_FRONTEND="noninteractive", PATH="/usr/sbin:/usr/bin:/sbin:/bin")
+
+
+def install_debs(directory, run=subprocess.run, policy=None):
+    """Install a staged deb set offline. No daemon may start from a postinst:
+    the gated units start services after the release, never dpkg."""
+    policy = policy or POLICY_RC
+    created = not policy.exists()
+    if created:
+        policy.write_text("#!/bin/sh\nexit 101\n")
+        policy.chmod(0o755)
+    try:
+        packages = sorted(str(path) for path in directory.glob("*.deb"))
+        run(["dpkg", "-i", "--force-confold", *packages], check=True, env=dpkg_environment())
+    finally:
+        if created:
+            policy.unlink(missing_ok=True)
+
+
+def installed_version(package, run=subprocess.run):
+    result = run(["dpkg-query", "-W", "-f=${db:Status-Status} ${Version}", package],
+                 capture_output=True, text=True, env=dpkg_environment())
+    if result.returncode != 0:
+        return None
+    status, _, version = result.stdout.strip().partition(" ")
+    return version if status == "installed" else None
+
+
+def verify_packages(name, tool, run=subprocess.run):
+    for package, version in tool.get("packages", {}).items():
+        if installed_version(package, run) != version:
+            raise StoreError(f"Tool {name}: package {package} is not installed at {version}")
+
+
+# Derived configuration: the agents' MCP servers and the per-tool markers
+# follow the selection, so a disabled tool has no server entry and no unit.
+
+def enabled(selection, tool):
+    return bool(selection.get(tool, False))
+
+
+def chosen_servers(selection, servers):
+    return {server: spec for tool, server in OPTIONAL_TOOLS.items()
+            if server in servers and enabled(selection, tool) for spec in [servers[server]]}
+
+
+def write_configuration(selection, share=SHARE, etc=ETC):
+    """Write the agents' MCP configuration and the tool markers for selection.
+    The base files ship with the image; without them (a store exercised
+    outside an image) the image's own configuration stands."""
+    servers = read_json(share / "mcp-servers.json")
+    if servers is None:
+        return
+    chosen = chosen_servers(selection, servers)
+    claude = read_json(share / "claude-mcp.base.json", {"mcpServers": {}})
+    claude["mcpServers"] = {**claude.get("mcpServers", {}), **chosen}
+    write_durable(etc / "collab-ai/claude-mcp.json", json.dumps(claude, indent=2) + "\n")
+    base = share / "codex-config.base.toml"
+    codex = base.read_text() if base.exists() else ""
+    for server, spec in chosen.items():
+        codex += f"\n[mcp_servers.{server}]\n"
+        codex += "\n".join(f"{key} = {json.dumps(value)}" for key, value in spec.items()) + "\n"
+    write_durable(etc / "codex/config.toml", codex)
+    write_markers(selection, etc / "collab-ai/tools")
+
+
+def write_markers(selection, directory):
+    directory.mkdir(parents=True, exist_ok=True)
+    for tool in OPTIONAL_TOOLS:
+        marker = directory / f"{tool}.enabled"
+        if enabled(selection, tool):
+            marker.write_text("")
+        else:
+            marker.unlink(missing_ok=True)
+    fsync_path(directory)
 
 
 class Store:
-    def __init__(self, root=STORE, state=STATE):
+    def __init__(self, root=STORE, state=STATE, root_deps=ROOT_DEPS, run=subprocess.run):
         self.root = Path(root)
         self.state_path = Path(state)
+        self.root_deps = Path(root_deps)
+        self.run = run
         self.artifacts = self.root / "artifacts"
         self.generations = self.root / "generations"
         self.current = self.root / "current"
+        self.share, self.etc = SHARE, ETC
 
     # Reading
 
@@ -285,12 +387,23 @@ class Store:
         return {path.name for path in self.artifacts.iterdir() if (path / ".complete").exists()}
 
     def resolve(self, tool):
-        """The absolute entry path of tool in the current generation."""
-        manifest = self.current_manifest()
-        if manifest is None or tool not in manifest["tools"]:
+        """The absolute entry path of tool in the current generation; None for a
+        tool that isn't installed or has no executable (a deb set)."""
+        spec = (self.current_manifest() or {}).get("tools", {}).get(tool)
+        if spec is None or spec["kind"] == "debs":
             return None
-        entry = manifest["tools"][tool]["entry"]
-        return (self.current / tool).resolve() / normalized(entry)
+        return (self.current / tool).resolve() / normalized(spec["entry"])
+
+    def resolve_name(self, name):
+        """The executable for a launcher name: a tool's own entry, or a sibling
+        such as gofmt, npm or npx; None when its tool isn't installed."""
+        tool, relative = TOOL_NAMES.get(name, (name, None))
+        entry = self.resolve(tool)
+        if entry is None or relative is None:
+            return entry
+        if "/" in relative:
+            return (self.current / tool).resolve() / normalized(relative)
+        return entry.parent / relative
 
     # Activation
 
@@ -307,6 +420,8 @@ class Store:
             self.remove_incomplete()
             for name, tool in manifest["tools"].items():
                 self.stage(name, tool, Path(incoming))
+            self.install_root_deps(manifest)
+            write_configuration(manifest["selection"], self.share, self.etc)
             self.build_generation(generation, manifest)
             os.chmod(self.artifacts, 0o755)
             os.chmod(self.generations, 0o755)
@@ -349,6 +464,19 @@ class Store:
         finally:
             shutil.rmtree(staging, ignore_errors=True)
 
+    def install_root_deps(self, manifest):
+        """Install each deb set this root lacks, then verify every package of
+        every deb set, cached or not: `.complete` says nothing about a root."""
+        record = read_json(self.root_deps, {"installed": {}})
+        for name, tool in manifest["tools"].items():
+            if tool["kind"] != "debs":
+                continue
+            if tool["sha256"] not in record["installed"]:
+                install_debs(self.artifacts / tool["sha256"], self.run)
+                record["installed"][tool["sha256"]] = {"tool": name, "installed_at": time.time()}
+                write_durable(self.root_deps, json.dumps(record, indent=2) + "\n")
+            verify_packages(name, tool, self.run)
+
     def build_generation(self, generation, manifest):
         target = self.generations / generation
         if target.exists():
@@ -357,7 +485,7 @@ class Store:
         staging.mkdir()
         for name, tool in manifest["tools"].items():
             (staging / name).symlink_to(Path("..") / ".." / "artifacts" / tool["sha256"])
-            if not (staging / name / normalized(tool["entry"])).is_file():
+            if tool["kind"] != "debs" and not (staging / name / normalized(tool["entry"])).is_file():
                 raise StoreError(f"Generation validation failed: {name} has no entry {tool['entry']}")
         write_durable(staging / "manifest.json", json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         staging.rename(target)
@@ -389,6 +517,13 @@ class Store:
         for path in self.artifacts.iterdir():
             if path.name not in referenced:
                 shutil.rmtree(path)
+
+
+def remove_unless_marked(directory, marker):
+    """Entries without their completion marker are garbage from a crash."""
+    for path in directory.iterdir():
+        if not (path / marker).exists():
+            shutil.rmtree(path)
 
 
 def ready(store=None, lock_file=LOCK_FILE, source_file=SOURCE_FILE, mode_file=MODE_FILE):

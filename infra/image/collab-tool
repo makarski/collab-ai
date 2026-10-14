@@ -16,10 +16,12 @@ import tool_store  # noqa: E402
 EXIT_MAINTENANCE, EXIT_MISSING = 75, 127
 
 
-def environment(name, entry, base):
+def environment(name, entry, base=None):
+    """The child's environment; `base` (the artifact root) is accepted for
+    callers that pass it, GOROOT derives from the entry itself."""
     env = dict(os.environ)
     env["PATH"] = f"{entry.parent}:{env.get('PATH', '/usr/bin:/bin')}"
-    if name == "go":
+    if name in ("go", "gofmt"):
         env["GOROOT"] = str(entry.parent.parent)  # the lock's entry is go/bin/go
     return env
 
@@ -36,12 +38,11 @@ def main(argv):
     if reason:
         print(f"{name}: {reason}", file=sys.stderr)
         sys.exit(EXIT_MAINTENANCE)
-    store = tool_store.Store()
-    entry = store.resolve(name)
+    entry = tool_store.Store().resolve_name(name)
     if entry is None or not entry.is_file():
         print(f"{name} is not installed in this sandbox; enable it in the preset and run rollout", file=sys.stderr)
         sys.exit(EXIT_MISSING)
-    os.execve(entry, [str(entry), *args], environment(name, entry, (store.current / name).resolve()))
+    os.execve(entry, [str(entry), *args], environment(name, entry))
 
 
 if __name__ == "__main__":

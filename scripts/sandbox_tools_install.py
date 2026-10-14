@@ -26,7 +26,10 @@ AGENT_KEY = "/etc/ssh/authorized_keys/agent"
 ACTIVATOR = "/usr/local/bin/collab-tools-activate"
 # Every launch mode needs these; the rest can be turned off per preset.
 REQUIRED_TOOLS = ("go", "codex", "claude", "rtk", "starship")
-OPTIONAL_TOOLS = ("cs-mcp",)
+OPTIONAL_TOOLS = ("cs-mcp", "playwright", "docker")
+# Optional tools delivered as release bundles rather than lock artifacts; their
+# installation lands with the slim image, until then they stay baked.
+BUNDLE_TOOLS = ("playwright", "docker")
 SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
 # Units that wait for collab-tools-ready; started by the host once a root is released.
@@ -68,7 +71,7 @@ def selection(enabled):
 def tools_for(role, selected):
     if role == "secured":
         return list(SECURED_TOOLS)
-    return [name for name in (*REQUIRED_TOOLS, *OPTIONAL_TOOLS) if selected[name]]
+    return [name for name in (*REQUIRED_TOOLS, *OPTIONAL_TOOLS) if selected[name] and name not in BUNDLE_TOOLS]
 
 
 def digest(data):
