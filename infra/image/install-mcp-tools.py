@@ -10,26 +10,27 @@ import tempfile
 import zipfile
 
 from tool_download import download, extract
+from tool_lock import artifact
 
 
 ROOT = Path("/root/build/infra/image")
 BUNDLE = Path("/opt/collab-mcp")
 
 
-def native_tools(lock, arch, temporary):
-    node = f"node-v{lock['node_version']}-linux-{arch['node_arch']}"
+def native_tools(lock, machine, temporary):
+    node = artifact(lock, "node", machine)
     archive = temporary / "node.tar.gz"
-    download(f"https://nodejs.org/dist/v{lock['node_version']}/{node}.tar.gz", arch["node_sha256"], archive)
+    download(node["url"], node["sha256"], archive)
     extract(archive, "/opt")
+    bin_dir = Path("/opt") / Path(node["entry"]).parent
     for name in ("node", "npm", "npx"):
-        Path(f"/usr/local/bin/{name}").symlink_to(f"/opt/{node}/bin/{name}")
-    name = f"cs-mcp-linux-{arch['codescene_arch']}"
+        Path(f"/usr/local/bin/{name}").symlink_to(bin_dir / name)
+    codescene = artifact(lock, "cs-mcp", machine)
     archive = temporary / "codescene.zip"
-    download(f"https://github.com/codescene-oss/codescene-mcp-server/releases/download/"
-             f"MCP-{lock['codescene_version']}/{name}.zip", arch["codescene_sha256"], archive)
+    download(codescene["url"], codescene["sha256"], archive)
     with zipfile.ZipFile(archive) as package:
         binary = Path("/usr/local/bin/cs-mcp")
-        binary.write_bytes(package.read(name))
+        binary.write_bytes(package.read(codescene["entry"]))
         binary.chmod(0o755)
 
 
@@ -61,6 +62,6 @@ def configure(etc=Path("/etc")):
 if __name__ == "__main__":
     lock = json.loads((ROOT / "tools.lock.json").read_text())
     with tempfile.TemporaryDirectory() as directory:
-        native_tools(lock, lock["architectures"][platform.machine()], Path(directory))
+        native_tools(lock, platform.machine(), Path(directory))
     playwright()
     configure()

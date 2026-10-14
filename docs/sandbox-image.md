@@ -66,6 +66,13 @@ python3 scripts/sandbox-image.py --remote colima-collab-ai \
 | `--codex-version`, `--claude-version`, `--go-version` | Exact versions; defaults come from the lock |
 | `--base-image SHA256` | Ubuntu 24.04 fingerprint for the build server's architecture |
 | `--lock-file FILE` | A custom complete lock file, including checksums |
+
+`tools.lock.json` (schema 2) has one `artifacts` entry per third-party tool:
+its version, kind (`archive`, `binary` or `zip`), a URL and entry template, and
+a `sha256` plus the vendor's architecture label per machine architecture.
+`architectures` holds the Ubuntu base image fingerprint per architecture. The
+same table drives the image build and, with [sandbox tools](sandbox-tools.md),
+the host-side artifact cache.
 | `--output DIRECTORY` | New directory for the build; existing directories are never overwritten |
 
 Overrides resolve publisher checksums; unsupported packages and moving versions

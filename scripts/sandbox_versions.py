@@ -3,8 +3,14 @@
 import argparse
 import copy
 import json
+from pathlib import Path
 import re
+import sys
 import urllib.request
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "infra/image"))
+from tool_lock import artifact  # noqa: E402
 
 
 def version(value):
@@ -27,20 +33,20 @@ def publisher_json(url):
 
 def go_checksum(selected, arch):
     releases = publisher_json("https://go.dev/dl/?mode=json&include=all")
-    name = f"go{selected}.linux-{arch['go_arch']}.tar.gz"
+    name = f"go{selected}.linux-{arch}.tar.gz"
     for release in releases:
-        for artifact in release["files"]:
-            if artifact["filename"] == name:
-                return fingerprint(artifact["sha256"])
+        for item in release["files"]:
+            if item["filename"] == name:
+                return fingerprint(item["sha256"])
     raise ValueError(f"Official Go archive unavailable: {name}")
 
 
 def codex_checksum(selected, arch):
     release = publisher_json(f"https://api.github.com/repos/openai/codex/releases/tags/rust-v{selected}")
-    name = f"codex-package-{arch['codex_target']}.tar.gz"
-    for artifact in release["assets"]:
-        if artifact["name"] == name:
-            digest = artifact.get("digest") or ""
+    name = f"codex-package-{arch}.tar.gz"
+    for item in release["assets"]:
+        if item["name"] == name:
+            digest = item.get("digest") or ""
             if not digest.startswith("sha256:"):
                 raise ValueError(f"No publisher SHA256 for {name}")
             return fingerprint(digest.removeprefix("sha256:"))
@@ -51,25 +57,37 @@ def claude_checksum(selected, arch):
     manifest = publisher_json(f"https://downloads.claude.ai/claude-code-releases/{selected}/manifest.json")
     if manifest["version"] != selected:
         raise ValueError("Claude manifest version differs from the requested version")
-    return fingerprint(manifest["platforms"][arch["claude_platform"]]["checksum"])
+    return fingerprint(manifest["platforms"][arch]["checksum"])
+
+
+def resolver(name):
+    """The publisher checksum lookup for a tool, or None when a new version
+    needs its checksum pinned by hand. Looked up at call time."""
+    return {"go": go_checksum, "codex": codex_checksum, "claude": claude_checksum}.get(name)
 
 
 def resolve_lock(path, architecture, args):
+    """Return the lock for one architecture, with version overrides resolved to
+    publisher checksums. Overrides never leave another architecture paired with
+    stale checksums, because only the built architecture is kept."""
     lock = json.loads(path.read_text())
     arch = copy.deepcopy(lock["architectures"][architecture])
-    # This resolved lock describes only the architecture being built. Overrides
-    # must never leave another architecture paired with stale version checksums.
     lock["architectures"] = {architecture: arch}
-    resolvers = {"go": go_checksum, "codex": codex_checksum, "claude": claude_checksum}
-    for tool, resolve in resolvers.items():
-        requested = getattr(args, f"{tool}_version", None)
-        selected = version(requested or lock[f"{tool}_version"])
-        if selected != lock[f"{tool}_version"]:
-            arch[f"{tool}_sha256"] = resolve(selected, arch)
-        lock[f"{tool}_version"] = selected
-        fingerprint(arch[f"{tool}_sha256"])
-    for tool in ("starship", "rtk", "node", "codescene"):
-        lock[f"{tool}_version"] = version(lock[f"{tool}_version"])
-        fingerprint(arch[f"{tool}_sha256"])
+    for name, spec in lock["artifacts"].items():
+        spec["architectures"] = {architecture: copy.deepcopy(spec["architectures"][architecture])}
+        select_version(name, spec, architecture, getattr(args, f"{name}_version", None))
+        artifact(lock, name, architecture)
     arch["base_image"] = fingerprint(getattr(args, "base_image", None) or arch["base_image"])
     return lock
+
+
+def select_version(name, spec, architecture, requested):
+    selected = version(requested or spec["version"])
+    if selected == spec["version"]:
+        return
+    resolve = resolver(name)
+    if resolve is None:
+        raise ValueError(f"{name} has no publisher checksum lookup; pin its checksum in the lock file")
+    per_arch = spec["architectures"][architecture]
+    per_arch["sha256"] = resolve(selected, per_arch["arch"])
+    spec["version"] = selected
