@@ -78,6 +78,17 @@ def write_durable(path, text):
     fsync_path(path.parent)
 
 
+def fsync_tree(root):
+    """Flush every file and directory under root; the completion marker must
+    never outlive the content it vouches for."""
+    for directory, _, names in os.walk(root):
+        for name in names:
+            path = Path(directory) / name
+            if not path.is_symlink():
+                fsync_path(path)
+        fsync_path(directory)
+
+
 def write_state(value, path=STATE):
     path.parent.mkdir(parents=True, exist_ok=True)
     write_durable(path, json.dumps(value, indent=2) + "\n")
@@ -298,8 +309,10 @@ class Store:
         return generation
 
     def require_unreleased(self):
+        """Only a root with no state, or one still in maintenance, may be
+        mutated; ready, or any state this code doesn't know, means released."""
         state = read_state(self.state_path)
-        if state is not None and state.get("state") == "ready":
+        if state is not None and state.get("state") != "maintenance":
             raise StoreError("This root already has an activated generation; tools change only on a new root")
 
     def remove_incomplete(self):
@@ -321,6 +334,7 @@ class Store:
         staging = Path(tempfile.mkdtemp(prefix=".stage-", dir=self.artifacts))
         try:
             install_artifact(tool["kind"], source, staging / "content", tool["entry"])
+            fsync_tree(staging / "content")
             write_durable(staging / "content" / ".complete",
                           json.dumps({"tool": name, "version": tool.get("version")}) + "\n")
             (staging / "content").rename(destination)

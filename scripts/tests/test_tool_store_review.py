@@ -1,4 +1,5 @@
 import concurrent.futures
+import os
 import runpy
 import subprocess
 import threading
@@ -8,6 +9,28 @@ from test_tool_store import ROOT, StoreHarness, tool_store
 
 
 class StoreReviewTests(StoreHarness):
+    def test_artifact_bytes_are_flushed_before_ready_commit(self):
+        manifest = self.manifest(self.deliver("tool", b"payload", kind="binary", entry="tool"))
+        flushed = []
+        real_fsync = os.fsync
+        real_write_state = tool_store.write_state
+
+        def record_flush(fd):
+            info = os.fstat(fd)
+            flushed.append((info.st_dev, info.st_ino))
+            real_fsync(fd)
+
+        def check_ready(value, path):
+            if value["state"] == "ready":
+                info = self.store.resolve("tool").stat()
+                self.assertIn((info.st_dev, info.st_ino), flushed,
+                              "ready was committed without flushing the artifact contents")
+            real_write_state(value, path)
+
+        with patch.object(tool_store.os, "fsync", side_effect=record_flush), \
+             patch.object(tool_store, "write_state", side_effect=check_ready):
+            self.store.activate(manifest, self.incoming)
+
     def test_waiting_activator_rechecks_terminal_state_under_lock(self):
         first = self.manifest(self.deliver("tool", b"one", kind="binary", entry="tool"))
         second = self.manifest(self.deliver("other", b"two", kind="binary", entry="other"))
