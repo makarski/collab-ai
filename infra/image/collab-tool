@@ -1,0 +1,52 @@
+#!/usr/bin/python3
+"""Launch a tool from the active store generation.
+
+Invoked as `collab-tool NAME ARGS…`, or through a symlink named after the tool.
+The generation is resolved once and fixed in the child's environment, so a
+later activation on another root never changes what a running tool sees.
+"""
+
+import os
+from pathlib import Path
+import sys
+
+sys.path.insert(0, "/usr/local/lib/collab-ai")
+import tool_store  # noqa: E402
+
+EXIT_MAINTENANCE, EXIT_MISSING = 75, 127
+
+
+def environment(name, entry, base):
+    env = dict(os.environ)
+    env["PATH"] = f"{entry.parent}:{env.get('PATH', '/usr/bin:/bin')}"
+    if name == "go":
+        env["GOROOT"] = str(base)
+    return env
+
+
+def main(argv):
+    program = Path(argv[0]).name
+    if program == "collab-tool":
+        if len(argv) < 2:
+            sys.exit("usage: collab-tool NAME [ARGS…]")
+        name, args = argv[1], argv[2:]
+    else:
+        name, args = program, argv[1:]
+    reason = tool_store.ready()
+    if reason:
+        print(f"{name}: {reason}", file=sys.stderr)
+        sys.exit(EXIT_MAINTENANCE)
+    store = tool_store.Store()
+    entry = store.resolve(name)
+    if entry is None or not entry.is_file():
+        print(f"{name} is not installed in this sandbox; enable it in the preset and run rollout", file=sys.stderr)
+        sys.exit(EXIT_MISSING)
+    os.execve(entry, [str(entry), *args], environment(name, entry, (store.current / name).resolve()))
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv)
+    except (tool_store.StoreError, OSError) as error:
+        print(f"collab-tool: {error}", file=sys.stderr)
+        sys.exit(1)

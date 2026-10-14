@@ -33,6 +33,32 @@ resource "incus_storage_volume" "secured_state" {
   }
 }
 
+variable "secured_tools_gib" {
+  description = "Persistent, root-owned tool store for secured; never shared with the workspace."
+  type        = number
+  default     = 2
+  validation {
+    condition     = var.secured_tools_gib >= 1 && var.secured_tools_gib <= 100 && floor(var.secured_tools_gib) == var.secured_tools_gib
+    error_message = "secured_tools_gib must be an integer from 1 through 100."
+  }
+}
+
+resource "incus_storage_volume" "secured_tools" {
+  count        = var.secured_runtime ? 1 : 0
+  name         = "secured-tools"
+  project      = incus_project.sandbox.name
+  pool         = var.storage_pool
+  type         = "custom"
+  content_type = "filesystem"
+  config = {
+    "size"             = "${var.secured_tools_gib}GiB"
+    "security.shifted" = "true"
+  }
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "incus_storage_volume" "budget_status" {
   count        = var.secured_runtime ? 1 : 0
   name         = "budget-status"
@@ -106,6 +132,15 @@ resource "incus_profile" "secured" {
       source = incus_storage_volume.budget_status[0].name
       pool   = var.storage_pool
       path   = "/mnt/collab-status"
+    }
+  }
+  device {
+    name = "secured-tools"
+    type = "disk"
+    properties = {
+      source = incus_storage_volume.secured_tools[0].name
+      pool   = var.storage_pool
+      path   = "/var/lib/collab-ai-tools"
     }
   }
 }

@@ -28,11 +28,22 @@ variable "docker_gib" {
   }
 }
 
+variable "tools_gib" {
+  description = "Persistent, root-owned tool store for the workspace; agents read it, only the host installs into it."
+  type        = number
+  default     = 4
+  validation {
+    condition     = var.tools_gib >= 1 && var.tools_gib <= 100 && floor(var.tools_gib) == var.tools_gib
+    error_message = "tools_gib must be an integer from 1 through 100."
+  }
+}
+
 locals {
   dev_storage = {
     workspace = { name = "workspace-data", path = "/workspace", size = var.workspace_gib }
     home      = { name = "agent-home", path = "/home/agent", size = var.agent_home_gib }
     docker    = { name = "docker-data", path = "/var/lib/collab-ai-docker", size = var.docker_gib }
+    tools     = { name = "workspace-tools", path = "/var/lib/collab-ai-tools", size = var.tools_gib }
   }
 }
 

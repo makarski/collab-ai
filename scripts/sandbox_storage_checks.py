@@ -34,6 +34,7 @@ def check_data(deployment):
               "assert '# retention-proof' in Path('/home/agent/.profile').read_text()\n")
     run(deployment.execute("workspace", "runuser", "-u", "agent", "--", "python3", "-c", script))
     check_volume_ownership(deployment)
+    check_tool_store_ownership(deployment)
     denied(deployment.execute("workspace", "cat", FILES[1], uid=65534))
     denied(deployment.execute("workspace", "ls", "/var/lib/collab-ai-docker", uid=65534))
 
@@ -46,6 +47,14 @@ def check_volume_ownership(deployment):
         observed = run(deployment.execute("workspace", "stat", "-c", "%a %u %g", path)).strip()
         if observed not in {f"{mode} 1001 1001" for mode in modes}:
             raise ValueError(f"Unsafe persistent volume ownership: {path}: {observed}")
+
+
+def check_tool_store_ownership(deployment):
+    # The tool store is root's: agents execute from it and never write to it.
+    for role in ("workspace", "secured"):
+        observed = run(deployment.execute(role, "stat", "-c", "%a %u %g", "/var/lib/collab-ai-tools")).strip()
+        if observed != "755 0 0":
+            raise ValueError(f"Tool store must be root-owned 0755 in {role}: {observed}")
 
 
 def verify(args, directory, project):

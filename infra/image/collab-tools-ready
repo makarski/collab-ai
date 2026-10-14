@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+"""Gate for tool-dependent entry points: succeed only when this root's tools are released."""
+
+import sys
+
+sys.path.insert(0, "/usr/local/lib/collab-ai")
+import tool_store  # noqa: E402
+
+if __name__ == "__main__":
+    try:
+        reason = tool_store.ready()
+    except (tool_store.StoreError, OSError) as error:
+        reason = str(error)
+    if reason:
+        print(f"collab-tools-ready: {reason}", file=sys.stderr)
+        sys.exit(1)

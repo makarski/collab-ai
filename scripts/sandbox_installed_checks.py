@@ -21,7 +21,8 @@ def denied(command):
 
 
 def await_services(deployment):
-    for role, unit in (("workspace", "collab-dev-executor.socket"), ("secured", "collab-secured-broker")):
+    for role, unit in (("workspace", "collab-tools-ready"), ("secured", "collab-tools-ready"),
+                       ("workspace", "collab-dev-executor.socket"), ("secured", "collab-secured-broker")):
         for _ in range(40):
             result = subprocess.run(deployment.execute(role, "systemctl", "is-active", "--quiet", unit),
                                     capture_output=True, timeout=5)
