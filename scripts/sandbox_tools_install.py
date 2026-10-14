@@ -42,7 +42,8 @@ SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
 # Units that wait for collab-tools-ready; started by the host once a root is released.
 GATED_UNITS = {
-    "workspace": ("collab-tools-ready.service", "collab-docker-session.service", "collab-docker-setup.service"),
+    "workspace": ("collab-tools-ready.service", "collab-rtk-setup.service", "collab-docker-session.service",
+                  "collab-docker-setup.service"),
     "secured": ("collab-tools-ready.service",),
 }
 RETRY_COMMAND = "python3 scripts/sandbox-provision.py tools-retry"
@@ -185,12 +186,19 @@ def load_bundles(image_dir, machine):
     return {"manifest": json.loads(manifest_path.read_text()), "base": base}
 
 
+# Prints exactly one verdict line; any other output, or a failed exec, is an error.
+MODE_SCRIPT = f'if [ -e {MODE_FILE} ]; then printf "mode:%s\\n" "$(cat {MODE_FILE})"; else echo mode:absent; fi'
+MODES = {"mode:store": True, "mode:baked": False, "mode:absent": False}
+
+
 def store_mode(container):
-    """Whether this root's launchers depend on the store (tools-mode = store)."""
-    try:
-        return container.output("sh", "-c", f"cat {MODE_FILE} 2>/dev/null || echo baked").strip() == "store"
-    except subprocess.CalledProcessError:
-        return False
+    """Whether this root's launchers depend on the store (tools-mode = store).
+    Only a confirmed absent file means an older, baked image; a transport error
+    or an unknown mode fails closed rather than omitting tools."""
+    verdict = container.output("sh", "-c", MODE_SCRIPT).strip()
+    if verdict not in MODES:
+        raise ValueError(f"{container.name}: unknown tools mode ({verdict!r})")
+    return MODES[verdict]
 
 
 def build_manifest(container, release, selected):

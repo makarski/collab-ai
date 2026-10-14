@@ -37,7 +37,7 @@ class FakeContainer(install.Container):
         if args[:2] == ("collab-tools-activate", "status"):
             return json.dumps({"state": self.state, "current": self.current, "complete": self.complete})
         if args[:2] == ("sh", "-c") and "tools-mode" in args[2]:
-            return self.mode + "\n"
+            return f"mode:{self.mode}\n"
         if args[:1] == ("cat",):
             return json.dumps(self.lock) if args[1].endswith("tools.lock.json") else '{"collab": "x"}'
         if args[:2] == ("collab-tools-activate", "activate"):

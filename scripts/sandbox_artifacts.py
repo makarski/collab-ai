@@ -14,6 +14,11 @@ from sandbox_versions import fingerprint
 ARCHITECTURES = {"aarch64": "arm64", "x86_64": "amd64"}
 
 
+class MissingAsset(FileNotFoundError, ValueError):
+    """An expected asset is not in the given source: a usage error for the
+    image, and confirmed absence for the optional bundle manifest."""
+
+
 def sha256(path):
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -49,7 +54,9 @@ def from_zip(archive, name, destination):
     # Copy only the two exact expected assets; never extract archive paths.
     with zipfile.ZipFile(archive) as bundle:
         matches = [item for item in bundle.infolist() if item.filename == name]
-        if len(matches) != 1:
+        if not matches:
+            raise MissingAsset(f"{name} is not in {archive}; select the matching architecture ZIP")
+        if len(matches) > 1:
             raise ValueError(f"Expected exactly one {name} in {archive}; select the matching architecture ZIP")
         with bundle.open(matches[0]) as source, destination.open("xb") as output:
             shutil.copyfileobj(source, output, length=1024 * 1024)
@@ -87,6 +94,24 @@ def bundles_name(architecture):
     return f"collab-ai-bundles-linux-{ARCHITECTURES[architecture]}.json"
 
 
+def confirmed_absent(error):
+    """Only a missing file or an HTTP 404 proves a release has no bundles;
+    any other failure must be retried, never remembered."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code == 404
+    return isinstance(error, FileNotFoundError)
+
+
+def fresh(obtain, name, target):
+    """Obtain name into target, removing a partial file from an earlier attempt."""
+    target.unlink(missing_ok=True)
+    try:
+        obtain(name, target)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+
+
 def fetch_bundles(output, architecture, obtain, base=None):
     """Record where this image's optional tool bundles come from.
 
@@ -97,15 +122,17 @@ def fetch_bundles(output, architecture, obtain, base=None):
     manifest_path = output / bundles_name(architecture)
     source = output / "bundle-source.json"
     try:
-        obtain(bundles_name(architecture), manifest_path)
-    except (FileNotFoundError, KeyError, ValueError, urllib.error.HTTPError):
+        fresh(obtain, bundles_name(architecture), manifest_path)
+    except (FileNotFoundError, urllib.error.HTTPError) as error:
+        if not confirmed_absent(error):
+            raise
         source.write_text(json.dumps({"base": None}, indent=2) + "\n")  # remembered: no bundles
         return None
     manifest = json.loads(manifest_path.read_text())
     if base is None:
         for details in manifest["bundles"].values():
             target = output / details["file"]
-            obtain(details["file"], target)
+            fresh(obtain, details["file"], target)
             if sha256(target) != details["sha256"]:
                 target.unlink()
                 raise ValueError(f"Bundle {details['file']} does not match its digest")
