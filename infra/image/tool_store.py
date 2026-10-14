@@ -123,9 +123,16 @@ def validate_manifest(manifest):
 def validate_tool(name, tool):
     if tool.get("kind") not in KINDS:
         raise StoreError(f"Tool {name} has an unsupported kind")
-    digest = tool.get("sha256")
-    if not isinstance(digest, str) or len(digest) != 64:
+    if not valid_digest(tool.get("sha256")):
         raise StoreError(f"Tool {name} has no digest")
+    validate_tool_paths(name, tool)
+
+
+def valid_digest(value):
+    return isinstance(value, str) and len(value) == 64
+
+
+def validate_tool_paths(name, tool):
     if not tool.get("entry") or not tool.get("file"):
         raise StoreError(f"Tool {name} lacks its entry or file name")
     if "/" in tool["file"]:
