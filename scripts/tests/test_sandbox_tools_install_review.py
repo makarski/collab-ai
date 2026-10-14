@@ -33,6 +33,17 @@ class InstallAdmissionReviewTests(unittest.TestCase):
         container = FakeContainer("workspace")
         self.assertFalse(install.never_released(container, {"state": "unknown"}))
 
+    def test_install_itself_rejects_unknown_state_before_mutation(self):
+        container = FakeContainer("workspace", state={"state": "unknown"})
+        selected = install.selection([])
+        _, manifest = install.build_manifest(container, LOCK, "aarch64", selected)
+        container.expected = install.generation_id(manifest)
+        with patch.object(install, "cache_artifact") as cache:
+            with self.assertRaises(ValueError):
+                install.install(container, LOCK, "aarch64", selected)
+        cache.assert_not_called()
+        self.assertFalse(container.activated)
+
     def test_retry_completes_peer_after_first_container_is_ready(self):
         selected = install.selection([])
         containers = {name: FakeContainer(name) for name in ("workspace", "secured")}

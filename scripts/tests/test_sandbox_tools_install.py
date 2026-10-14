@@ -35,8 +35,10 @@ class FakeContainer(install.Container):
         elif args[:2] == ("collab-tools-activate", "activate"):
             self.activated = True
             self.state, self.current = {"state": "ready"}, self.expected
-        elif args[:1] == ("test",):
+        elif args[:2] == ("test", "-e"):
             return subprocess.CompletedProcess(command, 0 if self.key else 1)
+        elif args[:2] == ("test", "-x"):
+            return subprocess.CompletedProcess(command, 0 if getattr(self, "activator", True) else 1)
         return subprocess.CompletedProcess(command, 0, stdout=output)
 
 
@@ -110,7 +112,7 @@ class InstallTests(unittest.TestCase):
 
     def test_a_root_that_admitted_agents_is_never_mutated_even_without_ready_state(self):
         container = FakeContainer("workspace", state={"state": "maintenance"}, key=True)
-        with self.assertRaisesRegex(ValueError, "released to agents without a ready tool state"):
+        with self.assertRaisesRegex(ValueError, "released to agents or is in an unknown tool state"):
             install.install(container, LOCK, "aarch64", self.selected, self.cache)
         self.assertFalse(container.activated)
 
@@ -148,6 +150,18 @@ class InstallTests(unittest.TestCase):
     def test_legacy_releases_without_an_artifact_table_keep_their_baked_tools(self):
         self.assertFalse(install.supports_tool_store({"go_version": "1.25.14"}))
         self.assertTrue(install.supports_tool_store(LOCK))
+
+    def test_a_root_without_the_activator_is_recognised_as_baked(self):
+        container = FakeContainer("workspace")
+        self.assertTrue(install.has_tool_store(container))
+        container.activator = False
+        self.assertFalse(install.has_tool_store(container))
+
+    def test_unknown_state_blocks_install_at_the_entry_point(self):
+        container = FakeContainer("workspace", state={"state": "unknown"})
+        with self.assertRaisesRegex(ValueError, "unknown tool state"):
+            install.install(container, LOCK, "aarch64", self.selected, self.cache)
+        self.assertFalse(container.activated)
 
     def test_never_released_requires_no_ready_state_and_no_agent_key(self):
         self.assertTrue(install.never_released(FakeContainer("workspace"), None))

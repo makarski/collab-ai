@@ -22,6 +22,7 @@ SHARE = "/usr/local/share/collab-ai"
 INCOMING = "/var/lib/collab-ai-tools/incoming"
 SELECTION_FILE = "/etc/collab-ai/tools.json"
 AGENT_KEY = "/etc/ssh/authorized_keys/agent"
+ACTIVATOR = "/usr/local/bin/collab-tools-activate"
 # Every launch mode needs these; the rest can be turned off per preset.
 REQUIRED_TOOLS = ("go", "codex", "claude", "rtk", "starship")
 OPTIONAL_TOOLS = ("cs-mcp",)
@@ -77,15 +78,24 @@ def status(container):
     return json.loads(container.output("collab-tools-activate", "status"))
 
 
+def probe(container, *test):
+    """A `test` inside the container. Only its own verdict counts; an Incus or
+    transport failure is an error, never proof of absence."""
+    result = container.run(container.command + ["exec", container.target, "-T", "--", "test", *test])
+    if result.returncode in (0, 1):
+        return result.returncode == 0
+    raise ValueError(f"{container.name}: could not probe {' '.join(test)} (exit {result.returncode})")
+
+
 def agent_key_installed(container):
-    """Whether the host ever admitted an agent to this root. Only the probe's
-    own verdict counts; an Incus or transport failure is an error, not proof."""
-    probe = container.run(container.command + ["exec", container.target, "-T", "--", "test", "-e", AGENT_KEY])
-    if probe.returncode == 0:
-        return True
-    if probe.returncode == 1:
-        return False
-    raise ValueError(f"{container.name}: could not probe the agent key (exit {probe.returncode})")
+    """Whether the host ever admitted an agent to this root."""
+    return probe(container, "-e", AGENT_KEY)
+
+
+def has_tool_store(container):
+    """Whether this root's image carries the activator: the evidence that the
+    release supports the tool store. Older releases keep their baked tools."""
+    return probe(container, "-x", ACTIVATOR)
 
 
 def never_released(container, state):
@@ -133,9 +143,10 @@ def install(container, release_lock, machine, selected, cache=CACHE, provenance=
             return None
         raise ValueError(f"{container.name} already runs a released tool generation; "
                          "changing tools needs a rollout (a new root)")
-    # Every mutation requires a root no agent could have used.
-    if agent_key_installed(container):
-        raise ValueError(f"{container.name} was released to agents without a ready tool state; "
+    # Every mutation requires a root no agent could have used: no ready or
+    # unknown state, and no agent key.
+    if not never_released(container, state):
+        raise ValueError(f"{container.name} was released to agents or is in an unknown tool state; "
                          "run rollout to replace the root")
     container.execute("install", "-d", "-m", "0700", INCOMING)
     for name, tool in manifest["tools"].items():
@@ -175,8 +186,9 @@ def release_provenance(image_dir):
 
 
 def supports_tool_store(release_lock):
-    """Releases built before the artifact table have no activator; their tools
-    stay baked into the image and roll out as before."""
+    """A lock without the artifact table can't describe a generation; such a
+    release predates the store. The converse is decided per root by
+    has_tool_store(), because the table shipped before the activator."""
     return "artifacts" in release_lock
 
 

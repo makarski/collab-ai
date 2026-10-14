@@ -11,8 +11,8 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
-from sandbox_tools_install import (Container, RETRY_COMMAND, install, release_lock_from, release_provenance,
-                                   selection, supports_tool_store)
+from sandbox_tools_install import (Container, RETRY_COMMAND, has_tool_store, install, release_lock_from,
+                                   release_provenance, selection, supports_tool_store)
 
 
 def managed_instances(directory, project):
@@ -82,8 +82,11 @@ def install_tools(args, server, image_dir):
             if name in statuses:
                 print(f"{name} is stopped; its tools install at the next rollout.", flush=True)
             continue
-        generation = install(Container(args.remote, args.project, name), release_lock, machine, selected,
-                             provenance=provenance)
+        container = Container(args.remote, args.project, name)
+        if not has_tool_store(container):
+            print(f"{name}: this release's image has no tool store; its tools stay baked in.", flush=True)
+            continue
+        generation = install(container, release_lock, machine, selected, provenance=provenance)
         print(f"{name}: tool generation {generation or 'already'} active", flush=True)
 
 
