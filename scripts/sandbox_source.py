@@ -11,7 +11,7 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATHS = ["go.mod", "go.sum", "cmd", "internal"]
 RECIPE_PATHS = ["infra/image/" + name for name in (
-    "install.sh", "install-tools.py", "sshd_config", "collab-broker.service",
+    "install.sh", "install-build-go.py", "sshd_config", "collab-broker.service",
     "collab-secured-setup.service", "collab-supervised-codex", "claude-mcp.json",
     "collab-secured-broker.service", "collab-dev-setup.service", "collab-dev-executor.socket",
     "collab-dev-executor@.service", "secured-codex.toml", "secured-environments.toml", "collab-executor-connect",
@@ -19,9 +19,9 @@ RECIPE_PATHS = ["infra/image/" + name for name in (
     "collab-workspace-setup.service", "collab-workspace-setup",
     "collab-agent-aliases.sh", "collab-starship.sh", "install-skill.sh",
     "collab-rtk-setup", "collab-rtk-setup.service", "codex-config.toml",
-    "install-docker.sh", "docker-packages.txt", "collab-docker-setup",
+    "docker-packages.txt", "collab-docker-setup",
     "collab-docker-session.service", "collab-docker-setup.service", "collab-user-workspace.conf",
-    "tool_download.py", "tool_lock.py", "tool_store.py", "build-playwright-bundle.py", "install-mcp-tools.py",
+    "tool_download.py", "tool_lock.py", "tool_store.py", "build-playwright-bundle.py",
     "collab-tools-activate", "collab-tools-ready", "collab-tool", "collab-tools-ready.service",
     "collab-tools-setup.service", "collab-playwright", "collab-codescene-login",
     "collab-chromium.apparmor", "mcp/package.json", "mcp/package-lock.json", "mcp/servers.json",

@@ -77,6 +77,17 @@ def install_tools(args, server, image_dir):
         install_in(Container(args.remote, args.project, name), release, selected)
 
 
+def activate_instances(args, image_dir, machine, instances):
+    """For disposable test deployments: activate the release's generation in
+    each running instance, `instances` mapping names to roles."""
+    release = tool_release(image_dir, machine)
+    if release is None:
+        return
+    selected = selection(getattr(args, "tools", None) or [])
+    for name, role in instances.items():
+        install_in(Container(args.remote, args.project, name, role=role), release, selected)
+
+
 def tool_release(image_dir, machine):
     """The Release for image_dir, or None when its lock predates the artifact
     table. An image directory without a manifest (a locally modified image)

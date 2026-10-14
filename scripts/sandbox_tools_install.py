@@ -52,8 +52,9 @@ RETRY_COMMAND = "python3 scripts/sandbox-provision.py tools-retry"
 class Container:
     """One managed instance, driven through the authenticated Incus endpoint."""
 
-    def __init__(self, remote, project, name, run=subprocess.run):
+    def __init__(self, remote, project, name, run=subprocess.run, role=None):
         self.name = name
+        self.role = role or name  # a disposable test instance can play a role under another name
         self.command = ["incus", "--project", project]
         self.target = f"{remote}:{name}"
         self.run = run
@@ -202,8 +203,8 @@ def build_manifest(container, release, selected):
     facts = {"release": digest(source_text.encode()), "lock_sha256": digest(lock_text.encode()),
              "architecture": release.machine}
     mode = store_mode(container)
-    manifest = manifest_for(lock, facts, selected, tools_for(container.name, selected, mode))
-    manifest["tools"].update(bundle_entries(release, selected, container.name, mode))
+    manifest = manifest_for(lock, facts, selected, tools_for(container.role, selected, mode))
+    manifest["tools"].update(bundle_entries(release, selected, container.role, mode))
     return lock, manifest
 
 
@@ -211,7 +212,7 @@ def release_units(container):
     """Start the gated entry points after a successful release. Idempotent: in
     baked mode they are already running; in store mode their first boot failed
     on the readiness gate and they need a reset."""
-    units = GATED_UNITS.get(container.name, GATED_UNITS["secured"])
+    units = GATED_UNITS.get(container.role, GATED_UNITS["secured"])
     container.execute("systemctl", "reset-failed", *units)
     container.execute("systemctl", "start", *units)
 

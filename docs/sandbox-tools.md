@@ -386,8 +386,11 @@ happens only when every artifact exists. PRs in order:
    from that manifest and fetches their files by digest on demand; baked roots
    and `secured` never get them. A selection that needs bundles from a release
    without them is refused with a message.
-5. **Slim image (4c).** `install.sh` stops downloading vendor tools; the launchers
-   take over. The default selection keeps today's feature set on (Docker and
+5. **Slim image (4c).** `install.sh` stops downloading vendor tools; Go is
+   present only while collab compiles; the tool names in `/usr/local/bin` are
+   launchers; `tools-mode` is `store`; CI asserts a 400 MiB image budget. The
+   smoke and boundary tests activate tools after their `tofu apply`, as the
+   rollout does, because a store-mode root admits agents only then. The default selection keeps today's feature set on (Docker and
    Playwright enabled) unless the operator decides otherwise; presets (#73)
    can turn them off.
 

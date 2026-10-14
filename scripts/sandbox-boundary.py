@@ -6,9 +6,11 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from sandbox_boundary_checks import check_budget, check_native, prepare_files
 from sandbox_boundary_host import BoundaryHost
+from sandbox_rollout import activate_instances
 
 
 def identifier(value):
@@ -23,10 +25,14 @@ def main():
     parser.add_argument("--image-dir", required=True, type=Path)
     parser.add_argument("--storage-pool", default="default", type=identifier)
     parser.add_argument("--bin-dir", type=Path, help="optional Linux collab/collab-codex binaries for testing local edits")
-    host = BoundaryHost(parser.parse_args())
+    args = parser.parse_args()
+    host = BoundaryHost(args)
     print(f"Offline boundary proof: disposable project {host.project}", flush=True)
     try:
         host.prepare()
+        # Store-mode roots run tools only after activation; the proof instances play the two roles.
+        activate_instances(SimpleNamespace(remote=args.remote, project=host.project, tools=[]), args.image_dir,
+                           host.architecture, {"secured": "secured", "dev": "workspace"})
         prepare_files(host)
         check_budget(host)
         check_native(host, "codex")

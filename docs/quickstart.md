@@ -1,6 +1,6 @@
 # Host quick start
 
-**Outside the sandbox only.** Sandbox users have preinstalled tools and should use
+**Outside the sandbox only.** Sandbox users get their tools from the rollout and should use
 [the README](../README.md#set-up-a-sandbox).
 
 You need macOS/Linux, Git, Go 1.25+, and installed, signed-in Codex and Claude Code.

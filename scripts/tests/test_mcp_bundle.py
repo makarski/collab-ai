@@ -22,18 +22,21 @@ def module(name, filename):
     return result
 
 
-installer = module("install_mcp_tools", "install-mcp-tools.py")
+import tool_store  # noqa: E402
+
 login = module("codescene_login", "collab-codescene-login")
 
 
 class MCPBundleTests(unittest.TestCase):
     def test_both_agents_get_same_servers_and_keep_existing_defaults(self):
         with tempfile.TemporaryDirectory() as temporary:
-            etc = Path(temporary)
-            (etc / "codex").mkdir()
-            (etc / "collab-ai").mkdir()
-            with patch.object(installer, "ROOT", ROOT / "infra/image"):
-                installer.configure(etc)
+            etc, share = Path(temporary) / "etc", Path(temporary) / "share"
+            share.mkdir()
+            # The base files install.sh ships; the activator derives both configurations from them.
+            for source, name in (("claude-mcp.json", "claude-mcp.base.json"), ("codex-config.toml", "codex-config.base.toml"),
+                                 ("mcp/servers.json", "mcp-servers.json")):
+                (share / name).write_bytes((ROOT / "infra/image" / source).read_bytes())
+            tool_store.write_configuration({"cs-mcp": True, "playwright": True, "docker": True}, share, etc)
             claude = json.loads((etc / "collab-ai/claude-mcp.json").read_text())["mcpServers"]
             codex = tomllib.loads((etc / "codex/config.toml").read_text())
             self.assertEqual(set(codex["mcp_servers"]), {"codescene", "playwright"})

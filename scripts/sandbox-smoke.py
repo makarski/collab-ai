@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+from types import SimpleNamespace
 import sys
 import tempfile
 import uuid
@@ -101,6 +102,10 @@ def main():
     try:
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         run(tofu + ["plan", "-detailed-exitcode", "-input=false"])
+        # A store-mode root admits agents only after the host activates its tools.
+        roles = {"workspace": "workspace", **({"secured": "secured"} if args.secured_check else {})}
+        sandbox_rollout.activate_instances(SimpleNamespace(remote=args.remote, project=project, tools=None),
+                                           args.image_dir, manifest["architecture"], roles)
         check_deployment(args, directory, project, manifest)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     except Exception:

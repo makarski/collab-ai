@@ -11,8 +11,10 @@
 ## Set up a sandbox
 
 [Provision once](docs/sandbox.md), then use the block below each day.
-**Tools are preinstalled—no compilation needed.** Provisioning runs OpenTofu in a
-disposable container; no host Terraform/OpenTofu install is needed. Dev has network access; optional
+**Tools are installed by the rollout—no compilation needed.** The image is small;
+the rollout fetches the pinned agent tools once and keeps them across upgrades.
+Provisioning runs OpenTofu in a disposable container; no host Terraform/OpenTofu
+install is needed. Dev has network access; optional
 control stays offline. Host credentials and conversations are not imported.
 
 **Host prerequisites:** Python, Git, OpenSSH and Incus; macOS also needs Colima.

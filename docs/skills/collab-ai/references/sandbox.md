@@ -19,7 +19,7 @@ uses sandboxed headless Chromium and separate temporary browser sessions; local
 app URLs refer to workspace. Do not disable its browser sandbox to hide a failure.
 Both MCP processes run as `agent` inside Incus, outside the shell-command sandbox.
 
-RTK is preinstalled; hooks rewrite supported shell commands for both agents.
+RTK is installed by the rollout; hooks rewrite supported shell commands for both agents.
 Use `rtk proxy <command>` when exact output is needed. `rtk gain` estimates shell
 output savings, not model usage or budget headroom. History persists under
 `~/.local/share/rtk`; `/etc/codex/config.toml` grants that extra workspace-write
