@@ -378,7 +378,15 @@ happens only when every artifact exists. PRs in order:
      the activator; `sandbox-ssh.py` refuses the agent key while
      `collab-tools-ready` fails; `tools-retry` reruns a crashed activation on
      never-released roots only.
-4. **Slim image.** `install.sh` stops downloading vendor tools; the launchers
+4. **Bundle delivery (4b).** `sandbox-download` records next to each image
+   where its bundles come from (`bundle-source.json`: the release URL, or the
+   local directory the assets were copied into) and keeps the small bundle
+   manifest; the activator already installs deb sets (4a). In a store-mode
+   workspace the host adds the Playwright, Chromium-deps and Docker entries
+   from that manifest and fetches their files by digest on demand; baked roots
+   and `secured` never get them. A selection that needs bundles from a release
+   without them is refused with a message.
+5. **Slim image (4c).** `install.sh` stops downloading vendor tools; the launchers
    take over. The default selection keeps today's feature set on (Docker and
    Playwright enabled) unless the operator decides otherwise; presets (#73)
    can turn them off.

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 
+from sandbox_artifacts import ARCHITECTURES, bundles_name
 from sandbox_tools import CACHE, cache_artifact, resolve
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,9 +28,16 @@ ACTIVATOR = "/usr/local/bin/collab-tools-activate"
 # Every launch mode needs these; the rest can be turned off per preset.
 REQUIRED_TOOLS = ("go", "codex", "claude", "rtk", "starship")
 OPTIONAL_TOOLS = ("cs-mcp", "playwright", "docker")
-# Optional tools delivered as release bundles rather than lock artifacts; their
-# installation lands with the slim image, until then they stay baked.
+# Optional tools delivered as release bundles rather than lock artifacts. They
+# are installed into store-mode roots only; a baked root already has them.
 BUNDLE_TOOLS = ("playwright", "docker")
+MODE_FILE = f"{SHARE}/tools-mode"
+PLAYWRIGHT_ENTRY = "node_modules/@playwright/mcp/cli.js"
+# The release bundles each bundle-backed tool consists of: (bundle, kind, entry).
+BUNDLE_PARTS = {
+    "playwright": (("playwright", "archive", PLAYWRIGHT_ENTRY), ("chromium-deps", "debs", ".")),
+    "docker": (("docker", "debs", "."),),
+}
 SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
 # Units that wait for collab-tools-ready; started by the host once a root is released.
@@ -68,10 +76,41 @@ def selection(enabled):
     return {**{name: True for name in REQUIRED_TOOLS}, **{name: name in enabled for name in OPTIONAL_TOOLS}}
 
 
-def tools_for(role, selected):
+def tools_for(role, selected, store_mode=False):
+    """Lock artifacts for a role. Bundle-backed tools are separate (see
+    bundle_entries); Node travels with Playwright in store mode."""
     if role == "secured":
         return list(SECURED_TOOLS)
-    return [name for name in (*REQUIRED_TOOLS, *OPTIONAL_TOOLS) if selected[name] and name not in BUNDLE_TOOLS]
+    tools = [name for name in (*REQUIRED_TOOLS, *OPTIONAL_TOOLS) if selected[name] and name not in BUNDLE_TOOLS]
+    if store_mode and selected["playwright"]:
+        tools.append("node")
+    return tools
+
+
+def bundle_entries(release, selected, role, store_mode):
+    """Manifest entries for the selected bundle-backed tools, from the
+    release's bundle manifest. Only a store-mode workspace installs them."""
+    parts = bundle_parts(selected) if role == "workspace" and store_mode else []
+    if not parts:
+        return {}
+    if release.bundles is None:
+        wanted = ", ".join(tool for tool in BUNDLE_TOOLS if selected[tool])
+        raise ValueError(f"the selected tools need release bundles ({wanted}) that this release does not carry")
+    bundles = release.bundles["manifest"]["bundles"]
+    return {name: bundle_entry(bundles[name], kind, entry) for name, kind, entry in parts}
+
+
+def bundle_parts(selected):
+    """(bundle, kind, entry) for every bundle the selected tools consist of."""
+    return [part for tool in BUNDLE_TOOLS if selected[tool] for part in BUNDLE_PARTS[tool]]
+
+
+def bundle_entry(details, kind, entry):
+    item = {"kind": kind, "entry": entry, "sha256": details["sha256"], "file": details["file"],
+            "version": details.get("playwright_mcp") or details["sha256"][:12]}
+    if kind == "debs":
+        item["packages"] = details["packages"]
+    return item
 
 
 def digest(data):
@@ -122,10 +161,32 @@ def never_released(container, state):
 class Release:
     """What the host knows about the selected release: the server architecture
     and, when the image directory carries a manifest, the release's lock and
-    build provenance. Without a manifest the root's own lock governs."""
+    build provenance. Without a manifest the root's own lock governs.
+    `bundles` is the release's bundle manifest with the base its files come from."""
     lock: dict | None
     machine: str
     provenance: dict | None = None
+    bundles: dict | None = None
+
+
+def load_bundles(image_dir, machine):
+    """The bundle manifest and source recorded next to the image, if any."""
+    manifest_path = Path(image_dir) / bundles_name(machine)
+    source = Path(image_dir) / "bundle-source.json"
+    if not manifest_path.exists() or not source.exists():
+        return None
+    base = json.loads(source.read_text()).get("base")
+    if not base:
+        return None
+    return {"manifest": json.loads(manifest_path.read_text()), "base": base}
+
+
+def store_mode(container):
+    """Whether this root's launchers depend on the store (tools-mode = store)."""
+    try:
+        return container.output("sh", "-c", f"cat {MODE_FILE} 2>/dev/null || echo baked").strip() == "store"
+    except subprocess.CalledProcessError:
+        return False
 
 
 def build_manifest(container, release, selected):
@@ -140,7 +201,10 @@ def build_manifest(container, release, selected):
         raise ValueError(f"{container.name}: the root's build source differs from the release manifest")
     facts = {"release": digest(source_text.encode()), "lock_sha256": digest(lock_text.encode()),
              "architecture": release.machine}
-    return lock, manifest_for(lock, facts, selected, tools_for(container.name, selected))
+    mode = store_mode(container)
+    manifest = manifest_for(lock, facts, selected, tools_for(container.name, selected, mode))
+    manifest["tools"].update(bundle_entries(release, selected, container.name, mode))
+    return lock, manifest
 
 
 def release_units(container):
@@ -198,8 +262,16 @@ def deliver(container, release, pending, cache):
     container.execute("install", "-d", "-m", "0700", INCOMING)
     for name, tool in pending:
         print(f"{container.name}: installing {name} {tool['version']}", flush=True)
-        item = resolve(release.lock, release.machine, [name])[0]
-        container.push(cache_artifact(item, cache), f"{INCOMING}/{tool['file']}")
+        container.push(cache_artifact(artifact_item(release, name, tool), cache), f"{INCOMING}/{tool['file']}")
+
+
+def artifact_item(release, name, tool):
+    """Where to fetch one manifest entry: a lock artifact from its vendor URL,
+    a bundle from the release's recorded bundle source."""
+    if name in release.lock["artifacts"]:
+        return resolve(release.lock, release.machine, [name])[0]
+    return {"name": name, "version": tool["version"], "kind": tool["kind"], "entry": tool["entry"],
+            "url": release.bundles["base"] + tool["file"], "sha256": tool["sha256"]}
 
 
 def activate(container, manifest, selected):

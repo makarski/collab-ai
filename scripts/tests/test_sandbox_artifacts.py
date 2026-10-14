@@ -41,3 +41,39 @@ class ArtifactTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "architecture"):
                 artifacts.install_artifact(output, "aarch64", self.installer(b"image", architecture="x86_64"))
             self.assertFalse((output / "workspace.tar.gz.partial").exists())
+
+
+class BundleSourceTests(unittest.TestCase):
+    def obtain_from(self, files, fetched):
+        def obtain(name, target):
+            fetched.append(name)
+            if name not in files:
+                raise FileNotFoundError(name)
+            Path(target).write_bytes(files[name])
+        return obtain
+
+    def test_a_release_without_bundles_is_remembered_as_such(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fetched = []
+            self.assertIsNone(artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from({}, fetched)))
+            self.assertEqual(json.loads((Path(directory) / "bundle-source.json").read_text()), {"base": None})
+
+    def test_a_remote_base_records_the_source_without_downloading_bundles(self):
+        manifest = {"bundles": {"docker": {"file": "docker.tar.gz", "sha256": hashlib.sha256(b"d").hexdigest()}}}
+        files = {"collab-ai-bundles-linux-arm64.json": json.dumps(manifest).encode(), "docker.tar.gz": b"d"}
+        with tempfile.TemporaryDirectory() as directory:
+            fetched = []
+            artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from(files, fetched), "https://r/")
+            self.assertEqual(fetched, ["collab-ai-bundles-linux-arm64.json"])
+            self.assertEqual(json.loads((Path(directory) / "bundle-source.json").read_text())["base"], "https://r/")
+
+    def test_a_local_source_copies_and_verifies_the_bundles(self):
+        manifest = {"bundles": {"docker": {"file": "docker.tar.gz", "sha256": hashlib.sha256(b"d").hexdigest()}}}
+        files = {"collab-ai-bundles-linux-arm64.json": json.dumps(manifest).encode(), "docker.tar.gz": b"d"}
+        with tempfile.TemporaryDirectory() as directory:
+            artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from(files, []))
+            self.assertEqual((Path(directory) / "docker.tar.gz").read_bytes(), b"d")
+            self.assertTrue(json.loads((Path(directory) / "bundle-source.json").read_text())["base"].startswith("file://"))
+            files["docker.tar.gz"] = b"tampered"
+            with tempfile.TemporaryDirectory() as other, self.assertRaisesRegex(ValueError, "does not match"):
+                artifacts.fetch_bundles(Path(other), "aarch64", self.obtain_from(files, []))

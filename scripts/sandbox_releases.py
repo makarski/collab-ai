@@ -8,7 +8,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from sandbox_artifacts import fetch
-from sandbox_image_cache import prepare_image
+from sandbox_image_cache import prepare_image, record_bundles
 
 
 def release_tag(value):
@@ -67,7 +67,10 @@ def download_release(architecture, selection="latest", repo="makarski/collab-ai"
     tag = resolve_release(repo, selection)
     print(f"Downloading {tag} for {architecture}…", flush=True)
     base = f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/"
-    directory, manifest = prepare_image(architecture, lambda name, target: fetch(base + name, target), output)
+    obtain = lambda name, target: fetch(base + name, target)
+    directory, manifest = prepare_image(architecture, obtain, output)
     print(f"Verified image: {manifest['image_fingerprint']}", flush=True)
     # Freeze the selection; a concurrent download may move the convenience link.
-    return directory.parent / manifest["image_fingerprint"] if output is None else directory
+    selected = directory.parent / manifest["image_fingerprint"] if output is None else directory
+    record_bundles(selected, architecture, obtain, base)
+    return selected
