@@ -16,30 +16,39 @@ LOCK = json.loads((ROOT / "infra/image/tools.lock.json").read_text())
 class FakeContainer(install.Container):
     """Answers the host's probes from a scripted store state and records pushes."""
 
-    def __init__(self, name, state=None, current=None, complete=(), key=False, lock=LOCK):
+    def __init__(self, name, **overrides):
         super().__init__("local", "proof", name, run=self.fake_run)
-        self.state, self.current, self.complete, self.key, self.lock = state, current, list(complete), key, lock
+        self.state, self.current, self.complete, self.key, self.lock, self.activator = None, None, [], False, LOCK, True
         self.pushed, self.executed, self.activated = [], [], False
+        for attribute, value in overrides.items():
+            setattr(self, attribute, value)
 
     def fake_run(self, command, check=False, **kwargs):
-        args = tuple(command[command.index("--") + 1:]) if "--" in command else tuple(command)
         if command[3:5] == ["file", "push"]:
             self.pushed.append(Path(command[5]).name)
             return subprocess.CompletedProcess(command, 0)
-        self.executed.append(tuple(args))
-        output = ""
+        args = tuple(command[command.index("--") + 1:])
+        self.executed.append(args)
+        return subprocess.CompletedProcess(command, 0, stdout=self.answer(args))
+
+    def answer(self, args):
         if args[:2] == ("collab-tools-activate", "status"):
-            output = json.dumps({"state": self.state, "current": self.current, "complete": self.complete})
-        elif args[:1] == ("cat",):
-            output = json.dumps(self.lock) if args[1].endswith("tools.lock.json") else '{"collab": "x"}'
-        elif args[:2] == ("collab-tools-activate", "activate"):
+            return json.dumps({"state": self.state, "current": self.current, "complete": self.complete})
+        if args[:1] == ("cat",):
+            return json.dumps(self.lock) if args[1].endswith("tools.lock.json") else '{"collab": "x"}'
+        if args[:2] == ("collab-tools-activate", "activate"):
             self.activated = True
             self.state, self.current = {"state": "ready"}, self.expected
-        elif args[:2] == ("sh", "-c") and "test" in args:
-            flag = args[args.index("test") + 1]
-            present = self.key if flag == "-e" else getattr(self, "activator", True)
-            return subprocess.CompletedProcess(command, 0, stdout="present\n" if present else "absent\n")
-        return subprocess.CompletedProcess(command, 0, stdout=output)
+        if args[:2] == ("sh", "-c") and "test" in args:
+            return self.verdict(args[args.index("test") + 1])
+        return ""
+
+    def verdict(self, flag):
+        present = self.key if flag == "-e" else self.activator
+        return "present\n" if present else "absent\n"
+
+
+RELEASE = install.Release(LOCK, "aarch64")
 
 
 class SelectionTests(unittest.TestCase):
@@ -68,13 +77,13 @@ class InstallTests(unittest.TestCase):
         return path
 
     def expected(self, container):
-        _, manifest = install.build_manifest(container, LOCK, "aarch64", self.selected)
+        _, manifest = install.build_manifest(container, RELEASE, self.selected)
         return install.generation_id(manifest)
 
     def test_fresh_root_receives_only_missing_artifacts_and_reaches_ready(self):
         container = FakeContainer("workspace", complete=[LOCK["artifacts"]["go"]["architectures"]["aarch64"]["sha256"]])
         container.expected = self.expected(container)
-        generation = install.install(container, LOCK, "aarch64", self.selected, self.cache)
+        generation = install.install(container, RELEASE, self.selected, self.cache)
         self.assertEqual(generation, container.expected)
         self.assertTrue(container.activated)
         self.assertNotIn(LOCK["artifacts"]["go"]["architectures"]["aarch64"]["sha256"], container.pushed)
@@ -85,7 +94,7 @@ class InstallTests(unittest.TestCase):
     def test_secured_gets_its_own_subset(self):
         container = FakeContainer("secured")
         container.expected = self.expected(container)
-        install.install(container, LOCK, "aarch64", self.selected, self.cache)
+        install.install(container, RELEASE, self.selected, self.cache)
         pushed_digests = {name for name in container.pushed if len(name) == 64}
         self.assertEqual(pushed_digests, {LOCK["artifacts"][name]["architectures"]["aarch64"]["sha256"]
                                           for name in ("codex", "claude")})
@@ -93,14 +102,14 @@ class InstallTests(unittest.TestCase):
     def test_released_root_is_never_mutated(self):
         container = FakeContainer("workspace", state={"state": "ready"}, current="other")
         with self.assertRaisesRegex(ValueError, "needs a rollout"):
-            install.install(container, LOCK, "aarch64", self.selected, self.cache)
+            install.install(container, RELEASE, self.selected, self.cache)
         self.assertFalse(container.activated)
         self.assertEqual(container.pushed, [])
 
     def test_released_root_with_the_same_generation_is_left_alone(self):
         container = FakeContainer("workspace")
         container.state, container.current = {"state": "ready"}, self.expected(container)
-        self.assertIsNone(install.install(container, LOCK, "aarch64", self.selected, self.cache))
+        self.assertIsNone(install.install(container, RELEASE, self.selected, self.cache))
         self.assertEqual(container.pushed, [])
 
     def test_image_lock_must_match_the_release_manifest(self):
@@ -108,12 +117,12 @@ class InstallTests(unittest.TestCase):
         other["artifacts"]["go"]["version"] = "9.9.9"
         container = FakeContainer("workspace", lock=other)
         with self.assertRaisesRegex(ValueError, "differs from the release"):
-            install.install(container, LOCK, "aarch64", self.selected, self.cache)
+            install.install(container, RELEASE, self.selected, self.cache)
 
     def test_a_root_that_admitted_agents_is_never_mutated_even_without_ready_state(self):
         container = FakeContainer("workspace", state={"state": "maintenance"}, key=True)
         with self.assertRaisesRegex(ValueError, "released to agents or is in an unknown tool state"):
-            install.install(container, LOCK, "aarch64", self.selected, self.cache)
+            install.install(container, RELEASE, self.selected, self.cache)
         self.assertFalse(container.activated)
 
     def test_probe_failures_are_errors_not_proof_of_absence(self):
@@ -133,20 +142,20 @@ class InstallTests(unittest.TestCase):
     def test_gated_units_are_released_after_activation_and_on_a_ready_root(self):
         container = FakeContainer("workspace")
         container.expected = self.expected(container)
-        install.install(container, LOCK, "aarch64", self.selected, self.cache)
+        install.install(container, RELEASE, self.selected, self.cache)
         self.assertIn(("systemctl", "start", *install.GATED_UNITS["workspace"]), container.executed)
         ready = FakeContainer("secured")
         ready.state, ready.current = {"state": "ready"}, self.expected(ready)
-        install.install(ready, LOCK, "aarch64", self.selected, self.cache)
+        install.install(ready, RELEASE, self.selected, self.cache)
         self.assertIn(("systemctl", "start", "collab-tools-ready.service"), ready.executed)
 
     def test_build_provenance_must_match_the_release_when_given(self):
         container = FakeContainer("workspace")
         with self.assertRaisesRegex(ValueError, "build source differs"):
-            install.install(container, LOCK, "aarch64", self.selected, self.cache, provenance={"collab": "other"})
+            install.install(container, install.Release(LOCK, "aarch64", {"collab": "other"}), self.selected, self.cache)
         container = FakeContainer("workspace")
         container.expected = self.expected(container)
-        install.install(container, LOCK, "aarch64", self.selected, self.cache, provenance={"collab": "x"})
+        install.install(container, install.Release(LOCK, "aarch64", {"collab": "x"}), self.selected, self.cache)
         self.assertTrue(container.activated)
 
     def test_legacy_releases_without_an_artifact_table_keep_their_baked_tools(self):
@@ -162,7 +171,7 @@ class InstallTests(unittest.TestCase):
     def test_unknown_state_blocks_install_at_the_entry_point(self):
         container = FakeContainer("workspace", state={"state": "unknown"})
         with self.assertRaisesRegex(ValueError, "unknown tool state"):
-            install.install(container, LOCK, "aarch64", self.selected, self.cache)
+            install.install(container, RELEASE, self.selected, self.cache)
         self.assertFalse(container.activated)
 
     def test_never_released_requires_no_ready_state_and_no_agent_key(self):

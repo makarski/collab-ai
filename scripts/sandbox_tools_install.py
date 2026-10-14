@@ -5,6 +5,7 @@ what a container's store lacks, and runs the in-container activator on a
 fresh, unreleased root. See docs/sandbox-tools.md.
 """
 
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -114,18 +115,28 @@ def never_released(container, state):
     return not agent_key_installed(container)
 
 
-def build_manifest(container, release_lock, machine, selected, provenance=None):
+@dataclass(frozen=True)
+class Release:
+    """What the host knows about the selected release: its lock, the server
+    architecture and, when the image manifest is at hand, its build provenance."""
+    lock: dict
+    machine: str
+    provenance: dict | None = None
+
+
+def build_manifest(container, release, selected):
     """The manifest for this container's root: digests of the root's own lock
-    and build source, which must agree with the release manifest."""
+    and build source, which must agree with the release."""
     lock_text = container.output("cat", f"{SHARE}/tools.lock.json")
     source_text = container.output("cat", f"{SHARE}/build-source.json")
     lock = json.loads(lock_text)
-    if lock["artifacts"] != release_lock["artifacts"]:
+    if lock["artifacts"] != release.lock["artifacts"]:
         raise ValueError(f"{container.name}: the image's tool lock differs from the release manifest")
-    if provenance is not None and json.loads(source_text) != provenance:
+    if release.provenance is not None and json.loads(source_text) != release.provenance:
         raise ValueError(f"{container.name}: the root's build source differs from the release manifest")
-    release = {"release": digest(source_text.encode()), "lock_sha256": digest(lock_text.encode()), "architecture": machine}
-    return lock, manifest_for(lock, release, selected, tools_for(container.name, selected))
+    facts = {"release": digest(source_text.encode()), "lock_sha256": digest(lock_text.encode()),
+             "architecture": release.machine}
+    return lock, manifest_for(lock, facts, selected, tools_for(container.name, selected))
 
 
 def release_units(container):
@@ -137,31 +148,56 @@ def release_units(container):
     container.execute("systemctl", "start", *units)
 
 
-def install(container, release_lock, machine, selected, cache=CACHE, provenance=None):
+def install(container, release, selected, cache=CACHE):
     """Activate the generation for container; returns the generation ID, or
     None when the released root already runs exactly this generation. Either
     way the gated units are (re)started, so an interrupted release completes."""
-    lock, manifest = build_manifest(container, release_lock, machine, selected, provenance)
+    _, manifest = build_manifest(container, release, selected)
     generation = generation_id(manifest)
     current = status(container)
+    if already_released(container, current, generation):
+        return None
+    require_fresh_root(container, current.get("state"))
+    complete = current.get("complete", [])
+    deliver(container, release, [(name, tool) for name, tool in manifest["tools"].items()
+                                 if tool["sha256"] not in complete], cache)
+    activate(container, manifest, selected)
+    verify_ready(container, generation)
+    release_units(container)
+    return generation
+
+
+def already_released(container, current, generation):
+    """A ready root is verified, never changed: the same generation is complete
+    (its units are started), any other generation needs a rollout."""
     state = current.get("state")
-    if state is not None and state.get("state") == "ready":
-        if current.get("current") == generation:
-            release_units(container)
-            return None
+    if state is None or state.get("state") != "ready":
+        return False
+    if current.get("current") != generation:
         raise ValueError(f"{container.name} already runs a released tool generation; "
                          "changing tools needs a rollout (a new root)")
-    # Every mutation requires a root no agent could have used: no ready or
-    # unknown state, and no agent key.
+    release_units(container)
+    return True
+
+
+def require_fresh_root(container, state):
+    """Every mutation requires a root no agent could have used: no ready or
+    unknown state, and no agent key."""
     if not never_released(container, state):
         raise ValueError(f"{container.name} was released to agents or is in an unknown tool state; "
                          "run rollout to replace the root")
+
+
+def deliver(container, release, pending, cache):
+    """Push the artifacts the store lacks, from the verified host cache."""
     container.execute("install", "-d", "-m", "0700", INCOMING)
-    for name, tool in manifest["tools"].items():
-        if tool["sha256"] in current.get("complete", []):
-            continue
+    for name, tool in pending:
         print(f"{container.name}: installing {name} {tool['version']}", flush=True)
-        container.push(cache_artifact(resolve(lock, machine, [name])[0], cache), f"{INCOMING}/{tool['file']}")
+        item = resolve(release.lock, release.machine, [name])[0]
+        container.push(cache_artifact(item, cache), f"{INCOMING}/{tool['file']}")
+
+
+def activate(container, manifest, selected):
     with tempfile.TemporaryDirectory(prefix="collab-tools-") as directory:
         for name, value in (("manifest.json", manifest), ("tools.json", selected)):
             path = Path(directory) / name
@@ -171,11 +207,12 @@ def install(container, release_lock, machine, selected, cache=CACHE, provenance=
     container.execute("install", "-m", "0644", f"{INCOMING}/tools.json", SELECTION_FILE)
     container.execute("collab-tools-activate", "activate", f"{INCOMING}/manifest.json", "--incoming", INCOMING)
     container.execute("rm", "-rf", INCOMING)
+
+
+def verify_ready(container, generation):
     after = status(container)
     if (after.get("state") or {}).get("state") != "ready" or after.get("current") != generation:
         raise ValueError(f"{container.name}: tool activation did not reach ready for {generation}")
-    release_units(container)
-    return generation
 
 
 def release_lock_from(image_dir):
