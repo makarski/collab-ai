@@ -73,6 +73,11 @@ a `sha256` plus the vendor's architecture label per machine architecture.
 `architectures` holds the Ubuntu base image fingerprint per architecture. The
 same table drives the image build and, with [sandbox tools](sandbox-tools.md),
 the host-side artifact cache.
+
+Each release also carries the optional tool bundles built by
+`scripts/sandbox-bundles.py` in the same CI job (Playwright MCP with Chromium,
+Chromium's apt packages, Docker's apt packages) with their digests in
+`collab-ai-bundles-linux-<arch>.json`; see [sandbox tools](sandbox-tools.md).
 | `--output DIRECTORY` | New directory for the build; existing directories are never overwritten |
 
 Overrides resolve publisher checksums; unsupported packages and moving versions

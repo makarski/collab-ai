@@ -97,6 +97,8 @@ jobs:
           if [[ -n "$CLAUDE_VERSION" ]]; then args+=(--claude-version "$CLAUDE_VERSION"); fi
           if [[ -n "$GO_VERSION" ]]; then args+=(--go-version "$GO_VERSION"); fi
           sudo python3 scripts/sandbox-image.py "${args[@]}"
+      - name: Build the optional tool bundles inside Incus
+        run: sudo python3 scripts/sandbox-bundles.py --remote local --output dist/workspace/release
       - name: Install the exported artifact and smoke-test offline SSH
         run: |
           sudo python3 scripts/sandbox-download.py --remote local --from-dir dist/workspace/release --output dist/installed

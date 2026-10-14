@@ -4,43 +4,18 @@
 import argparse
 import json
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
 import uuid
 
 from sandbox_artifacts import sha256, image_variables, release_assets
+from sandbox_builder import cleanup_project, identifier, run
 from sandbox_source import source_archive
 from sandbox_versions import resolve_lock, version, fingerprint
 
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def run(args, **kwargs):
-    return subprocess.run(args, check=True, **kwargs)
-
-
-def identifier(value):
-    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", value):
-        raise argparse.ArgumentTypeError("Use a name without a colon, whitespace or shell syntax")
-    return value
-
-
-def cleanup_project(remote, project):
-    # Explicit deletion works with the Incus 6.0 LTS client too. All resources
-    # are confined to the UUID project successfully created by this invocation.
-    scoped = ["incus", "--project", project]
-    instances = json.loads(run(scoped + ["list", f"{remote}:", "--format", "json"],
-                               capture_output=True, text=True).stdout)
-    for instance in instances:
-        run(scoped + ["delete", f"{remote}:{instance['name']}", "--force"])
-    images = json.loads(run(scoped + ["image", "list", f"{remote}:", "--format", "json"],
-                            capture_output=True, text=True).stdout)
-    for image in images:
-        run(scoped + ["image", "delete", f"{remote}:{image['fingerprint']}"])
-    run(["incus", "project", "delete", f"{remote}:{project}"])
 
 
 def build(args, output):

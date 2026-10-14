@@ -94,6 +94,13 @@ dependencies + a pinned browser archive, verified by one digest. apt
 signatures are checked at bundle build time; at activation the bundle is
 offline `dpkg -i`, no repository access from inside the sandbox.
 
+`scripts/sandbox-bundles.py` builds them in the images CI job, inside a
+disposable container of the pinned base image, so the `.deb` closure is
+exactly what the slim image lacks. Each release carries
+`collab-ai-bundle-<kind>-linux-<arch>.tar.gz` per bundle and one
+`collab-ai-bundles-linux-<arch>.json` with every bundle's digest, package
+inventory (deb bundles) or pinned versions and Chromium path (playwright).
+
 ## The tool stores
 
 Each container gets its **own** persistent custom volume, root-owned, mode
