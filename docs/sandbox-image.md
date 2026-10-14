@@ -106,7 +106,9 @@ network opt-out and control boundaries. Tests use no credentials or model reques
 
 Successful pushes to `main` publish both architectures under a unique
 `workspace-v0.0.0-build.RUN.ATTEMPT` tag and make that release `latest`.
-Explicit `workspace-vX.Y.Z` tags publish versioned releases too. Publication happens
+Each publication then prunes automatic `build` releases beyond the two newest
+(`scripts/release-prune.py`); a rollout can always fall back to the previous
+build. Explicit `workspace-vX.Y.Z` tags publish versioned releases too. Publication happens
 only after all checks and both image builds pass; incomplete uploads stay in draft.
 Published assets are never overwritten. `latest` becomes available after the first
 successful main release build.
