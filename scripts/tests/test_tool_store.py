@@ -50,9 +50,11 @@ class StoreHarness(unittest.TestCase):
         self.lock, self.source = root / "lock.json", root / "source.json"
         self.lock.write_text("{}"), self.source.write_text("{}")
 
-    def deliver(self, name, data, kind="archive", entry="bin/tool", version="1.0.0"):
+    def deliver(self, name, data, **spec):
         (self.incoming / f"{name}.bin").write_bytes(data)
-        return {name: {"kind": kind, "entry": entry, "sha256": digest(data), "file": f"{name}.bin", "version": version}}
+        tool = {"kind": "archive", "entry": "bin/tool", "version": "1.0.0", **spec,
+                "sha256": digest(data), "file": f"{name}.bin"}
+        return {name: tool}
 
     def manifest(self, tools, selection=None):
         return {"release": digest(b"{}"), "lock_sha256": digest(b"{}"), "architecture": "aarch64",

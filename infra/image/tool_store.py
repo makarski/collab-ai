@@ -73,42 +73,51 @@ def generation_id(manifest):
     return hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
 
 
-def manifest_for(lock, lock_sha256, release, machine, selection, tools):
-    """The host builds this from the release's lock: one entry per tool with
-    the file name the artifact arrives under."""
+def manifest_for(lock, release, selection, tools):
+    """The host builds this from the release's lock. `release` carries the
+    digests this root must match: {"release", "lock_sha256", "architecture"}."""
     from tool_lock import artifact
-    entries = {}
-    for name in tools:
-        item = artifact(lock, name, machine)
-        entries[name] = {"kind": item["kind"], "entry": item["entry"], "sha256": item["sha256"],
-                         "file": PurePosixPath(item["url"]).name, "version": item["version"]}
-    return {"release": release, "lock_sha256": lock_sha256, "architecture": machine,
-            "selection": selection, "tools": entries}
+    entries = {name: tool_entry(artifact(lock, name, release["architecture"])) for name in tools}
+    return {**release, "selection": selection, "tools": entries}
+
+
+def tool_entry(item):
+    """One manifest entry: the artifact arrives under its URL's file name."""
+    return {"kind": item["kind"], "entry": item["entry"], "sha256": item["sha256"],
+            "file": PurePosixPath(item["url"]).name, "version": item["version"]}
 
 
 def validate_manifest(manifest):
-    for key in REQUIRED_MANIFEST:
-        if key not in manifest:
-            raise StoreError(f"Manifest lacks {key}")
+    missing = [key for key in REQUIRED_MANIFEST if key not in manifest]
+    if missing:
+        raise StoreError(f"Manifest lacks {', '.join(missing)}")
     for name, tool in manifest["tools"].items():
-        if tool.get("kind") not in KINDS:
-            raise StoreError(f"Tool {name} has an unsupported kind")
-        if not isinstance(tool.get("sha256"), str) or len(tool["sha256"]) != 64:
-            raise StoreError(f"Tool {name} has no digest")
-        for key in ("entry", "file"):
-            if "/" in tool.get("file", "/") or not tool.get(key):
-                raise StoreError(f"Tool {name} has an invalid {key}")
+        validate_tool(name, tool)
+
+
+def validate_tool(name, tool):
+    if tool.get("kind") not in KINDS:
+        raise StoreError(f"Tool {name} has an unsupported kind")
+    digest = tool.get("sha256")
+    if not isinstance(digest, str) or len(digest) != 64:
+        raise StoreError(f"Tool {name} has no digest")
+    if not tool.get("entry") or not tool.get("file"):
+        raise StoreError(f"Tool {name} lacks its entry or file name")
+    if "/" in tool["file"]:
+        raise StoreError(f"Tool {name} has an invalid file name")
 
 
 # Archive member policy. Python's tarfile "data" filter is the second layer.
 
 def normalized(name):
     path = PurePosixPath(name)
-    if path.is_absolute() or not name or any(part in ("..", "") for part in path.parts):
+    if path.is_absolute():
         raise StoreError(f"Archive member escapes the artifact: {name!r}")
     parts = [part for part in path.parts if part != "."]
     if not parts:
         raise StoreError("Archive member has an empty name")
+    if ".." in parts:
+        raise StoreError(f"Archive member escapes the artifact: {name!r}")
     return PurePosixPath(*parts)
 
 
@@ -131,19 +140,25 @@ def validate_members(members):
         key = str(path)
         if key in seen or key.lower() in folded:
             raise StoreError(f"Duplicate or colliding archive member: {member.name!r}")
-        if member.isdir():
-            pass
-        elif member.isreg():
-            regular.add(key)
-        elif member.issym():
-            link_target_inside(path, member.linkname)
-        elif member.islnk():
-            if str(normalized(member.linkname)) not in regular:
-                raise StoreError(f"Hardlink to an unknown member: {member.name!r}")
-        else:
-            raise StoreError(f"Unsupported archive member type: {member.name!r}")
+        validate_member_type(member, path, regular)
         seen.add(key)
         folded.add(key.lower())
+
+
+def validate_member_type(member, path, regular):
+    if member.isreg():
+        regular.add(str(path))
+    elif member.issym():
+        link_target_inside(path, member.linkname)
+    elif member.islnk():
+        require_known_hardlink(member, regular)
+    elif not member.isdir():
+        raise StoreError(f"Unsupported archive member type: {member.name!r}")
+
+
+def require_known_hardlink(member, regular):
+    if str(normalized(member.linkname)) not in regular:
+        raise StoreError(f"Hardlink to an unknown member: {member.name!r}")
 
 
 def extract_tar(archive, destination):
@@ -188,6 +203,13 @@ def root_owned(directory):
             continue
         os.chown(path, 0, 0, follow_symlinks=False) if os.geteuid() == 0 else None
         path.chmod(path.stat().st_mode & ~(stat.S_IWGRP | stat.S_IWOTH))
+
+
+def remove_unless_marked(directory, marker):
+    """Entries without their completion marker are garbage from a crash."""
+    for path in directory.iterdir():
+        if not (path / marker).exists():
+            shutil.rmtree(path)
 
 
 class Store:
@@ -253,12 +275,8 @@ class Store:
         for directory in (self.artifacts, self.generations):
             directory.mkdir(mode=0o700, exist_ok=True)
             os.chmod(directory, 0o700)
-        for path in self.artifacts.iterdir():
-            if not (path / ".complete").exists():
-                shutil.rmtree(path)
-        for path in self.generations.iterdir():
-            if not (path / "manifest.json").exists():
-                shutil.rmtree(path)
+        remove_unless_marked(self.artifacts, ".complete")
+        remove_unless_marked(self.generations, "manifest.json")
 
     def stage(self, name, tool, incoming):
         destination = self.artifacts / tool["sha256"]
@@ -321,13 +339,24 @@ def ready(store=None, lock_file=LOCK_FILE, source_file=SOURCE_FILE, mode_file=MO
     """Return None when tool entry points may start, else the reason they may not."""
     if mode(mode_file) == "baked":
         return None
-    store = store or Store()
+    manifest, reason = active_generation(store or Store())
+    if reason:
+        return reason
+    return release_mismatch(manifest, lock_file, source_file)
+
+
+def active_generation(store):
+    """The current manifest when the state says ready for it, else the reason."""
     state = read_state(store.state_path)
     if state is None or state.get("state") != "ready":
-        return "sandbox tools are in maintenance; run the rollout to activate them"
+        return None, "sandbox tools are in maintenance; run the rollout to activate them"
     manifest = store.current_manifest()
     if manifest is None or generation_id(manifest) != state.get("generation"):
-        return "the active tool generation does not match the recorded state"
+        return None, "the active tool generation does not match the recorded state"
+    return manifest, None
+
+
+def release_mismatch(manifest, lock_file, source_file):
     if manifest["lock_sha256"] != file_sha256(lock_file) or manifest["release"] != file_sha256(source_file):
         return "tools were activated for a different release; run the rollout"
     return None
