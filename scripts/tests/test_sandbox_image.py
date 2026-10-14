@@ -25,6 +25,7 @@ def module(name, path):
 
 
 image = module("sandbox_image", "scripts/sandbox-image.py")
+import sandbox_builder as builder  # noqa: E402  # cleanup_project runs through this module
 installer = module("install_tools", "infra/image/install-tools.py")
 
 
@@ -79,8 +80,8 @@ class ImageTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, json.dumps({"environment": {"architectures": ["aarch64"]}}))
             raise subprocess.CalledProcessError(1, args)
 
-        with tempfile.TemporaryDirectory() as directory, patch.object(image, "run", side_effect=run):
-            with patch.object(image, "source_archive", return_value={}):
+        with tempfile.TemporaryDirectory() as directory, patch.object(image, "run", side_effect=run), \
+                patch.object(builder, "run", side_effect=run), patch.object(image, "source_archive", return_value={}):
                 with self.assertRaises(subprocess.CalledProcessError):
                     image.build(Namespace(remote="local", network="incusbr0"), Path(directory))
         self.assertFalse(any("delete" in call for call in calls))
@@ -108,8 +109,8 @@ class ImageTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, args)
             return subprocess.CompletedProcess(args, 0, "[]")
 
-        with tempfile.TemporaryDirectory() as directory, patch.object(image, "run", side_effect=run):
-            with patch.object(image, "source_archive", return_value={}):
+        with tempfile.TemporaryDirectory() as directory, patch.object(image, "run", side_effect=run), \
+                patch.object(builder, "run", side_effect=run), patch.object(image, "source_archive", return_value={}):
                 with self.assertRaises(subprocess.CalledProcessError):
                     image.build(Namespace(remote="local", network="incusbr0", storage_pool="default"), Path(directory))
         created = next(args[3] for args, _ in calls if args[1:3] == ["project", "create"])
@@ -128,7 +129,7 @@ class ImageTests(unittest.TestCase):
                 resources = [{"fingerprint": "a" * 64}]
             return subprocess.CompletedProcess(command, 0, json.dumps(resources))
 
-        with patch.object(image, "run", side_effect=result) as run:
+        with patch.object(builder, "run", side_effect=result) as run:
             image.cleanup_project("local", "collab-build-test")
         commands = [call.args[0] for call in run.call_args_list]
         self.assertIn(["incus", "--project", "collab-build-test", "delete", "local:builder", "--force"], commands)
