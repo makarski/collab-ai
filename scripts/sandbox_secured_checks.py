@@ -33,6 +33,13 @@ class Deployment:
         self.remote = args.remote + ":"
         self.base = ["incus", "--project", project]
         self.tofu = [args.tofu, f"-chdir={directory}"]
+        self.args, self.project = args, project
+
+    def activate(self):
+        """After an apply that may create or replace a root: a store-mode root
+        admits agents only once the host has activated its tools."""
+        import sandbox_rollout
+        sandbox_rollout.activate_running(self.args.remote, self.project, self.args.image_dir)
 
     def execute(self, role, *command, uid=0):
         return self.base + ["exec", self.remote + role, "-T", "--user", str(uid),
@@ -133,6 +140,7 @@ def check_persistence(deployment):
     pending = sandbox_broker_checks.snapshot(deployment, "workspace")["durable_pending"]
     for running in (False, True):
         run(deployment.tofu + ["apply", "-auto-approve", "-input=false", f"-var=running={str(running).lower()}"])
+        deployment.activate()
         instances = json.loads(run(deployment.base + ["list", deployment.remote, "--format", "json"]))
         expected = "Running" if running else "Stopped"
         if {item["status"] for item in instances} != {expected}:
@@ -140,6 +148,7 @@ def check_persistence(deployment):
     check_saved_budget(deployment)
     # Replacement destroys the secured root disk; the private custom volume survives.
     run(deployment.tofu + ["apply", "-auto-approve", "-input=false", "-replace=incus_instance.secured[0]"])
+    deployment.activate()
     check_saved_budget(deployment)
     sandbox_broker_checks.await_broker(deployment)
     if sandbox_broker_checks.snapshot(deployment, "workspace")["durable_pending"] != pending:
@@ -163,6 +172,7 @@ def enable_secured(deployment, directory):
     check_hot_upgrade_rejected(deployment)
     run(deployment.base + ["stop", deployment.remote + "workspace"])
     run(deployment.tofu + ["apply", "-auto-approve", "-input=false"])
+    deployment.activate()
     run(deployment.tofu + ["plan", "-input=false", "-detailed-exitcode"])
     run(deployment.execute("workspace", "test", "-f", "/workspace/restart-check"))
     print("PASS: enabling secured runtime preserves dev data and produces an unchanged second plan.", flush=True)

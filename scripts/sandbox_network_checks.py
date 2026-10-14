@@ -52,6 +52,7 @@ def verify(args, directory, project):
     for enabled in (True, False):
         run([args.tofu, f"-chdir={directory}", "apply", "-auto-approve", "-input=false",
              f"-var=dev_network_enabled={str(enabled).lower()}"])
+        deployment.activate()
         if enabled:
             address = gateway(deployment)
             run(deployment.execute("workspace", "python3", "-c",

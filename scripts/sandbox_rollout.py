@@ -12,7 +12,8 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
-from sandbox_tools_install import (Container, Release, RETRY_COMMAND, has_tool_store, install, load_bundles,
+from sandbox_tools_install import (Container, OPTIONAL_TOOLS, Release, RETRY_COMMAND, has_tool_store, install,
+                                   load_bundles,
                                    release_lock_from, release_provenance, selection, supports_tool_store)
 
 
@@ -75,6 +76,15 @@ def install_tools(args, server, image_dir):
     selected = selection(getattr(args, "tools", None) or [])
     for name in running_targets(args):
         install_in(Container(args.remote, args.project, name), release, selected)
+
+
+def activate_running(remote, project, image_dir):
+    """For disposable test deployments: activate the release's tools, with every
+    optional tool, in each running managed instance. Idempotent: a root already
+    released for this generation only has its gated units started."""
+    machine = json.loads((Path(image_dir) / "manifest.json").read_text())["architecture"]
+    args = SimpleNamespace(remote=remote, project=project, tools=list(OPTIONAL_TOOLS))
+    install_tools(args, {"architectures": [machine]}, image_dir)
 
 
 def activate_instances(args, image_dir, machine, instances):

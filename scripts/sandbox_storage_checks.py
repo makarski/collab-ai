@@ -67,6 +67,7 @@ def verify(args, directory, project):
         raise ValueError("Persistent dev volumes were not protected from destruction")
     run(deployment.execute("workspace", "touch", "/root/replacement-proof"))
     run(deployment.tofu + ["apply", "-auto-approve", "-input=false", "-replace=incus_instance.workspace"])
+    deployment.activate()
     run(deployment.execute("workspace", "test", "!", "-e", "/root/replacement-proof"))
     check_data(deployment)
     restore(deployment, directory)
