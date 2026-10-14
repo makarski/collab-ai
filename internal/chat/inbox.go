@@ -28,6 +28,7 @@ type inboxState struct {
 	headSeq    uint64
 	draining   bool
 	drainAgain bool
+	resumeAt   *protocol.PageRequest // where a scan paused at capacity continues
 	queuedAcks map[string]*queuedAck
 }
 
@@ -39,7 +40,7 @@ type queuedAck struct {
 }
 
 func (s *inboxState) disconnected() {
-	s.draining, s.drainAgain = false, false
+	s.draining, s.drainAgain, s.resumeAt = false, false, nil
 }
 
 // suspend holds one queued acknowledgment, keeping the first reason.
@@ -59,7 +60,7 @@ func (s *inboxState) suspendAll(reason string) {
 // false. Arrivals during a scan schedule another scan afterwards.
 func (m *Model) startDrain() tea.Cmd {
 	if m.inbox.draining || m.timeline.paused {
-		m.inbox.drainAgain = m.inbox.draining
+		m.inbox.drainAgain = true
 		return nil
 	}
 	m.inbox.draining = true
@@ -82,14 +83,25 @@ func (m *Model) receivedPage(req protocol.PageRequest, page *protocol.OperatorPa
 	cmds := []tea.Cmd{m.confirmReceipts(adopted)}
 	switch {
 	case !complete:
-		m.inbox.draining = false
-		m.status = "capacity reached: receiving paused until older messages can be released"
+		m.pauseDrain(req, page, len(adopted))
 	case page.More:
 		cmds = append(cmds, m.receivePage(page.NextAfterSeq, page.UpperSeq))
 	default:
 		cmds = append(cmds, m.finishDrain())
 	}
 	return tea.Batch(cmds...)
+}
+
+// pauseDrain stops at the first message that didn't fit and remembers where
+// the scan continues, under the same upper bound.
+func (m *Model) pauseDrain(req protocol.PageRequest, page *protocol.OperatorPage, adopted int) {
+	after := req.AfterSeq
+	if adopted > 0 {
+		after = page.Messages[adopted-1].Seq
+	}
+	m.inbox.draining = false
+	m.inbox.resumeAt = &protocol.PageRequest{AfterSeq: after, UpperSeq: page.UpperSeq}
+	m.status = "capacity reached: receiving paused until older messages can be released"
 }
 
 func (m *Model) finishDrain() tea.Cmd {
@@ -192,8 +204,7 @@ func (m *Model) receiptsConfirmed(req pendingRequest, resp protocol.Message) tea
 			cmds = append(cmds, m.sendQueuedAck(e))
 		}
 	}
-	m.unpause()
-	return tea.Batch(cmds...)
+	return tea.Batch(append(cmds, m.unpause())...)
 }
 
 // receiptsFailed marks the batch failed and retries the same IDs later.
@@ -221,13 +232,22 @@ func (m *Model) retryReceipts(msg receiptRetryMsg) tea.Cmd {
 	return m.confirmReceipts(ids)
 }
 
-// unpause resumes receiving once confirmed history can be released again.
-func (m *Model) unpause() {
+// unpause resumes receiving once confirmed history can be released again:
+// a paused scan continues where it stopped, otherwise a new scan starts.
+// Each resume follows a confirmed receipt, so a still-full timeline pauses
+// again without spinning.
+func (m *Model) unpause() tea.Cmd {
 	if !m.timeline.paused {
-		return
+		return nil
 	}
 	m.timeline.paused = false
 	m.status = ""
+	at := m.inbox.resumeAt
+	if at == nil || m.inbox.draining {
+		return m.startDrain()
+	}
+	m.inbox.resumeAt, m.inbox.draining = nil, true
+	return m.receivePage(at.AfterSeq, at.UpperSeq)
 }
 
 func receiptsCover(resp protocol.Message, ids []string) bool {

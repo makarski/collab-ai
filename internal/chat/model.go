@@ -211,6 +211,11 @@ func (m *Model) request(kind string, msg protocol.Message, ids ...string) tea.Cm
 	return m.write(msg)
 }
 
+// ready reports a connected session with a loaded baseline.
+func (m *Model) ready() bool {
+	return m.transport != nil && m.baseline
+}
+
 // requested reports whether a request of kind for id is in flight or queued.
 func (m *Model) requested(kind, id string) bool {
 	for _, req := range m.pending {

@@ -68,6 +68,10 @@ func (m *Model) submit() tea.Cmd {
 		m.status = err.Error()
 		return nil
 	}
+	if !m.ready() {
+		m.status = "not connected; the draft is kept"
+		return nil
+	}
 	if m.send.unresolved() {
 		m.status = "the previous send is still unresolved"
 		return nil
@@ -128,6 +132,10 @@ func (m *Model) confirmAnswer(yes bool) tea.Cmd {
 	m.send.confirm = nil
 	if !yes {
 		m.status = "broadcast cancelled; draft kept"
+		return nil
+	}
+	if !m.ready() {
+		m.status = "not connected; broadcast not sent, draft kept"
 		return nil
 	}
 	return m.dispatch(c.scope, c.payload, c.inReplyTo)
