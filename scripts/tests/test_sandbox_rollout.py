@@ -60,6 +60,7 @@ class RolloutTests(unittest.TestCase):
                 stack.enter_context(patch.object(rollout, "download_release", side_effect=lambda *a: events.append("download") or self.image))
                 stack.enter_context(patch.object(rollout, "stop_managed", side_effect=lambda *a: events.append("stop")))
                 stack.enter_context(patch.object(rollout, "configure_ssh", side_effect=lambda *a: events.append("ssh")))
+                stack.enter_context(patch.object(rollout, "install_tools", side_effect=lambda *a: events.append("tools")))
                 def operation(args, directory, server):
                     events.append(args.action)
                     self.assertEqual(args.image_dir, self.image.resolve())
@@ -72,7 +73,7 @@ class RolloutTests(unittest.TestCase):
                     self.assertNotIn("ssh", events)
                 else:
                     rollout.rollout(self.args, self.root, self.server)
-                    self.assertEqual(events, ["download", "stop", "plan", "apply", "ssh"])
+                    self.assertEqual(events, ["download", "stop", "plan", "apply", "tools", "ssh"])
                 if failure == "plan":
                     self.assertNotIn("apply", events)
 
@@ -114,3 +115,9 @@ class RolloutTests(unittest.TestCase):
              patch.object(rollout.importlib.util, "spec_from_file_location") as load:
             rollout.configure_ssh(self.args)
         load.assert_not_called()
+
+    def test_an_image_directory_without_a_manifest_yields_a_release_governed_by_the_root(self):
+        release = rollout.tool_release(self.image, "aarch64")
+        self.assertIsNone(release.lock)
+        self.assertEqual(release.machine, "aarch64")
+

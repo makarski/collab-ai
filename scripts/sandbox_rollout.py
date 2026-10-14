@@ -1,6 +1,7 @@
 """Download, stop managed runtimes, and apply a data-preserving replacement."""
 
 from copy import copy
+from pathlib import Path
 import importlib.util
 import json
 import subprocess
@@ -11,6 +12,8 @@ from sandbox_operator_state import deployment_lock
 from sandbox_operator_recipe import refresh_recipe
 from sandbox_operator_workflow import initialize_variables, require_recovered, run_locked_operation
 from sandbox_releases import download_release
+from sandbox_tools_install import (Container, Release, RETRY_COMMAND, has_tool_store, install, release_lock_from,
+                                   release_provenance, selection, supports_tool_store)
 
 
 def managed_instances(directory, project):
@@ -62,6 +65,60 @@ def configure_ssh(args):
                               state_dir=args.ssh_state_dir, refresh_host_key=True))
 
 
+def install_tools(args, server, image_dir):
+    """Activate this release's tool generation in every running instance,
+    before any agent is admitted. A stopped instance installs at its rollout."""
+    release = tool_release(image_dir, server["architectures"][0])
+    if release is None:
+        print("This release predates the tool store; its tools stay baked into the image.", flush=True)
+        return
+    selected = selection(getattr(args, "tools", None) or [])
+    for name in running_targets(args):
+        install_in(Container(args.remote, args.project, name), release, selected)
+
+
+def tool_release(image_dir, machine):
+    """The Release for image_dir, or None when its lock predates the artifact
+    table. An image directory without a manifest (a locally modified image)
+    leaves the root's own lock in charge."""
+    if not (Path(image_dir) / "manifest.json").exists():
+        return Release(None, machine)
+    release_lock = release_lock_from(image_dir)
+    if not supports_tool_store(release_lock):
+        return None
+    provenance, architecture = release_provenance(image_dir)
+    if architecture not in (None, machine):
+        raise ValueError(f"Release image is for {architecture}, the server is {machine}")
+    return Release(release_lock, machine, provenance)
+
+
+def running_targets(args):
+    statuses = instances(args)
+    for name in ("workspace", "secured"):
+        if statuses.get(name) == "Running":
+            yield name
+        elif name in statuses:
+            print(f"{name} is stopped; its tools install at the next rollout.", flush=True)
+
+
+def install_in(container, release, selected):
+    if not has_tool_store(container):
+        print(f"{container.name}: this release's image has no tool store; its tools stay baked in.", flush=True)
+        return
+    generation = install(container, release, selected)
+    print(f"{container.name}: tool generation {generation or 'already'} active", flush=True)
+
+
+def tools_retry(args, directory, server):
+    """Rerun a crashed activation. install() verifies a ready peer without
+    touching it and refuses any mutation of a root that admitted agents."""
+    with deployment_lock(directory):
+        require_recovered(directory)
+        _, _, variables = image_selection(directory, args.image_dir)
+        install_tools(args, server, variables.parent)
+        configure_ssh(args)
+
+
 def rollout(args, directory, server):
     # One lock covers download through SSH: no competing plan/apply can change the selection.
     with deployment_lock(directory):
@@ -83,6 +140,11 @@ def rollout(args, directory, server):
             run_locked_operation(selected, directory, server)
         except BaseException:
             print("Rollout incomplete. Inspect the error before restarting containers; host state and data are retained.", flush=True)
+            raise
+        try:
+            install_tools(args, server, selected.image_dir)
+        except BaseException:
+            print(f"Tools not activated; agents are not admitted. Fix the cause, then run: {RETRY_COMMAND}", flush=True)
             raise
         # Re-trust the key through authenticated Incus only after a successful apply.
         configure_ssh(args)
