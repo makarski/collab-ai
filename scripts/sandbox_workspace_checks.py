@@ -29,15 +29,19 @@ def wait_for_broker(ssh):
     raise ValueError(f"Broker did not become ready: {result.stderr} {result.stdout}")
 
 
+def pinned(lock, name):
+    return lock["artifacts"][name]["version"]
+
+
 def check_versions(ssh, lock):
     commands = {
-        "codex --version": f"codex-cli {lock['codex_version']}\n",
-        "claude --version": f"{lock['claude_version']} (Claude Code)",
-        "go version": f"go version go{lock['go_version']} ",
-        "starship --version": f"starship {lock['starship_version']}\n",
-        "rtk --version": f"rtk {lock['rtk_version']}\n",
+        "codex --version": f"codex-cli {pinned(lock, 'codex')}\n",
+        "claude --version": f"{pinned(lock, 'claude')} (Claude Code)",
+        "go version": f"go version go{pinned(lock, 'go')} ",
+        "starship --version": f"starship {pinned(lock, 'starship')}\n",
+        "rtk --version": f"rtk {pinned(lock, 'rtk')}\n",
         "gh --version": "gh version ",
-        "node --version": f"v{lock['node_version']}\n",
+        "node --version": f"v{pinned(lock, 'node')}\n",
     }
     for command, expected in commands.items():
         output = run(ssh + [command], capture_output=True, text=True).stdout
@@ -61,8 +65,8 @@ def check_agent_aliases(ssh, lock):
                    'test "$(type -t dashboard)" = alias && '
                    'test "${STARSHIP_SHELL-}" = bash && codex --version && claude --version')
         result = run(ssh + ["bash", flags, "'" + command + "'"], capture_output=True, text=True)
-        if f"codex-cli {lock['codex_version']}" not in result.stdout or \
-                f"{lock['claude_version']} (Claude Code)" not in result.stdout:
+        if f"codex-cli {pinned(lock, 'codex')}" not in result.stdout or \
+                f"{pinned(lock, 'claude')} (Claude Code)" not in result.stdout:
             raise ValueError("Interactive agent aliases did not reach the installed native tools")
 
 

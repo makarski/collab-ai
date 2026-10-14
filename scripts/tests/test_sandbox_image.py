@@ -89,8 +89,12 @@ class ImageTests(unittest.TestCase):
         lock = json.loads((ROOT / "infra/image/tools.lock.json").read_text())
         self.assertEqual(set(lock["architectures"]), {"aarch64", "x86_64"})
         for arch in lock["architectures"].values():
-            for key in ("base_image", "go_sha256", "codex_sha256", "claude_sha256", "starship_sha256", "rtk_sha256"):
-                self.assertRegex(arch[key], r"^[0-9a-f]{64}$")
+            self.assertRegex(arch["base_image"], r"^[0-9a-f]{64}$")
+        self.assertEqual(set(lock["artifacts"]), {"go", "codex", "claude", "starship", "rtk", "node", "cs-mcp"})
+        for spec in lock["artifacts"].values():
+            self.assertEqual(set(spec["architectures"]), {"aarch64", "x86_64"})
+            for arch in spec["architectures"].values():
+                self.assertRegex(arch["sha256"], r"^[0-9a-f]{64}$")
 
     def test_build_failure_cleans_only_the_project_created_by_this_run(self):
         from argparse import Namespace
