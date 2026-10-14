@@ -25,9 +25,18 @@ class InstallAdmissionReviewTests(unittest.TestCase):
 
     def test_key_probe_errors_do_not_prove_never_released(self):
         container = FakeContainer("workspace")
-        with patch.object(container, "run", return_value=subprocess.CompletedProcess([], 2)):
+        for code in (1, 2):
+            with self.subTest(exit_code=code), patch.object(container, "run", return_value=
+                    subprocess.CompletedProcess([], code, stdout="", stderr="Error: connection refused")):
+                with self.assertRaises((ValueError, subprocess.SubprocessError)):
+                    install.never_released(container, None)
+
+    def test_transport_error_does_not_identify_a_legacy_image(self):
+        container = FakeContainer("workspace")
+        failure = subprocess.CompletedProcess([], 1, stdout="", stderr="Error: connection refused")
+        with patch.object(container, "run", return_value=failure):
             with self.assertRaises((ValueError, subprocess.SubprocessError)):
-                install.never_released(container, None)
+                install.has_tool_store(container)
 
     def test_unknown_activation_state_is_not_safe_for_retry(self):
         container = FakeContainer("workspace")
