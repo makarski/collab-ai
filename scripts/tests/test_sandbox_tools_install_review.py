@@ -14,11 +14,11 @@ class InstallAdmissionReviewTests(unittest.TestCase):
     def test_install_refuses_root_with_agent_key_but_missing_state(self):
         container = FakeContainer("workspace", key=True)
         selected = install.selection([])
-        _, manifest = install.build_manifest(container, LOCK, "aarch64", selected)
+        _, manifest = install.build_manifest(container, install.Release(LOCK, "aarch64"), selected)
         container.expected = install.generation_id(manifest)
         with patch.object(install, "cache_artifact") as cache:
             with self.assertRaises(ValueError):
-                install.install(container, LOCK, "aarch64", selected)
+                install.install(container, install.Release(LOCK, "aarch64"), selected)
         cache.assert_not_called()
         self.assertEqual(container.pushed, [])
         self.assertFalse(container.activated)
@@ -45,11 +45,11 @@ class InstallAdmissionReviewTests(unittest.TestCase):
     def test_install_itself_rejects_unknown_state_before_mutation(self):
         container = FakeContainer("workspace", state={"state": "unknown"})
         selected = install.selection([])
-        _, manifest = install.build_manifest(container, LOCK, "aarch64", selected)
+        _, manifest = install.build_manifest(container, install.Release(LOCK, "aarch64"), selected)
         container.expected = install.generation_id(manifest)
         with patch.object(install, "cache_artifact") as cache:
             with self.assertRaises(ValueError):
-                install.install(container, LOCK, "aarch64", selected)
+                install.install(container, install.Release(LOCK, "aarch64"), selected)
         cache.assert_not_called()
         self.assertFalse(container.activated)
 
@@ -57,7 +57,7 @@ class InstallAdmissionReviewTests(unittest.TestCase):
         selected = install.selection([])
         containers = {name: FakeContainer(name) for name in ("workspace", "secured")}
         for container in containers.values():
-            _, manifest = install.build_manifest(container, LOCK, "aarch64", selected)
+            _, manifest = install.build_manifest(container, install.Release(LOCK, "aarch64"), selected)
             container.expected = install.generation_id(manifest)
         workspace = containers["workspace"]
         workspace.state, workspace.current = {"state": "ready"}, workspace.expected
