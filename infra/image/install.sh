@@ -8,9 +8,11 @@ printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
 apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update
 apt-get install -y --no-install-recommends ca-certificates curl python3 git gh \
-    openssh-server sshfs ripgrep tmux less locales
-bash /root/build/infra/image/install-docker.sh
-python3 /root/build/infra/image/install-tools.py
+    openssh-server sshfs ripgrep tmux less locales apparmor
+# The rootful daemon never runs here, even once the Docker deb set is installed.
+systemctl mask docker.service docker.socket containerd.service
+# Go only compiles collab here; the toolchain is removed again below.
+python3 /root/build/infra/image/install-build-go.py
 export PATH="/usr/local/go/bin:$PATH" GOTOOLCHAIN=local CGO_ENABLED=0
 cd /root/build
 go mod download
@@ -19,13 +21,8 @@ go test ./... -timeout=60s
 for spec in broker:broker codex:collab-codex mcp:collab-mcp collab:collab; do
     go build -trimpath -buildvcs=false -o "/usr/local/bin/${spec#*:}" "./cmd/${spec%%:*}"
 done
-
-# No agent process, login or model request runs during the build.
-codex --version
-codex app-server --help >/dev/null
-claude --version
-starship --version
-rtk --version
+go clean -cache -modcache -testcache
+rm -rf /usr/local/go
 gh --version
 addgroup --gid 1001 agent
 adduser --uid 1001 --gid 1001 --disabled-password --gecos '' agent
@@ -42,28 +39,27 @@ install -d /etc/collab-ai /etc/codex /etc/ssh/authorized_keys /usr/local/share/c
 install -m 0644 infra/image/codex-config.toml /etc/codex/config.toml
 cp infra/image/tools.lock.json /usr/local/share/collab-ai/
 cp build-source.json /usr/local/share/collab-ai/
-# The tool store (docs/sandbox-tools.md). "baked" keeps the tools in this image
-# while the store, activator and readiness gate are exercised.
-printf 'baked\n' >/usr/local/share/collab-ai/tools-mode
+# The tool store (docs/sandbox-tools.md): this image carries no third-party
+# tools; the rollout installs the selected ones into the store, and the tool
+# names below launch from it.
+printf 'store\n' >/usr/local/share/collab-ai/tools-mode
 install -d -m 0755 /usr/local/lib/collab-ai /var/lib/collab-ai-tools
 install -m 0644 infra/image/tool_lock.py infra/image/tool_store.py /usr/local/lib/collab-ai/
 install -m 0755 infra/image/collab-tools-activate infra/image/collab-tools-ready infra/image/collab-tool /usr/local/bin/
+for name in go gofmt codex claude node npm npx cs-mcp rtk starship; do
+    ln -s collab-tool "/usr/local/bin/$name"
+done
 cp infra/image/collab-tools-setup.service infra/image/collab-tools-ready.service /etc/systemd/system/
 bash infra/image/install-skill.sh docs/skills/collab-ai /usr/local/share/collab-ai
 cp infra/image/claude-mcp.json /etc/collab-ai/claude-mcp.json
-python3 infra/image/install-mcp-tools.py
-# The activator rewrites the agents' MCP configuration from the tool selection;
-# these are its base files. A baked image has every optional tool, so its
-# markers are present until an activation says otherwise.
+# The activator writes the agents' MCP configuration and the tool markers from
+# the tool selection at rollout; these are its base files.
 cp infra/image/claude-mcp.json /usr/local/share/collab-ai/claude-mcp.base.json
 cp infra/image/codex-config.toml /usr/local/share/collab-ai/codex-config.base.toml
 cp infra/image/mcp/servers.json /usr/local/share/collab-ai/mcp-servers.json
 install -d /etc/collab-ai/tools
-touch /etc/collab-ai/tools/cs-mcp.enabled /etc/collab-ai/tools/playwright.enabled /etc/collab-ai/tools/docker.enabled
 install -m 0755 infra/image/collab-playwright infra/image/collab-codescene-login /usr/local/bin/
 install -m 0644 infra/image/collab-chromium.apparmor /etc/apparmor.d/collab-chromium
-cs-mcp --version
-collab-playwright --version
 cp infra/image/sshd_config /etc/ssh/sshd_config.collab-ai
 cp infra/image/collab-broker.service infra/image/collab-secured-setup.service /etc/systemd/system/
 cp infra/image/collab-secured-broker.service infra/image/collab-dev-setup.service \
@@ -102,9 +98,11 @@ dpkg-query -W >/usr/local/share/collab-ai/os-packages.txt
 # Images must not share SSH host keys, machine identities, credentials or state.
 rm -f /etc/ssh/ssh_host_* /var/lib/dbus/machine-id
 truncate -s 0 /etc/machine-id
-go clean -cache -modcache -testcache
 apt-get clean
 rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /root/.codex /root/.claude /root/.ssh
+# Documentation and foreign locales have no reader in a sandbox image.
+rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
+find /usr/share/locale -mindepth 1 -maxdepth 1 ! -name 'en*' ! -name 'locale.alias' -exec rm -rf {} +
 rm -f /root/.claude.json /root/.bash_history /usr/sbin/policy-rc.d
 find /var/log -type f -exec truncate -s 0 {} +
 rm -rf /root/build /root/source.tar /tmp/* /var/tmp/*

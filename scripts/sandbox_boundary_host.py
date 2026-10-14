@@ -50,6 +50,7 @@ class BoundaryHost:
         manifest = json.loads((self.args.image_dir / "manifest.json").read_text())
         if sha256(image) != manifest["image_fingerprint"]:
             raise ValueError("Proof image does not match its manifest")
+        self.architecture = manifest["architecture"]
         self.root = run(self.host + ["mktemp", "-d", "/tmp/collab-boundary-XXXXXXXX"]).strip()
         if not re.fullmatch(r"/tmp/collab-boundary-[a-zA-Z0-9]+", self.root):
             raise ValueError("Unexpected proof directory returned by host")

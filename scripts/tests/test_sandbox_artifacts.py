@@ -4,6 +4,8 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import zipfile
+import warnings
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -59,7 +61,8 @@ class BundleSourceTests(unittest.TestCase):
             self.assertEqual(json.loads((Path(directory) / "bundle-source.json").read_text()), {"base": None})
 
     def test_a_remote_base_records_the_source_without_downloading_bundles(self):
-        manifest = {"bundles": {"docker": {"file": "docker.tar.gz", "sha256": hashlib.sha256(b"d").hexdigest()}}}
+        manifest = {"architecture": "arm64", "bundles": {"docker": {
+            "file": "docker.tar.gz", "sha256": hashlib.sha256(b"d").hexdigest(), "packages": {"docker-ce": "5:29"}}}}
         files = {"collab-ai-bundles-linux-arm64.json": json.dumps(manifest).encode(), "docker.tar.gz": b"d"}
         with tempfile.TemporaryDirectory() as directory:
             fetched = []
@@ -68,7 +71,8 @@ class BundleSourceTests(unittest.TestCase):
             self.assertEqual(json.loads((Path(directory) / "bundle-source.json").read_text())["base"], "https://r/")
 
     def test_a_local_source_copies_and_verifies_the_bundles(self):
-        manifest = {"bundles": {"docker": {"file": "docker.tar.gz", "sha256": hashlib.sha256(b"d").hexdigest()}}}
+        manifest = {"architecture": "arm64", "bundles": {"docker": {
+            "file": "docker.tar.gz", "sha256": hashlib.sha256(b"d").hexdigest(), "packages": {"docker-ce": "5:29"}}}}
         files = {"collab-ai-bundles-linux-arm64.json": json.dumps(manifest).encode(), "docker.tar.gz": b"d"}
         with tempfile.TemporaryDirectory() as directory:
             artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from(files, []))
@@ -77,3 +81,39 @@ class BundleSourceTests(unittest.TestCase):
             files["docker.tar.gz"] = b"tampered"
             with tempfile.TemporaryDirectory() as other, self.assertRaisesRegex(ValueError, "does not match"):
                 artifacts.fetch_bundles(Path(other), "aarch64", self.obtain_from(files, []))
+
+    def test_unsafe_bundle_manifests_are_rejected_before_any_file_is_written(self):
+        good = {"file": "docker.tar.gz", "sha256": "a" * 64, "packages": {"docker-ce": "5:29"}}
+        cases = [({"architecture": "amd64", "bundles": {"docker": good}}, "another architecture"),
+                 ({"architecture": "arm64", "bundles": {"docker": {**good, "file": "../outside"}}}, "unsafe"),
+                 ({"architecture": "arm64", "bundles": {"docker": {**good, "file": "manifest.json"}}}, "reserved"),
+                 ({"architecture": "arm64", "bundles": {"docker": {**good, "packages": {}}}}, "package inventory"),
+                 ({"architecture": "arm64", "bundles": {"vim": good}}, "unknown bundle")]
+        for manifest, message in cases:
+            with self.subTest(message), tempfile.TemporaryDirectory() as directory:
+                files = {"collab-ai-bundles-linux-arm64.json": json.dumps(manifest).encode()}
+                with self.assertRaisesRegex(ValueError, message):
+                    artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from(files, []))
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_a_zip_without_bundles_is_absence_but_duplicates_are_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "release.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("collab-ai-workspace-linux-arm64.json", "{}")
+            output = root / "image"
+            output.mkdir()
+            obtain = lambda name, target: artifacts.from_zip(archive, name, target)
+            self.assertIsNone(artifacts.fetch_bundles(output, "aarch64", obtain))
+            self.assertEqual(json.loads((output / "bundle-source.json").read_text()), {"base": None})
+            with warnings.catch_warnings(), zipfile.ZipFile(archive, "a") as bundle:
+                warnings.simplefilter("ignore", UserWarning)
+                for _ in range(2):
+                    bundle.writestr("collab-ai-bundles-linux-arm64.json", "{}")
+            other = root / "other"
+            other.mkdir()
+            with self.assertRaisesRegex(ValueError, "exactly one"):
+                artifacts.fetch_bundles(other, "aarch64", obtain)
+            self.assertFalse((other / "bundle-source.json").exists())
+

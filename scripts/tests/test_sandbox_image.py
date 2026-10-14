@@ -26,7 +26,7 @@ def module(name, path):
 
 image = module("sandbox_image", "scripts/sandbox-image.py")
 import sandbox_builder as builder  # noqa: E402  # cleanup_project runs through this module
-installer = module("install_tools", "infra/image/install-tools.py")
+installer = module("tool_download", "infra/image/tool_download.py")  # the builder's verified downloads
 
 
 class ImageTests(unittest.TestCase):

@@ -11,6 +11,7 @@ import tempfile
 import uuid
 
 import sandbox_mount_checks
+import sandbox_rollout
 import sandbox_network_checks
 import sandbox_secured_checks
 import sandbox_storage_checks
@@ -101,6 +102,8 @@ def main():
     try:
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         run(tofu + ["plan", "-detailed-exitcode", "-input=false"])
+        # A store-mode root admits agents only after the host activates its tools.
+        sandbox_rollout.activate_running(args.remote, project, args.image_dir)
         check_deployment(args, directory, project, manifest)
         print("PASS: verified image, unchanged plan, offline SSH, tool versions and restart persistence.")
     except Exception:

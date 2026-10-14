@@ -1,7 +1,6 @@
 [Unit]
 Description=Connect default agent tools to the shared control broker
-Requires=collab-tools-ready.service
-After=local-fs.target collab-tools-ready.service
+After=local-fs.target
 Before=multi-user.target
 
 [Service]

@@ -297,6 +297,22 @@ def install_debs(directory, run=subprocess.run, policy=None):
             policy.unlink(missing_ok=True)
 
 
+BWRAP_PROFILE = "bwrap-userns-restrict"
+
+
+def after_install(name, run=subprocess.run):
+    """Root-level follow-ups a deb set needs. Docker's rootless setup relies on
+    the bwrap user-namespace profile that Noble ships as an extra profile."""
+    if name != "docker":
+        return
+    source = Path("/usr/share/apparmor/extra-profiles") / BWRAP_PROFILE
+    target = Path("/etc/apparmor.d") / BWRAP_PROFILE
+    if source.exists():
+        shutil.copyfile(source, target)
+        target.chmod(0o644)
+        run(["apparmor_parser", "-r", str(target)], check=False, env=dpkg_environment())
+
+
 def installed_version(package, run=subprocess.run):
     result = run(["dpkg-query", "-W", "-f=${db:Status-Status} ${Version}", package],
                  capture_output=True, text=True, env=dpkg_environment())
@@ -473,6 +489,7 @@ class Store:
                 continue
             if tool["sha256"] not in record["installed"]:
                 install_debs(self.artifacts / tool["sha256"], self.run)
+                after_install(name, self.run)
                 record["installed"][tool["sha256"]] = {"tool": name, "installed_at": time.time()}
                 write_durable(self.root_deps, json.dumps(record, indent=2) + "\n")
             verify_packages(name, tool, self.run)

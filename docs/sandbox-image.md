@@ -34,13 +34,10 @@ sign-in; public releases do not. `--output NEW_DIRECTORY` selects an explicit ca
 
 | Component | Installation |
 | --- | --- |
-| `broker`, `collab-codex`, `collab-mcp`, `collab` | Compiled from the selected app source inside the image; Go tests run first |
-| Codex 0.159.3, Claude Code 2.1.283 | Official native distributions, verified against committed SHA256 checksums |
-| CodeScene MCP, Playwright + Chromium | Preconfigured for both agents; pinned native downloads and npm lockfile |
-| Go 1.25.14 | Official archive, checksum verified; available for workspace development |
-| RTK 0.50.0 | Checksum-pinned binary; Codex/Claude hooks and persistent usage history |
-| Starship 1.26.0 | Checksum-pinned native release; enabled in interactive agent Bash shells |
-| Git, ripgrep, tmux, OpenSSH, Python | Ubuntu 24.04 packages |
+| `broker`, `collab-codex`, `collab-mcp`, `collab` | Compiled from the selected app source inside the image; Go tests run first, the Go toolchain is removed afterwards |
+| Git, ripgrep, tmux, OpenSSH, Python, `gh`, AppArmor | Ubuntu 24.04 packages |
+| Tool store launchers | `go`, `gofmt`, `codex`, `claude`, `node`, `npm`, `npx`, `cs-mcp`, `rtk`, `starship` launch from the [tool store](sandbox-tools.md), which the rollout fills from `tools.lock.json` and the release bundles |
+| Codex, Claude Code, Go, RTK, Starship, Node, CodeScene MCP, Playwright + Chromium, Docker | **Not in the image.** Installed at rollout, checksum-verified; the optional ones follow the tool selection |
 | Claude collaboration config | `/etc/collab-ai/claude-mcp.json` |
 | Interactive shell aliases | `/etc/profile.d/collab-agent-aliases.sh`; `codex`, `claude` and `dashboard` |
 | Collaboration skill and build manifests | `/usr/local/share/collab-ai/` |

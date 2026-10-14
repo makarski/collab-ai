@@ -97,6 +97,11 @@ jobs:
           if [[ -n "$CLAUDE_VERSION" ]]; then args+=(--claude-version "$CLAUDE_VERSION"); fi
           if [[ -n "$GO_VERSION" ]]; then args+=(--go-version "$GO_VERSION"); fi
           sudo python3 scripts/sandbox-image.py "${args[@]}"
+      - name: Enforce the image size budget
+        run: |
+          size=$(stat -c %s dist/workspace/release/collab-ai-workspace-linux-*.tar.gz)
+          echo "image: $((size / 1048576)) MiB (budget 400 MiB)"
+          test "$size" -lt $((400 * 1024 * 1024))
       - name: Build the optional tool bundles inside Incus
         run: sudo python3 scripts/sandbox-bundles.py --remote local --output dist/workspace/release
       - name: Install the exported artifact and smoke-test offline SSH

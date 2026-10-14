@@ -209,7 +209,7 @@ host releases it, after the durable ready commit. Concretely:
   transport, the control plane, the operator endpoint and host admin access
   stay up throughout;
 - `user@1001.service` (the agent's user manager, which would autostart the
-  rootless Docker daemon and any lingering user service), `collab-client-setup`,
+  rootless Docker daemon and any lingering user service),
   `collab-dev-executor@`, `collab-supervised-codex` and the Docker units all
   carry `Requires=collab-tools-ready.service` and `After=`, and
   `collab-tools-ready` fails while the state is not `ready`;
@@ -260,9 +260,9 @@ and the tool-dependent entry points stay in maintenance with that message.
 
 - **Only tool-dependent entry points are gated.** The broker, the operator
   endpoint, `collab operator chat`, the dashboard and SSH itself are collab
-  code in the image and never wait for third-party tools. `collab-client-setup`
-  (agent MCP wiring), `collab-dev-executor@`, `collab-supervised-codex` and
-  the Docker units carry `Requires=collab-tools-ready.service` and
+  code in the image and never wait for third-party tools; that includes
+  `collab-client-setup`, which only creates the brokers' socket aliases.
+  `collab-dev-executor@`, `collab-supervised-codex` and the Docker units carry `Requires=collab-tools-ready.service` and
   `After=collab-tools-ready.service`, so a failure propagates instead of
   merely ordering.
 - `collab-tools-ready.service` is a oneshot that fails unless
@@ -386,8 +386,11 @@ happens only when every artifact exists. PRs in order:
    from that manifest and fetches their files by digest on demand; baked roots
    and `secured` never get them. A selection that needs bundles from a release
    without them is refused with a message.
-5. **Slim image (4c).** `install.sh` stops downloading vendor tools; the launchers
-   take over. The default selection keeps today's feature set on (Docker and
+5. **Slim image (4c).** `install.sh` stops downloading vendor tools; Go is
+   present only while collab compiles; the tool names in `/usr/local/bin` are
+   launchers; `tools-mode` is `store`; CI asserts a 400 MiB image budget. The
+   smoke and boundary tests activate tools after their `tofu apply`, as the
+   rollout does, because a store-mode root admits agents only then. The default selection keeps today's feature set on (Docker and
    Playwright enabled) unless the operator decides otherwise; presets (#73)
    can turn them off.
 

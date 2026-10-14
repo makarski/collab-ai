@@ -84,7 +84,9 @@ Existing settings are preserved; telemetry is not enabled. To opt out, run
 
 ## Docker and Compose
 
-Docker Engine, Compose and Buildx are preinstalled. In `workspace`:
+Docker Engine, Compose and Buildx are installed into the workspace by the
+rollout when the `docker` tool is enabled (the default; see
+[sandbox tools](sandbox-tools.md)). In `workspace`:
 
 ```sh
 docker info                  # Security Options includes rootless

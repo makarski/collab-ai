@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -12,6 +13,11 @@ from sandbox_versions import fingerprint
 
 
 ARCHITECTURES = {"aarch64": "arm64", "x86_64": "amd64"}
+
+
+class MissingAsset(FileNotFoundError, ValueError):
+    """An expected asset is not in the given source: a usage error for the
+    image, and confirmed absence for the optional bundle manifest."""
 
 
 def sha256(path):
@@ -49,7 +55,9 @@ def from_zip(archive, name, destination):
     # Copy only the two exact expected assets; never extract archive paths.
     with zipfile.ZipFile(archive) as bundle:
         matches = [item for item in bundle.infolist() if item.filename == name]
-        if len(matches) != 1:
+        if not matches:
+            raise MissingAsset(f"{name} is not in {archive}; select the matching architecture ZIP")
+        if len(matches) > 1:
             raise ValueError(f"Expected exactly one {name} in {archive}; select the matching architecture ZIP")
         with bundle.open(matches[0]) as source, destination.open("xb") as output:
             shutil.copyfileobj(source, output, length=1024 * 1024)
@@ -87,6 +95,67 @@ def bundles_name(architecture):
     return f"collab-ai-bundles-linux-{ARCHITECTURES[architecture]}.json"
 
 
+BUNDLE_KINDS = {"playwright": False, "chromium-deps": True, "docker": True}  # name: is a deb set
+RESERVED = {"workspace.tar.gz", "manifest.json", "image.tfvars.json", "bundle-source.json"}
+
+
+def validate_bundles(manifest, architecture):
+    """Check a bundle manifest before any file named in it is written: the
+    architecture, known bundle names, plain file names that cannot leave the
+    image directory or replace its own files, digests and package inventories."""
+    if manifest.get("architecture") != ARCHITECTURES[architecture]:
+        raise ValueError("bundle manifest is for another architecture")
+    for name, details in manifest["bundles"].items():
+        validate_bundle(name, details, architecture)
+
+
+def validate_bundle(name, details, architecture):
+    if name not in BUNDLE_KINDS:
+        raise ValueError(f"unknown bundle {name!r}")
+    safe_file_name(details["file"], architecture)
+    if not re.fullmatch(r"[0-9a-f]{64}", details["sha256"]):
+        raise ValueError(f"bundle {name} has no SHA256")
+    if BUNDLE_KINDS[name] and not has_packages(details):
+        raise ValueError(f"bundle {name} has no package inventory")
+
+
+def has_packages(details):
+    packages = details.get("packages")
+    return isinstance(packages, dict) and bool(packages)
+
+
+SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*")  # dot-separated parts, never ".."
+
+
+def safe_file_name(value, architecture):
+    if not SAFE_NAME.fullmatch(value or ""):
+        raise ValueError(f"unsafe bundle file name {value!r}")
+    if value in reserved_names(architecture) or value.startswith(asset_name(architecture)):
+        raise ValueError(f"bundle file name {value!r} is reserved")
+
+
+def reserved_names(architecture):
+    return RESERVED | {bundles_name(architecture)}
+
+
+def confirmed_absent(error):
+    """Only a missing file or an HTTP 404 proves a release has no bundles;
+    any other failure must be retried, never remembered."""
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code == 404
+    return isinstance(error, FileNotFoundError)
+
+
+def fresh(obtain, name, target):
+    """Obtain name into target, removing a partial file from an earlier attempt."""
+    target.unlink(missing_ok=True)
+    try:
+        obtain(name, target)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+
+
 def fetch_bundles(output, architecture, obtain, base=None):
     """Record where this image's optional tool bundles come from.
 
@@ -97,18 +166,36 @@ def fetch_bundles(output, architecture, obtain, base=None):
     manifest_path = output / bundles_name(architecture)
     source = output / "bundle-source.json"
     try:
-        obtain(bundles_name(architecture), manifest_path)
-    except (FileNotFoundError, KeyError, ValueError, urllib.error.HTTPError):
+        fresh(obtain, bundles_name(architecture), manifest_path)
+    except (FileNotFoundError, urllib.error.HTTPError) as error:
+        if not confirmed_absent(error):
+            raise
         source.write_text(json.dumps({"base": None}, indent=2) + "\n")  # remembered: no bundles
         return None
-    manifest = json.loads(manifest_path.read_text())
+    manifest = checked_manifest(manifest_path, architecture)
     if base is None:
-        for details in manifest["bundles"].values():
-            target = output / details["file"]
-            obtain(details["file"], target)
-            if sha256(target) != details["sha256"]:
-                target.unlink()
-                raise ValueError(f"Bundle {details['file']} does not match its digest")
+        copy_bundles(output, manifest, obtain)
         base = output.resolve().as_uri() + "/"
     source.write_text(json.dumps({"base": base}, indent=2) + "\n")
     return manifest
+
+
+def checked_manifest(path, architecture):
+    """The downloaded bundle manifest, or ValueError (and no manifest kept)."""
+    manifest = json.loads(path.read_text())
+    try:
+        validate_bundles(manifest, architecture)
+    except (ValueError, KeyError, TypeError) as error:
+        path.unlink()
+        raise ValueError(f"Invalid bundle manifest: {error}") from error
+    return manifest
+
+
+def copy_bundles(output, manifest, obtain):
+    """Copy every bundle file next to the image, each verified by digest."""
+    for details in manifest["bundles"].values():
+        target = output / details["file"]
+        fresh(obtain, details["file"], target)
+        if sha256(target) != details["sha256"]:
+            target.unlink()
+            raise ValueError(f"Bundle {details['file']} does not match its digest")

@@ -75,6 +75,8 @@ def verify(args, directory, project):
     run(incus + ["restart", target])
     run(execute + ["test", "-f", "/workspace/work/from-agent"])
     remove_mounts(incus, target, directory, args.tofu)
+    import sandbox_rollout
+    sandbox_rollout.activate_running(args.remote, project, args.image_dir)
     run(execute + ["test", "!", "-e", "/workspace/work/from-host"])
     if (directory / "work/from-host").read_text() != "work":
         raise ValueError("Mount removal changed host data")

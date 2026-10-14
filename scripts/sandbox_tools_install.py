@@ -42,8 +42,8 @@ SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
 # Units that wait for collab-tools-ready; started by the host once a root is released.
 GATED_UNITS = {
-    "workspace": ("collab-tools-ready.service", "collab-client-setup.service",
-                  "collab-docker-session.service", "collab-docker-setup.service"),
+    "workspace": ("collab-tools-ready.service", "collab-rtk-setup.service", "collab-docker-session.service",
+                  "collab-docker-setup.service"),
     "secured": ("collab-tools-ready.service",),
 }
 RETRY_COMMAND = "python3 scripts/sandbox-provision.py tools-retry"
@@ -54,9 +54,14 @@ class Container:
 
     def __init__(self, remote, project, name, run=subprocess.run):
         self.name = name
+        self.role = name  # a disposable test instance can play a role under another name (as_role)
         self.command = ["incus", "--project", project]
         self.target = f"{remote}:{name}"
         self.run = run
+
+    def as_role(self, role):
+        self.role = role
+        return self
 
     def execute(self, *args, **kwargs):
         return self.run(self.command + ["exec", self.target, "-T", "--", *args], check=True, **kwargs)
@@ -181,12 +186,19 @@ def load_bundles(image_dir, machine):
     return {"manifest": json.loads(manifest_path.read_text()), "base": base}
 
 
+# Prints exactly one verdict line; any other output, or a failed exec, is an error.
+MODE_SCRIPT = f'if [ -e {MODE_FILE} ]; then printf "mode:%s\\n" "$(cat {MODE_FILE})"; else echo mode:absent; fi'
+MODES = {"mode:store": True, "mode:baked": False, "mode:absent": False}
+
+
 def store_mode(container):
-    """Whether this root's launchers depend on the store (tools-mode = store)."""
-    try:
-        return container.output("sh", "-c", f"cat {MODE_FILE} 2>/dev/null || echo baked").strip() == "store"
-    except subprocess.CalledProcessError:
-        return False
+    """Whether this root's launchers depend on the store (tools-mode = store).
+    Only a confirmed absent file means an older, baked image; a transport error
+    or an unknown mode fails closed rather than omitting tools."""
+    verdict = container.output("sh", "-c", MODE_SCRIPT).strip()
+    if verdict not in MODES:
+        raise ValueError(f"{container.name}: unknown tools mode ({verdict!r})")
+    return MODES[verdict]
 
 
 def build_manifest(container, release, selected):
@@ -202,8 +214,8 @@ def build_manifest(container, release, selected):
     facts = {"release": digest(source_text.encode()), "lock_sha256": digest(lock_text.encode()),
              "architecture": release.machine}
     mode = store_mode(container)
-    manifest = manifest_for(lock, facts, selected, tools_for(container.name, selected, mode))
-    manifest["tools"].update(bundle_entries(release, selected, container.name, mode))
+    manifest = manifest_for(lock, facts, selected, tools_for(container.role, selected, mode))
+    manifest["tools"].update(bundle_entries(release, selected, container.role, mode))
     return lock, manifest
 
 
@@ -211,7 +223,7 @@ def release_units(container):
     """Start the gated entry points after a successful release. Idempotent: in
     baked mode they are already running; in store mode their first boot failed
     on the readiness gate and they need a reset."""
-    units = GATED_UNITS.get(container.name, GATED_UNITS["secured"])
+    units = GATED_UNITS.get(container.role, GATED_UNITS["secured"])
     container.execute("systemctl", "reset-failed", *units)
     container.execute("systemctl", "start", *units)
 
