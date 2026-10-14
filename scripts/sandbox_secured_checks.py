@@ -57,7 +57,7 @@ def check_configuration(deployment):
     if mappings[0] == mappings[1]:
         raise ValueError("Dev and secured share an identity mapping")
     devices = instances["secured"]["expanded_devices"]
-    if set(devices) != {"root", "secured-state", "budget-status", "dev-executor", "broker-ipc"}:
+    if set(devices) != {"root", "secured-state", "budget-status", "dev-executor", "broker-ipc", "secured-tools"}:
         raise ValueError("Secured inherited unexpected devices")
     denied(deployment.execute("secured", "systemctl", "is-active", "--quiet", "collab-broker"))
 
