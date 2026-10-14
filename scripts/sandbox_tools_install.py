@@ -42,8 +42,7 @@ SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
 # Units that wait for collab-tools-ready; started by the host once a root is released.
 GATED_UNITS = {
-    "workspace": ("collab-tools-ready.service", "collab-client-setup.service",
-                  "collab-docker-session.service", "collab-docker-setup.service"),
+    "workspace": ("collab-tools-ready.service", "collab-docker-session.service", "collab-docker-setup.service"),
     "secured": ("collab-tools-ready.service",),
 }
 RETRY_COMMAND = "python3 scripts/sandbox-provision.py tools-retry"
