@@ -69,6 +69,12 @@ non-login `collab-share` account and clears supplementary groups before serving
 files under a directory-restricted macOS sandbox. It exposes no host shell or port.
 Existing ownership stays unchanged. You can edit newly created files too.
 
+**Existing Mac installs:** rerun `sandbox-share.py setup --mounts-file /path/to/mounts.json`
+before upgrading macOS. Setup sets `RealName` on both sharing records, including
+older accounts; missing names can break macOS account migration ([#94](https://github.com/makarski/collab-ai/issues/94)).
+If only the group remains after a failed upgrade, setup stops with inspection
+instructions. After the operator repairs the account/group, rerun setup to reapply ACLs.
+
 **Stop:** Ctrl+C disconnects shares. Restart workspace before reconnecting.
 Disconnected mounts refuse writes; files remain on the host. Account/ACL grants
 remain after stopping. This mode does not use `mounts-apply` or require a VM restart.

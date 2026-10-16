@@ -5,6 +5,8 @@ what a container's store lacks, and runs the in-container activator on a
 fresh, unreleased root. See docs/sandbox-tools.md.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
 import hashlib
 import json
