@@ -35,6 +35,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check provisioning with macOS system Python
+        run: |
+          /usr/bin/python3 --version
+          /usr/bin/python3 scripts/sandbox-provision.py --help
       - name: Prove restricted file access and dedicated host ownership
         env:
           COLLAB_MAC_IDENTITY_PROOF: '1'
