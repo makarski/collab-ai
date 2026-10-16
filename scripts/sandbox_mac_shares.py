@@ -78,17 +78,35 @@ def validate_unique(account):
 
 
 def unused_account(user, uid):
-    users = {value for account in pwd.getpwall() for value in (account.pw_name, account.pw_uid)}
-    groups = {value for group in grp.getgrall() for value in (group.gr_name, group.gr_gid)}
+    accounts, records = pwd.getpwall(), grp.getgrall()
+    check_orphaned_group(user, accounts, records)
+    users = {value for account in accounts for value in (account.pw_name, account.pw_uid)}
+    groups = {value for group in records for value in (group.gr_name, group.gr_gid)}
     if {user, uid}.intersection(users | groups):
         raise ValueError(f"Sharing account or ID {uid} already exists; inspect it before setup")
+
+
+def check_orphaned_group(user, accounts, groups):
+    if any(account.pw_name == user for account in accounts):
+        return
+    for group in groups:
+        if group.gr_name == user:
+            raise ValueError(
+                f"Sharing group /Groups/{user} (GID {group.gr_gid}) exists but /Users/{user} is missing. "
+                f"Inspect it with: dscl . -read /Groups/{user}. "
+                "Have the operator restore the account or remove the confirmed orphaned group, "
+                "then rerun sandbox-share.py setup to reapply project ACLs. "
+                "No existing group will be adopted or deleted automatically."
+            )
 
 
 def account_commands(user):
     validate_username(user)
     try:
         identity(user)
-        return []
+        # Repair older valid accounts too. Setting the same display names again
+        # is idempotent and does not change their UID, groups or restrictions.
+        return realname_commands(user)
     except KeyError:
         pass
     uid = 60000
@@ -98,13 +116,18 @@ def account_commands(user):
 
 def create_account_commands(user, uid):
     group, account = f"/Groups/{user}", f"/Users/{user}"
-    entries = [(group, None, None), (group, "PrimaryGroupID", str(uid)),
-               (account, None, None), (account, "UniqueID", str(uid)),
+    entries = [(group, "RealName", "collab-ai share"), (group, "PrimaryGroupID", str(uid)),
+               (account, "RealName", "collab-ai share"), (account, "UniqueID", str(uid)),
                (account, "PrimaryGroupID", str(uid)), (account, "UserShell", "/usr/bin/false"),
                (account, "NFSHomeDirectory", "/var/empty"), (account, "Password", "*"),
                (account, "IsHidden", "1")]
-    return [["sudo", "-n", "/usr/bin/dscl", ".", "-create", path, *([key, value] if key else [])]
+    return [["sudo", "-n", "/usr/bin/dscl", ".", "-create", path, key, value]
             for path, key, value in entries]
+
+
+def realname_commands(user):
+    return [["sudo", "-n", "/usr/bin/dscl", ".", "-create", f"/{kind}/{user}", "RealName", "collab-ai share"]
+            for kind in ("Groups", "Users")]
 
 
 def acl_commands(mounts, user):

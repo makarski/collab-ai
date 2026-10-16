@@ -39,6 +39,7 @@ class MacIdentityLiveTests(unittest.TestCase):
                 setup(mounts, user)
                 account = identity(user)
                 self.assertNotEqual(account.pw_uid, os.getuid())
+                self.verify_name_repair(mounts, user, account)
                 probe = subprocess.check_output(["sudo", "-n", "/usr/bin/python3", "-I", str(HELPER), user, "--identity", "false", str(os.getpid())], text=True)
                 self.assertEqual(json.loads(probe), dict(uid=account.pw_uid, gid=account.pw_gid, groups=[account.pw_gid]))
                 command = server_command(shared, False, user)
@@ -54,6 +55,19 @@ class MacIdentityLiveTests(unittest.TestCase):
             finally:
                 for kind in ("Users", "Groups"):
                     subprocess.run(["sudo", "-n", "dscl", ".", "-delete", f"/{kind}/{user}"], capture_output=True)
+
+    def verify_name_repair(self, mounts, user, original):
+        records = [f"/{kind}/{user}" for kind in ("Users", "Groups")]
+        for record in records:
+            value = subprocess.check_output(["dscl", ".", "-read", record, "RealName"], text=True)
+            self.assertIn("collab-ai share", value)
+            subprocess.run(["sudo", "-n", "dscl", ".", "-delete", record, "RealName"], check=True)
+        setup(mounts, user)
+        for record in records:
+            value = subprocess.check_output(["dscl", ".", "-read", record, "RealName"], text=True)
+            self.assertIn("collab-ai share", value)
+        repaired = identity(user)
+        self.assertEqual((repaired.pw_uid, repaired.pw_gid), (original.pw_uid, original.pw_gid))
 
     def verify_operator_death(self, shared, user):
         code = ("import sys,subprocess; from pathlib import Path; "

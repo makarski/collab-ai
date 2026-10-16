@@ -88,3 +88,50 @@ class MacIdentityTests(unittest.TestCase):
                 patch.object(shares.grp, "getgrall", return_value=[]), \
                 self.assertRaises(ValueError):
             shares.unused_account("collab-share-new", 60000)
+
+
+class MacAccountSetupTests(unittest.TestCase):
+    def test_new_account_and_group_have_names_from_creation(self):
+        commands = shares.create_account_commands("collab-share-test", 60000)
+        for kind in ("Users", "Groups"):
+            record = f"/{kind}/collab-share-test"
+            first = next(command for command in commands if command[5] == record)
+            self.assertEqual(first, ["sudo", "-n", "/usr/bin/dscl", ".", "-create", record,
+                                     "RealName", "collab-ai share"])
+        attributes = {tuple(command[5:7]): command[7] for command in commands}
+        self.assertEqual(attributes[("/Users/collab-share-test", "UserShell")], "/usr/bin/false")
+        self.assertEqual(attributes[("/Users/collab-share-test", "Password")], "*")
+
+    def test_valid_existing_identity_gets_only_name_repairs(self):
+        with patch.object(shares, "identity") as identity:
+            commands = shares.account_commands("collab-share")
+        identity.assert_called_once_with("collab-share")
+        self.assertEqual(commands, [
+            ["sudo", "-n", "/usr/bin/dscl", ".", "-create", "/Groups/collab-share", "RealName", "collab-ai share"],
+            ["sudo", "-n", "/usr/bin/dscl", ".", "-create", "/Users/collab-share", "RealName", "collab-ai share"],
+        ])
+
+    def test_unsafe_existing_identity_is_not_repaired(self):
+        with patch.object(shares, "identity", side_effect=ValueError("unsafe account")), \
+                patch.object(shares, "realname_commands") as repair, \
+                self.assertRaisesRegex(ValueError, "unsafe account"):
+            shares.account_commands("collab-share")
+        repair.assert_not_called()
+
+    def test_orphaned_group_reports_recovery_without_adoption(self):
+        group = SimpleNamespace(gr_name="collab-share", gr_gid=60000)
+        with patch.object(shares, "identity", side_effect=KeyError), \
+                patch.object(shares.pwd, "getpwall", return_value=[]), \
+                patch.object(shares.grp, "getgrall", return_value=[group]), \
+                patch.object(shares.subprocess, "run") as run, \
+                self.assertRaisesRegex(ValueError, "GID 60000.*missing.*reapply project ACLs"):
+            shares.account_commands("collab-share")
+        run.assert_not_called()
+
+    def test_other_groups_with_the_same_id_still_block_creation(self):
+        group = SimpleNamespace(gr_name="unrelated", gr_gid=60000)
+        with patch.object(shares, "identity", side_effect=KeyError), \
+                patch.object(shares.pwd, "getpwall", return_value=[]), \
+                patch.object(shares.grp, "getgrall", return_value=[group]), \
+                self.assertRaisesRegex(ValueError, "already exists"):
+            shares.account_commands("collab-share")
