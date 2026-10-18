@@ -6,6 +6,8 @@ import re
 import subprocess
 import uuid
 
+from sandbox_base_image import DEFAULT_REPO, ensure_base
+
 
 def run(args, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
@@ -51,12 +53,13 @@ class Builder:
         self.storage_pool, self.network = storage_pool, network
         self.created = False
 
-    def create(self, base, disk="12GiB", memory="4GiB"):
+    def create(self, base, repo=DEFAULT_REPO, disk="12GiB", memory="4GiB"):
         run(["incus", "project", "create", f"{self.remote}:{self.project}",
              "-c", "features.images=true", "-c", "features.profiles=true",
              "-c", "features.networks=false", "-c", "features.storage.volumes=true"])
         self.created = True
-        run(self.command + ["init", f"images:{base}", self.target, "--no-profiles",
+        image = ensure_base(self.remote, self.project, base, repo).ref
+        run(self.command + ["init", image, self.target, "--no-profiles",
                             "--storage", self.storage_pool, "--network", self.network,
                             "-d", f"root,size={disk}", "-c", "security.privileged=false",
                             "-c", "security.nesting=false", "-c", "security.guestapi=false",

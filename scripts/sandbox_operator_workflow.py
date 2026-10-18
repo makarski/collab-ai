@@ -11,6 +11,7 @@ import tempfile
 from sandbox_operator_config import (ROOT, OPERATOR_HOME, file_sha, image_selection, plan_identity,
                                      provisioning_files, state_project)
 from sandbox_operator_plan import validate_plan
+from sandbox_base_image import DEFAULT_REPO
 from sandbox_operator_runtime import Operator
 from sandbox_operator_state import deployment_lock, private_write, state_server
 from sandbox_operator_tunnel import state_connection
@@ -123,7 +124,7 @@ def run_locked_operation(args, directory, server):
     apply_started = False
     completed = False
     try:
-        operator.create()
+        operator.create(getattr(args, "repo", DEFAULT_REPO))
         with ExitStack() as stack:
             temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="collab-operator-")))
             operator.install(temporary)

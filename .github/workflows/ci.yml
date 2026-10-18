@@ -60,6 +60,10 @@ jobs:
           tofu_wrapper: false
       - run: go test -race ./... -timeout=60s
       - run: python3 -m unittest discover -s scripts/tests -v
+      - name: Check that every pinned base image is mirrored or still upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/base-image-mirror.py check --repo "$GITHUB_REPOSITORY"
       - run: |
           tofu -chdir=infra/incus init -input=false -lockfile=readonly
           tofu -chdir=infra/incus fmt -check
@@ -91,23 +95,26 @@ jobs:
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT bash scripts/ci-incus.sh
       - name: Build selected app and tools inside Incus
         env:
+          GH_TOKEN: ${{ github.token }}
           APP_REF: ${{ inputs.collab_ref || github.sha }}
           CODEX_VERSION: ${{ inputs.codex_version }}
           CLAUDE_VERSION: ${{ inputs.claude_version }}
           GO_VERSION: ${{ inputs.go_version }}
         run: |
-          args=(--remote local --collab-ref "$APP_REF" --output dist/workspace)
+          args=(--remote local --repo "$GITHUB_REPOSITORY" --collab-ref "$APP_REF" --output dist/workspace)
           if [[ -n "$CODEX_VERSION" ]]; then args+=(--codex-version "$CODEX_VERSION"); fi
           if [[ -n "$CLAUDE_VERSION" ]]; then args+=(--claude-version "$CLAUDE_VERSION"); fi
           if [[ -n "$GO_VERSION" ]]; then args+=(--go-version "$GO_VERSION"); fi
-          sudo python3 scripts/sandbox-image.py "${args[@]}"
+          sudo --preserve-env=GH_TOKEN python3 scripts/sandbox-image.py "${args[@]}"
       - name: Enforce the image size budget
         run: |
           size=$(stat -c %s dist/workspace/release/collab-ai-workspace-linux-*.tar.gz)
           echo "image: $((size / 1048576)) MiB (budget 400 MiB)"
           test "$size" -lt $((400 * 1024 * 1024))
       - name: Build the optional tool bundles inside Incus
-        run: sudo python3 scripts/sandbox-bundles.py --remote local --output dist/workspace/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo --preserve-env=GH_TOKEN python3 scripts/sandbox-bundles.py --remote local --repo "$GITHUB_REPOSITORY" --output dist/workspace/release
       - name: Install the exported artifact and smoke-test offline SSH
         run: |
           sudo python3 scripts/sandbox-download.py --remote local --from-dir dist/workspace/release --output dist/installed
@@ -115,7 +122,9 @@ jobs:
       - name: Prove offline controller and dev boundaries
         run: sudo env "PATH=$PATH" python3 scripts/sandbox-boundary.py --remote local --image-dir dist/installed
       - name: Prove containerized provisioning and host-state recovery
-        run: sudo --preserve-env=PATH python3 scripts/sandbox-operator-smoke.py --remote local
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo --preserve-env=PATH,GH_TOKEN python3 scripts/sandbox-operator-smoke.py --remote local
       - name: Upload tested release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -125,9 +134,29 @@ jobs:
           compression-level: 0
           retention-days: 7
 
+  base-mirror:
+    # Every published workspace must have its base images retained, whatever upstream prunes.
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/workspace-v'))
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: base-mirror-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Mirror and verify the pinned base images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/base-image-mirror.py publish --repo "$GITHUB_REPOSITORY"
+
   release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/workspace-v'))
-    needs: [checks, images, mac-sharing]
+    needs: [checks, images, mac-sharing, base-mirror]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
