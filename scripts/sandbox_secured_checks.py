@@ -12,7 +12,7 @@ from sandbox_boundary_checks import report, stop_relay
 
 STATE = "/var/lib/collab-ai-secured"
 STATUS = "/mnt/collab-status/status.sock"
-ENV = ["env", f"COLLAB_BUDGET_DIR={STATE}/budgets"]
+ENV = ["env", f"PAIRTASK_BUDGET_DIR={STATE}/budgets"]
 
 
 def run(command, **kwargs):
@@ -46,7 +46,7 @@ class Deployment:
                             "--group", str(uid), "--", *command]
 
     def status(self):
-        return self.execute("workspace", "env", "COLLAB_BUDGET_DIR=/tmp/decoy", "collab", "budget", "status",
+        return self.execute("workspace", "env", "PAIRTASK_BUDGET_DIR=/tmp/decoy", "collab", "budget", "status",
                             "smoke", "--socket", STATUS, "--json", uid=1001)
 
     def snapshot(self):
@@ -128,7 +128,7 @@ def check_denials(deployment):
     denied(deployment.execute("secured", "cat", f"{STATE}/budgets/smoke.json", uid=1001))
     denied(deployment.execute("secured", "touch", "/mnt/collab-status/forbidden", uid=1001))
     # Creating a same-name budget in dev must not change the mounted authority.
-    run(deployment.execute("workspace", "env", "COLLAB_BUDGET_DIR=/tmp/decoy", "collab", "budget", "create",
+    run(deployment.execute("workspace", "env", "PAIRTASK_BUDGET_DIR=/tmp/decoy", "collab", "budget", "create",
                            "smoke", "--tokens", "9999", uid=1001))
     snapshot = json.loads(run(deployment.status()))
     if (snapshot["cap"], snapshot["reported_tokens"]) != (100, 60):

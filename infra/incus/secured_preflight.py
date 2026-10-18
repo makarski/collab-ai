@@ -25,9 +25,9 @@ def require_stopped(status, payload, role="workspace"):
 
 
 def main():
-    connection = IncusConnection(os.environ["COLLAB_INCUS_SOCKET"], timeout=10)
+    connection = IncusConnection(os.environ["PAIRTASK_INCUS_SOCKET"], timeout=10)
     try:
-        project = quote(os.environ["COLLAB_INCUS_PROJECT"], safe="")
+        project = quote(os.environ["PAIRTASK_INCUS_PROJECT"], safe="")
         for role in ("workspace", "secured"):
             connection.request("GET", f"/1.0/instances/{role}?project={project}", headers={"Host": "incus"})
             response = connection.getresponse()

@@ -2,15 +2,28 @@
 
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess
 
+from sandbox_env import canonical_name, lookup
 from sandbox_operator_state import deployment_lock, private_write
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OPERATOR_HOME = Path(os.environ.get("COLLAB_OPERATOR_HOME", Path.home() / ".local/state/collab-ai/operator"))
+def operator_home():
+    """The operator registry directory: an absolute path after ~ expansion.
+    Unset (or an empty legacy value) means the default; an empty or relative
+    canonical value is an error, never the current directory."""
+    value, present, legacy_used = lookup("OPERATOR_HOME")
+    if not present or (legacy_used and value == ""):
+        return Path.home() / ".local/state/collab-ai/operator"
+    home = Path(value).expanduser()
+    if value == "" or not home.is_absolute():
+        raise ValueError(f"{canonical_name('OPERATOR_HOME')} must be an absolute path")
+    return home
+
+
+OPERATOR_HOME = operator_home()
 LOCATION = OPERATOR_HOME / "locations.json"
 
 

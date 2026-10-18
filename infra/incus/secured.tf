@@ -14,8 +14,8 @@ resource "terraform_data" "secured_preflight" {
     interpreter = ["python3", "-c"]
     command     = file("${path.module}/secured_preflight.py")
     environment = {
-      COLLAB_INCUS_SOCKET  = var.incus_socket
-      COLLAB_INCUS_PROJECT = var.project_name
+      PAIRTASK_INCUS_SOCKET  = var.incus_socket
+      PAIRTASK_INCUS_PROJECT = var.project_name
     }
   }
 }

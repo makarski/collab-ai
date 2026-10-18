@@ -13,8 +13,8 @@ ConditionPathIsMountPoint=!/mnt/collab-ipc
 User=agent
 Group=agent
 WorkingDirectory=/workspace
-Environment=COLLAB_SOCKET_PATH=/tmp/collab-ai.sock
-Environment=COLLAB_DB_PATH=/var/lib/collab-ai/inboxes.db
+Environment=PAIRTASK_SOCKET_PATH=/tmp/collab-ai.sock
+Environment=PAIRTASK_DB_PATH=/var/lib/collab-ai/inboxes.db
 ExecStart=/usr/local/bin/broker
 Restart=on-failure
 UMask=0077

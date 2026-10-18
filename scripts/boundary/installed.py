@@ -30,7 +30,7 @@ def installed_events(number, name):
 
 def budget(*args):
     return subprocess.run(["collab", "budget", *args], env={"PATH": "/usr/local/bin:/usr/bin:/bin",
-                          "COLLAB_BUDGET_DIR": str(ROOT / "budgets")},
+                          "PAIRTASK_BUDGET_DIR": str(ROOT / "budgets")},
                           capture_output=True, text=True, check=True, timeout=10).stdout
 
 

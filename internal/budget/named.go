@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/pairtask/pairtask/internal/config"
 )
 
 // Store names local task budgets. Each budget still has one managed launcher.
@@ -14,16 +16,16 @@ type Store struct{ Directory string }
 var budgetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func DefaultStore() (Store, error) {
-	directory := os.Getenv("COLLAB_BUDGET_DIR")
-	if directory == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Store{}, err
-		}
-		directory = filepath.Join(home, ".local", "state", "collab-ai", "budgets")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Store{}, err
+	}
+	directory, err := config.Required(os.LookupEnv, "BUDGET_DIR", filepath.Join(home, ".local", "state", "collab-ai", "budgets"))
+	if err != nil {
+		return Store{}, err
 	}
 	if !filepath.IsAbs(directory) {
-		return Store{}, errors.New("COLLAB_BUDGET_DIR must be an absolute path")
+		return Store{}, errors.New(config.Name("BUDGET_DIR") + " must be an absolute path")
 	}
 	return Store{Directory: filepath.Clean(directory)}, nil
 }

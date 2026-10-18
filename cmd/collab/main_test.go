@@ -104,7 +104,7 @@ func TestStatusJSONUsesReadOnlyRequestAndSocketEnvironment(t *testing.T) {
 		out := readyStatus()
 		protocol.WriteFrame(conn, protocol.Message{Type: protocol.TypeStatus, Status: &out})
 	})
-	t.Setenv("COLLAB_SOCKET_PATH", socket)
+	t.Setenv("PAIRTASK_SOCKET_PATH", socket)
 	code, out := runJSON(t)
 	assertStatusEqual(t, "exit code", code, 0)
 	assertJSONField(t, out, "reachable", true)

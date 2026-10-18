@@ -41,7 +41,7 @@ jobs:
           /usr/bin/python3 scripts/sandbox-provision.py --help
       - name: Prove restricted file access and dedicated host ownership
         env:
-          COLLAB_MAC_IDENTITY_PROOF: '1'
+          PAIRTASK_MAC_IDENTITY_PROOF: '1'
         run: python3 -m unittest discover -s scripts/tests -v
 
   checks:

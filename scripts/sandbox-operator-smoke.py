@@ -58,7 +58,7 @@ def invoke(directory, args, action, extra=()):
     command = [sys.executable, str(ROOT / "scripts/sandbox-provision.py"), action,
                "--remote", args.remote, "--state-dir", str(directory / "state"), "--project", args.project,
                "--repo", args.repo]
-    env = dict(os.environ, COLLAB_OPERATOR_HOME=str(directory / "registry"))
+    env = dict(os.environ, PAIRTASK_OPERATOR_HOME=str(directory / "registry"))
     return subprocess.run(command + list(extra), env=env, check=False)
 
 

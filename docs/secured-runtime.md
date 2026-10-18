@@ -145,11 +145,11 @@ Run on your host. On Linux replace `colima-collab-ai:` with `local:`:
 
 ```sh
 incus --project collab-ai exec colima-collab-ai:secured -- \
-  env COLLAB_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
+  env PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
   collab budget create my-task --tokens 100000
 
 incus --project collab-ai exec colima-collab-ai:secured -- \
-  env COLLAB_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
+  env PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
   collab budget status my-task --json
 ```
 

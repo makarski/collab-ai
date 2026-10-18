@@ -12,7 +12,7 @@ go build -o collab ./cmd/collab
 ./collab status --socket /path/to/broker.sock --timeout 5s
 ```
 
-The socket defaults to `COLLAB_SOCKET_PATH`, then `/tmp/collab-ai.sock`. The
+The socket defaults to `PAIRTASK_SOCKET_PATH`, then `/tmp/collab-ai.sock`. The
 client timeout defaults to three seconds and must be greater than zero and at
 most 30 seconds. The broker allows up to 30 seconds for hub processing,
 including waiting for the hub to handle the request. The client's deadline

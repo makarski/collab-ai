@@ -8,7 +8,7 @@ import time
 from sandbox_boundary_host import run
 
 
-ENV = ["env", "COLLAB_BUDGET_DIR=/var/lib/collab-proof/budgets"]
+ENV = ["env", "PAIRTASK_BUDGET_DIR=/var/lib/collab-proof/budgets"]
 CLI = "/usr/local/bin/collab"
 LAUNCHER = "/usr/local/bin/collab-codex"
 STATUS = "/mnt/proof-status/public/status.sock"
@@ -144,7 +144,7 @@ def check_restricted_native(host):
     print(host.exe("secured", "python3", "/opt/proof/crash.py"), end="", flush=True)
     run(host.base + ["restart", host.remote + "secured"])
     wait_for_service_manager(host)
-    saved = json.loads(host.exe("secured", "env", "COLLAB_BUDGET_DIR=/var/lib/collab-ai-secured/budgets",
+    saved = json.loads(host.exe("secured", "env", "PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets",
                                 CLI, "budget", "status", "crash-proof", "--json"))
     if not saved.get("session_unfinished"):
         raise ValueError("Container restart lost interrupted-session accounting")

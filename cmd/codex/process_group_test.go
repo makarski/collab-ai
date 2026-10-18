@@ -16,7 +16,7 @@ func TestAppServerShutdownKillsUncooperativeDescendants(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := appServerCommand(ctx, os.Args[0], "-test.run=^TestProcessGroupHelper$")
-	cmd.Env = append(os.Environ(), "COLLAB_GROUP_TEST=wrapper")
+	cmd.Env = append(os.Environ(), "PAIRTASK_GROUP_TEST=wrapper")
 	// Own the pipe: Cmd.Wait closes StdoutPipe even if a descendant is still
 	// alive. Here EOF proves that both inherited writers have actually closed.
 	output, writer, err := os.Pipe()
@@ -48,7 +48,7 @@ func TestAppServerShutdownKillsUncooperativeDescendants(t *testing.T) {
 }
 
 func TestProcessGroupHelper(t *testing.T) {
-	role := os.Getenv("COLLAB_GROUP_TEST")
+	role := os.Getenv("PAIRTASK_GROUP_TEST")
 	if role == "" {
 		return
 	}
@@ -64,7 +64,7 @@ func TestProcessGroupHelper(t *testing.T) {
 
 func runUncooperativeWrapper() {
 	child := exec.Command(os.Args[0], "-test.run=^TestProcessGroupHelper$")
-	child.Env = append(os.Environ(), "COLLAB_GROUP_TEST=child")
+	child.Env = append(os.Environ(), "PAIRTASK_GROUP_TEST=child")
 	child.Stdout = os.Stdout
 	if err := child.Start(); err != nil {
 		os.Exit(2)

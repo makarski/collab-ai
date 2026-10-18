@@ -143,7 +143,7 @@ def scenario(name, cap):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     _, environment = codex_command(directory, server.server_port)
     environment.update({"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(directory),
-                        "COLLAB_BUDGET_DIR": str(directory / "budgets")})
+                        "PAIRTASK_BUDGET_DIR": str(directory / "budgets")})
     try:
         subprocess.run(["collab", "budget", "create", name, "--tokens", str(cap)],
                        env=environment, check=True, capture_output=True, timeout=5)

@@ -12,12 +12,14 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/config"
 )
 
 func main() {
-	socketDefault := os.Getenv("COLLAB_SOCKET_PATH")
-	if socketDefault == "" {
-		socketDefault = "/tmp/collab-ai.sock"
+	socketDefault, err := config.Required(os.LookupEnv, "SOCKET_PATH", "/tmp/collab-ai.sock")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
 	socket := flag.String("socket", socketDefault, "broker Unix socket path")
 	agent := flag.String("agent-id", "", "logical inbox ID; one active session per ID (required)")

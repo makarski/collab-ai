@@ -41,7 +41,7 @@ def rollout(args, directory, project, image):
     subprocess.run([sys.executable, str(ROOT / "scripts/sandbox-provision.py"), "rollout",
         "--remote", args.remote, "--project", project, "--state-dir", str(directory),
         "--image-dir", str(image.resolve()), "--ssh-state-dir", str(directory / "ssh")],
-        env=dict(os.environ, COLLAB_OPERATOR_HOME=str(directory / "registry")), check=True)
+        env=dict(os.environ, PAIRTASK_OPERATOR_HOME=str(directory / "registry")), check=True)
 
 
 def require_imported_image(directory, fingerprint):

@@ -21,7 +21,7 @@ with its `references/` directory. [Acceptance cases](skill-validation.md).
 
 Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
 your built MCP executable. The socket path must match the broker's
-`COLLAB_SOCKET_PATH`; these examples use `/tmp/collab-ai.sock` as in the [quick start](../README.md#run-on-your-host).
+`PAIRTASK_SOCKET_PATH`; these examples use `/tmp/collab-ai.sock` as in the [quick start](../README.md#run-on-your-host).
 
 Codex:
 
@@ -64,7 +64,7 @@ If the server does not connect, the error names which half is wrong:
   The executable belongs in `command`.
 - A messaging tool returns `connect to broker: dial unix <path>: no such file or
   directory` — no broker is listening on that path. Discovery can still succeed.
-  Start the broker, or match `--socket` to its `COLLAB_SOCKET_PATH`. A socket
+  Start the broker, or match `--socket` to its `PAIRTASK_SOCKET_PATH`. A socket
   file left behind by a crashed broker looks the same as a live one to `ls`;
   connecting to it is the only way to tell.
 
@@ -76,7 +76,7 @@ closing: EOF`, because the pipe closes its stdin. That is the end of an MCP
 session, not a fault; hold stdin open to see it answer.
 
 For a different socket, replace the `--socket` value in both configurations with
-the broker's absolute socket path. `COLLAB_SOCKET_PATH` also sets the default when
+the broker's absolute socket path. `PAIRTASK_SOCKET_PATH` also sets the default when
 `--socket` is omitted. Optional `--model` records
 the model name with the agent session. Start the broker before the first messaging
 tool call. A failed initial connection can be retried with another tool call.

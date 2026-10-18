@@ -159,7 +159,7 @@ func TestOpenMissingBudgetDoesNotCreateLock(t *testing.T) {
 
 func TestLegacyInlineBudgetStatusAndDirectorySelection(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("COLLAB_BUDGET_DIR", dir)
+	t.Setenv("PAIRTASK_BUDGET_DIR", dir)
 	s, err := DefaultStore()
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestLegacyInlineBudgetStatusAndDirectorySelection(t *testing.T) {
 	}
 	b := namedOpen(t, s)
 	b.Close()
-	t.Setenv("COLLAB_BUDGET_DIR", "relative")
+	t.Setenv("PAIRTASK_BUDGET_DIR", "relative")
 	if _, err := DefaultStore(); err == nil {
 		t.Fatal("relative directory accepted")
 	}
