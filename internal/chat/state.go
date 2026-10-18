@@ -3,7 +3,7 @@ package chat
 import (
 	"sort"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // StateView is a read-only snapshot of the chat for tests and the CLI.

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 
 	"github.com/google/uuid"
 )

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func fixture(t *testing.T, fetch fetchFunc) *model {

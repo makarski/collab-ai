@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/bridge"
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/server"
-	"collab-ai/internal/status"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/server"
+	"github.com/pairtask/pairtask/internal/status"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 func realBroker(t *testing.T) string {

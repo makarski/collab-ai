@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Transport is one open operator session connection.

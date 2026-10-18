@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"collab-ai/internal/chat"
-	"collab-ai/internal/protocol"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/pairtask/pairtask/internal/chat"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func TestChatV2ReviewRejectedDirectSendCannotBecomeBroadcastDraft(t *testing.T) {

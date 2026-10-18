@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func sessionQueueNext(t *testing.T, s *OperatorSession) protocol.Message {

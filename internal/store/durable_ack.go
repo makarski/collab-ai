@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func (s *Store) isDurable(ctx context.Context, id string) (bool, error) {

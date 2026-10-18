@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // DelegatedInbox is a non-consuming view of frames still retained by the parent.

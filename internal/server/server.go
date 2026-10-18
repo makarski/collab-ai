@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
 
 	"github.com/google/uuid"
 )

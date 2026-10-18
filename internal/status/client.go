@@ -9,7 +9,7 @@ import (
 	"net"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Fetch never sends hello or retries through a messaging adapter. The returned

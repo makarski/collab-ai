@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 type operatorWireScope struct {

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/host"
 	"github.com/coder/websocket"
+	"github.com/pairtask/pairtask/internal/host"
 )
 
 func dialTerminal(ctx context.Context, endpoint *terminalEndpoint, origin string) (*websocket.Conn, *http.Response, error) {

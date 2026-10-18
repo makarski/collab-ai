@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"collab-ai/internal/chat"
+	"github.com/pairtask/pairtask/internal/chat"
 )
 
 const operatorChatUsage = "usage: collab operator chat [--socket PATH] [--timeout 5s]"

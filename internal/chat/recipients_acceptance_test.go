@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/chat"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/chat"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func TestChatRecipientGrammarPreservesLiteralIdentity(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/chat"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/chat"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func chatExchange(t *testing.T, tr chat.Transport, req protocol.Message) protocol.Message {

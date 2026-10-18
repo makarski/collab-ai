@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/chat"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/chat"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func chatSocket(t *testing.T, serve func(net.Conn)) string {

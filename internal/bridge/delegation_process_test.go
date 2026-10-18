@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Re-exec the test binary as the real stdio adapter used by separate hosts.

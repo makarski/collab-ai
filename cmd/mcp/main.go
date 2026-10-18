@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"collab-ai/internal/bridge"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/bridge"
 )
 
 func main() {

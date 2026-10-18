@@ -7,8 +7,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/status"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/status"
 )
 
 type Config struct {

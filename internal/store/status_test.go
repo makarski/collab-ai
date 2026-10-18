@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func readStatus(t *testing.T, st *Store) StatusRecords {

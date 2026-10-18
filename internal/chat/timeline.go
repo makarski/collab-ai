@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"sort"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Receipt states of a received message in this chat.

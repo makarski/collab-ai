@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // ReplyResult consumes at most one frame. A reply is neither an acknowledgment

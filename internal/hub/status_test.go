@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 func runningStatusHub(t *testing.T) *Hub {

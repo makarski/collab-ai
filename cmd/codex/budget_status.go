@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"collab-ai/internal/budget"
+	"github.com/pairtask/pairtask/internal/budget"
 )
 
 func openBudgetStatus(ctx context.Context, path, name string, b *budget.Budget) (func(), error) {

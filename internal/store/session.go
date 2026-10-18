@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 var ErrInvalidMessage = errors.New("message is not an operator-sent message")

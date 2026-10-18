@@ -7,9 +7,9 @@ import (
 	"net"
 	"time"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 // OperatorServer accepts one-shot operator requests. Only peers whose kernel-

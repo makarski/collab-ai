@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 // operatorReceive returns a page and changes no receipts. Its audit row holds

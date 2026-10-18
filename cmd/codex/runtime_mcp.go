@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"sync"
 
-	"collab-ai/internal/bridge"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/bridge"
 )
 
 // This endpoint exposes the existing listener, never another broker connection.

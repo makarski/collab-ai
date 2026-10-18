@@ -6,8 +6,8 @@ import (
 	"errors"
 	"sort"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 // snapshotReserve keeps a snapshot frame below the wire limit after framing.

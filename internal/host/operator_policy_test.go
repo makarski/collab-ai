@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/budget"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/budget"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func restrictedFixture(t *testing.T) (*Proxy, chan Frame, chan Frame) {

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func structuredResult[T any](t *testing.T, r *mcp.CallToolResult) T {

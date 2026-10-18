@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // The per-inbox limits fit a full reconnect replay in the existing 64-frame

@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 const operatorSchema = `

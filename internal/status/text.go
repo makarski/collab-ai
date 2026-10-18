@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func WriteText(w io.Writer, out protocol.StatusSnapshot) error {

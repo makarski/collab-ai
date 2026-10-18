@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"testing"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func TestOperatorInboxStatusHumanPendingAndUnknown(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/bridge"
+	"github.com/pairtask/pairtask/internal/bridge"
 )
 
 func TestTerminalDiagnosticsKeepBoundedTail(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/bridge"
+	"github.com/pairtask/pairtask/internal/bridge"
 )
 
 func TestMissingBrokerSocketFailsBeforeStartingCodex(t *testing.T) {

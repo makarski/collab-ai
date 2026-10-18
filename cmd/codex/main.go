@@ -11,9 +11,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"collab-ai/internal/bridge"
-	"collab-ai/internal/budget"
-	"collab-ai/internal/host"
+	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/budget"
+	"github.com/pairtask/pairtask/internal/host"
 	"golang.org/x/sync/errgroup"
 )
 

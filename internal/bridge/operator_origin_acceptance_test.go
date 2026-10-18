@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func TestOperatorAcceptanceClaudeChannelOrigin(t *testing.T) {

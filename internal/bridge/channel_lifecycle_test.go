@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func connectAutoChannel(t *testing.T, l *Listener) *mcp.ClientSession {

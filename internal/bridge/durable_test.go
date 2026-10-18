@@ -14,10 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/server"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/server"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 // A real child broker is killed without cleanup, exercising SQLite crash
