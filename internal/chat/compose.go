@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"slices"
 	"sort"
 	"strings"
 
@@ -156,9 +155,7 @@ func (m *Model) refreshAgentPicker() {
 	c := &m.compose
 	fragment, ok := m.mentionFragment()
 	if !ok {
-		if c.picker != nil && c.picker.kind == PickerAgent {
-			c.picker = nil
-		}
+		c.closePicker(PickerAgent)
 		return
 	}
 	items := m.agentCandidates(fragment)
@@ -167,10 +164,24 @@ func (m *Model) refreshAgentPicker() {
 		return
 	}
 	selected := 0
-	if c.picker != nil && c.picker.kind == PickerAgent && c.picker.selected < len(items) {
-		selected = c.picker.selected
+	if p := c.openPicker(PickerAgent); p != nil && p.selected < len(items) {
+		selected = p.selected
 	}
 	c.picker = &picker{kind: PickerAgent, items: items, selected: selected}
+}
+
+// openPicker is the open picker of kind, or nil.
+func (c *composer) openPicker(kind string) *picker {
+	if c.picker != nil && c.picker.kind == kind {
+		return c.picker
+	}
+	return nil
+}
+
+func (c *composer) closePicker(kind string) {
+	if c.openPicker(kind) != nil {
+		c.picker = nil
+	}
 }
 
 // mentionFragment is the "@…" token being typed at the end of the leading
@@ -180,14 +191,14 @@ func (m *Model) mentionFragment() (string, bool) {
 	if c.pasted || c.editor.Line() != 0 {
 		return "", false
 	}
-	value := c.editor.Value()
-	if strings.Contains(value, "\n") || strings.HasPrefix(strings.TrimLeft(value, " \t"), `\@`) {
+	return lastMentionToken(c.editor.Value())
+}
+
+func lastMentionToken(value string) (string, bool) {
+	if !openToken(value) {
 		return "", false
 	}
 	fields := strings.Fields(value)
-	if len(fields) == 0 || strings.HasSuffix(value, " ") || strings.HasSuffix(value, "\t") {
-		return "", false
-	}
 	for _, f := range fields {
 		if !strings.HasPrefix(f, "@") {
 			return "", false // the prefix already ended
@@ -196,30 +207,61 @@ func (m *Model) mentionFragment() (string, bool) {
 	return strings.TrimPrefix(fields[len(fields)-1], "@"), true
 }
 
+// openToken reports a single-line, unescaped draft whose cursor (at the end)
+// is still inside a word.
+func openToken(value string) bool {
+	if value == "" || strings.Contains(value, "\n") {
+		return false
+	}
+	if strings.HasPrefix(strings.TrimLeft(value, " \t"), `\@`) {
+		return false
+	}
+	last := value[len(value)-1]
+	return last != ' ' && last != '\t'
+}
+
 // agentCandidates lists agent IDs matching a fragment: online first, then
 // agents seen in the conversation. The @all keyword is typed, never picked,
 // so an agent named "all" stays distinct from it.
 func (m *Model) agentCandidates(fragment string) []string {
-	seen := map[string]bool{}
-	var online, others []string
+	return append(m.onlineIDs(fragment), m.conversationIDs(fragment)...)
+}
+
+func (m *Model) onlineIDs(fragment string) []string {
+	var ids []string
 	for _, a := range m.agents.list {
-		if !seen[a.AgentID] && strings.HasPrefix(a.AgentID, fragment) {
-			seen[a.AgentID] = true
-			online = append(online, a.AgentID)
-		}
+		ids = append(ids, a.AgentID)
 	}
+	return pickable(ids, fragment, nil)
+}
+
+// conversationIDs lists agents seen in the loaded conversation that aren't online.
+func (m *Model) conversationIDs(fragment string) []string {
+	online := map[string]bool{}
+	for _, a := range m.agents.list {
+		online[a.AgentID] = true
+	}
+	var ids []string
 	for _, e := range m.timeline.order {
-		for _, id := range append([]string{e.msg.From, e.msg.To}, e.msg.Group...) {
-			if id == "" || id == "*" || id == "operator" || seen[id] || !strings.HasPrefix(id, fragment) {
-				continue
-			}
-			seen[id] = true
-			others = append(others, id)
-		}
+		ids = append(append(ids, e.msg.From, e.msg.To), e.msg.Group...)
 	}
-	sort.Strings(online)
-	sort.Strings(others)
-	return append(online, others...)
+	return pickable(ids, fragment, online)
+}
+
+// pickable keeps agent IDs that start with fragment, once each, sorted,
+// leaving out the broker's own names and anything in skip.
+func pickable(ids []string, fragment string, skip map[string]bool) []string {
+	seen := map[string]bool{"": true, "*": true, "operator": true}
+	var out []string
+	for _, id := range ids {
+		if seen[id] || skip[id] || !strings.HasPrefix(id, fragment) {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // pickerKey handles keys while a picker is open. Tab and Enter only complete.
@@ -292,36 +334,47 @@ func (m *Model) closeCommandLine() {
 
 // commandKey handles a key on the command line.
 func (m *Model) commandKey(msg tea.KeyPressMsg) tea.Cmd {
-	c := &m.compose
-	line := c.cmd
-	switch msg.String() {
-	case "esc":
-		m.closeCommandLine()
-		return nil
-	case "enter":
-		return m.runCommandLine()
-	case "tab":
-		m.completeCommand()
-		return nil
-	case "up", "down":
-		if c.picker != nil {
-			m.pickerKey(msg)
-		}
-		return nil
+	if cmd, handled := m.commandControl(msg); handled {
+		return cmd
 	}
+	line := m.compose.cmd
 	if msg.Text == "/" && line.input.Value() == "" {
-		// "//" leaves command mode and starts a draft beginning with "/".
-		m.closeCommandLine()
-		if c.draftEmpty() {
-			c.editor.SetValue("/")
-			c.editor.CursorEnd()
-		}
+		m.slashDraft()
 		return nil
 	}
 	var cmd tea.Cmd
 	line.input, cmd = line.input.Update(msg)
 	m.refreshCommandPicker()
 	return cmd
+}
+
+func (m *Model) commandControl(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch msg.String() {
+	case "esc":
+		m.closeCommandLine()
+	case "enter":
+		return m.runCommandLine(), true
+	case "tab":
+		m.completeCommand()
+	case "up", "down":
+		if m.compose.picker != nil {
+			m.pickerKey(msg)
+		}
+	default:
+		return nil, false
+	}
+	return nil, true
+}
+
+// slashDraft handles "//": it leaves command mode and starts a draft
+// beginning with "/".
+func (m *Model) slashDraft() {
+	c := &m.compose
+	m.closeCommandLine()
+	if c.draftEmpty() {
+		c.editor.SetValue("/")
+		c.editor.CursorEnd()
+	}
 }
 
 func (m *Model) refreshCommandPicker() {
@@ -331,7 +384,7 @@ func (m *Model) refreshCommandPicker() {
 		c.picker = nil
 		return
 	}
-	items := m.commandCandidates(name)
+	items := m.commandCandidates(argument(name))
 	if len(items) == 0 {
 		c.picker = nil
 		return
@@ -353,7 +406,7 @@ func (m *Model) completeCommand() {
 // key routes a key press: global keys, then the help panel, then the
 // command line, then the draft.
 func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
-	if cmd, handled := m.globalKey(msg.String()); handled {
+	if cmd, handled := m.globalKey(msg); handled {
 		return cmd
 	}
 	if m.compose.cmd != nil {
@@ -368,37 +421,41 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	return m.editorKey(msg)
 }
 
-func (m *Model) globalKey(k string) (tea.Cmd, bool) {
-	switch k {
+func (m *Model) globalKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch msg.String() {
 	case "ctrl+q", "ctrl+c":
 		return m.quit(), true
 	case "f1":
 		m.toggleHelp()
-		return nil, true
 	case "ctrl+k":
-		if m.compose.cmd == nil {
-			m.openCommandLine()
-		}
-		return nil, true
+		m.ensureCommandLine()
 	case "ctrl+r":
 		return m.ctrlR(), true
 	case "pgup":
-		if m.panel != nil {
-			m.panel.scroll(-1, m.layout().transcript)
-			return nil, true
-		}
-		return m.scrollPage(-1), true
+		return m.page(-1), true
 	case "pgdown":
-		if m.panel != nil {
-			m.panel.scroll(1, m.layout().transcript)
-			return nil, true
-		}
-		return m.scrollPage(1), true
+		return m.page(1), true
 	case "ctrl+end":
 		m.follow()
-		return nil, true
+	default:
+		return nil, false
 	}
-	return nil, false
+	return nil, true
+}
+
+func (m *Model) ensureCommandLine() {
+	if m.compose.cmd == nil {
+		m.openCommandLine()
+	}
+}
+
+// page scrolls an open panel, or the transcript.
+func (m *Model) page(direction int) tea.Cmd {
+	if m.panel != nil {
+		m.panel.scroll(direction, m.layout().transcript)
+		return nil
+	}
+	return m.scrollPage(direction)
 }
 
 // ctrlR retries a stopped connection, otherwise replies to the newest
@@ -422,6 +479,3 @@ func (m *Model) resize(width, height int) {
 	m.width, m.height = width, height
 	m.compose.editor.SetWidth(max(10, width))
 }
-
-// containsID reports whether ids contains id.
-func containsID(ids []string, id string) bool { return slices.Contains(ids, id) }

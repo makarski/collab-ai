@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -111,12 +112,12 @@ func (m *Model) scrollOffset() int {
 
 // findCommand finds the newest message containing text, visible rows
 // included; /find alone continues with older matches from the last one.
-func (m *Model) findCommand(arg string) tea.Cmd {
+func (m *Model) findCommand(arg argument) tea.Cmd {
 	below := uint64(0) // 0: search everything
-	if arg != "" {
-		m.find, m.found = arg, 0
-	} else {
+	if arg.empty() {
 		below = m.found
+	} else {
+		m.find, m.found = string(arg), 0
 	}
 	if m.find == "" {
 		m.status = "/find needs text"
@@ -130,7 +131,7 @@ func (m *Model) findCommand(arg string) tea.Cmd {
 			continue
 		}
 		at := firstLine(lines, e.msg.MessageID)
-		if at < 0 || e.omitted || !strings.Contains(strings.ToLower(payloadText(e.msg.Payload)), want) {
+		if at < 0 || !contains(e, want) {
 			continue
 		}
 		m.anchor(lines, at)
@@ -140,6 +141,14 @@ func (m *Model) findCommand(arg string) tea.Cmd {
 	}
 	m.status = "no more messages contain " + safe(m.find)
 	return nil
+}
+
+// contains reports whether e's text includes want (already lower-cased).
+func contains(e *entry, want string) bool {
+	if e.omitted {
+		return false
+	}
+	return strings.Contains(strings.ToLower(payloadText(e.msg.Payload)), want)
 }
 
 func firstLine(lines []renderLine, id string) int {
@@ -239,4 +248,36 @@ func (m *Model) helpRows() []string {
 		rows = append(rows, fmt.Sprintf("  /%-8s %-14s %s", c.name, c.usage, c.help))
 	}
 	return append(rows, "", "Shift+Enter detection: "+support)
+}
+
+func (m *Model) toggleHelp() {
+	if m.panel != nil && m.panel.kind == panelHelp {
+		m.panel = nil
+		return
+	}
+	m.panel = &panel{kind: panelHelp}
+}
+
+// agentRows describes every known agent: online first, then seen.
+func (m *Model) agentRows() []string {
+	rows := m.onlineRows()
+	for _, id := range m.conversationIDs("") {
+		rows = append(rows, "○ "+safe(id)+"  seen in this conversation")
+	}
+	if m.agents.partial {
+		rows = append(rows, fmt.Sprintf("(presence list is partial: %d connected in total)", m.agents.total))
+	}
+	if len(rows) == 0 {
+		rows = []string{"no agents online or seen yet"}
+	}
+	return rows
+}
+
+func (m *Model) onlineRows() []string {
+	var rows []string
+	for _, a := range m.agents.list {
+		rows = append(rows, fmt.Sprintf("● %s  online · protocol v%d", safe(a.AgentID), a.ProtocolVersion))
+	}
+	sort.Strings(rows)
+	return rows
 }

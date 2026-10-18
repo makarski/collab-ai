@@ -113,18 +113,7 @@ func (m *Model) State() StateView {
 		Status: m.status, Help: m.panel != nil && m.panel.kind == panelHelp, TooSmall: m.tooSmall(),
 		KeyDisambiguation: m.keyboard, ExitCode: m.exitCode, Fatal: m.fatal,
 	}
-	if r := c.reply; r != nil {
-		v.InReplyTo, v.ReplySender = r.messageID, r.sender
-	}
-	if c.cmd != nil {
-		v.CommandLine = &CommandLineView{Text: c.cmd.input.Value(), Error: m.status}
-		if c.picker != nil && c.picker.kind == PickerCommand {
-			v.CommandLine.Candidates = append([]string(nil), c.picker.items...)
-		}
-	}
-	if p := c.picker; p != nil {
-		v.Picker = &PickerView{Kind: p.kind, Items: append([]string(nil), p.items...), Selected: p.selected}
-	}
+	m.composeState(&v)
 	for _, e := range m.timeline.order {
 		v.Entries = append(v.Entries, e.view())
 	}
@@ -136,6 +125,23 @@ func (m *Model) State() StateView {
 	}
 	sort.Slice(v.QueuedAcks, func(i, j int) bool { return v.QueuedAcks[i].MessageID < v.QueuedAcks[j].MessageID })
 	return v
+}
+
+// composeState fills the composer's reply, command line and picker.
+func (m *Model) composeState(v *StateView) {
+	c := &m.compose
+	if r := c.reply; r != nil {
+		v.InReplyTo, v.ReplySender = r.messageID, r.sender
+	}
+	if c.cmd != nil {
+		v.CommandLine = &CommandLineView{Text: c.cmd.input.Value(), Error: m.status}
+		if p := c.openPicker(PickerCommand); p != nil {
+			v.CommandLine.Candidates = append([]string(nil), p.items...)
+		}
+	}
+	if p := c.picker; p != nil {
+		v.Picker = &PickerView{Kind: p.kind, Items: append([]string(nil), p.items...), Selected: p.selected}
+	}
 }
 
 func (m *Model) audienceView() AudienceView {

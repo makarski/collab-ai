@@ -48,24 +48,11 @@ func (s *sendState) disconnected() {
 // submit freezes the draft, its audience and reply into a send intent. The
 // hint line shows the audience beforehand, so there is no confirmation.
 func (m *Model) submit() tea.Cmd {
-	if !m.draftBody() {
-		if !m.compose.draftEmpty() {
-			m.status = "message is empty"
+	scope, reason, ok := m.sendable()
+	if !ok {
+		if reason != "" {
+			m.status = reason
 		}
-		return nil
-	}
-	if m.tooSmall() {
-		m.status = "terminal too small to send"
-		return nil
-	}
-	aud := m.resolveAudience()
-	if aud.err != "" {
-		m.status = aud.err
-		return nil
-	}
-	scope, err := aud.scope()
-	if err != nil {
-		m.status = err.Error()
 		return nil
 	}
 	if !m.ready() {
@@ -86,6 +73,28 @@ func (m *Model) submit() tea.Cmd {
 		inReplyTo = r.messageID
 	}
 	return m.dispatch(scope, payload, inReplyTo)
+}
+
+// sendable is the draft's scope, or why it can't be sent now. An empty draft
+// is not sendable and needs no reason.
+func (m *Model) sendable() (protocol.Message, string, bool) {
+	switch {
+	case m.compose.draftEmpty():
+		return protocol.Message{}, "", false
+	case !m.draftBody():
+		return protocol.Message{}, "message is empty", false
+	case m.tooSmall():
+		return protocol.Message{}, "terminal too small to send", false
+	}
+	aud := m.resolveAudience()
+	if aud.err != "" {
+		return protocol.Message{}, aud.err, false
+	}
+	scope, err := aud.scope()
+	if err != nil {
+		return protocol.Message{}, err.Error(), false
+	}
+	return scope, "", true
 }
 
 // encodeText builds the payload and enforces the operator payload cap on its

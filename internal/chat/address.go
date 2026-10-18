@@ -126,17 +126,7 @@ func (m *Model) unseen(ids []string) []string {
 }
 
 func (m *Model) known(id string) bool {
-	for _, a := range m.agents.list {
-		if a.AgentID == id {
-			return true
-		}
-	}
-	for _, e := range m.timeline.order {
-		if e.msg.From == id || e.msg.To == id || slices.Contains(e.msg.Group, id) {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.agentCandidates(id), id)
 }
 
 // scope is the operator_send addressing for a sendable audience.

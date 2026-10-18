@@ -183,19 +183,22 @@ func (m *Model) pickerRows(n int) []string {
 	}
 	start := max(0, min(p.selected-n+1, len(p.items)-n))
 	var rows []string
-	for i := start; i < start+n && i < len(p.items); i++ {
-		label := "  " + safe(p.items[i])
-		if p.kind == PickerAgent {
-			label = "  @" + safe(p.items[i])
-		} else if c, _ := lookupCommand(p.items[i]); c.name != "" {
-			label = fmt.Sprintf("  /%s %s  %s", c.name, c.usage, mutedStyle.Render(c.help))
-		}
+	for i := start; i < min(start+n, len(p.items)); i++ {
+		label := pickerLabel(p.kind, p.items[i])
 		if i == p.selected {
 			label = pickStyle.Render(label)
 		}
 		rows = append(rows, label)
 	}
 	return rows
+}
+
+func pickerLabel(kind, item string) string {
+	if kind == PickerAgent {
+		return "  @" + safe(item)
+	}
+	c := byName(item)
+	return fmt.Sprintf("  /%s %s  %s", c.name, c.usage, mutedStyle.Render(c.help))
 }
 
 func (m *Model) composerRows(n int) []string {
@@ -246,37 +249,43 @@ func shortID(id string) string {
 // hintText is the audience line as plain text: who the draft goes to, or why
 // it can't be sent.
 func (m *Model) hintText() string {
-	c := &m.compose
-	if c.cmd != nil {
+	if m.compose.cmd != nil {
 		return "command · Enter runs · Tab completes · Esc back to your draft"
 	}
 	a := m.resolveAudience()
-	var text string
-	switch {
-	case a.err != "":
+	if a.err != "" {
 		return "✗ " + a.err
-	case a.source == SourceReply:
-		text = fmt.Sprintf("↳ reply to #%d → %s", c.reply.seq, safe(c.reply.sender))
-	case a.everyone:
-		note := ""
-		if m.agents.partial {
-			note = ", partial list"
-		}
-		text = fmt.Sprintf("→ EVERYONE (%d online, advisory%s)", len(m.agents.list), note)
-	default:
-		ids := make([]string, len(a.ids))
-		for i, id := range a.ids {
-			ids[i] = safe(id)
-		}
-		text = "→ " + strings.Join(ids, ", ")
 	}
+	text := m.audienceText(a)
 	if len(a.notSeen) > 0 {
 		text += " (not seen: " + safe(strings.Join(a.notSeen, ", ")) + ")"
 	}
-	if c.pasted {
+	if m.compose.pasted {
 		text += " · pasted text, mentions ignored"
 	}
 	return text
+}
+
+func (m *Model) audienceText(a audience) string {
+	switch {
+	case a.source == SourceReply:
+		r := m.compose.reply
+		return fmt.Sprintf("↳ reply to #%d → %s", r.seq, safe(r.sender))
+	case a.everyone:
+		return fmt.Sprintf("→ EVERYONE (%d online, advisory%s)", len(m.agents.list), partialNote(m.agents.partial))
+	}
+	ids := make([]string, len(a.ids))
+	for i, id := range a.ids {
+		ids[i] = safe(id)
+	}
+	return "→ " + strings.Join(ids, ", ")
+}
+
+func partialNote(partial bool) string {
+	if partial {
+		return ", partial list"
+	}
+	return ""
 }
 
 func (m *Model) hintLine() string {
@@ -322,7 +331,8 @@ func (m *Model) entryLines(e *entry, width int) []renderLine {
 		b.add([]string{mutedStyle.Render("[text not available: this message exceeds the history page size]")}, "  ")
 	} else {
 		for _, line := range strings.Split(payloadText(e.msg.Payload), "\n") {
-			b.add(wrap(safeText(line), width-2), "  ")
+			text := safeText(line)
+			b.addText(text, wrap(text, width-2), "  ")
 		}
 	}
 	b.add(styled(wrap(m.entryStatus(e), width-4), mutedStyle), "  · ")
@@ -344,6 +354,20 @@ func (b *lineBuilder) add(parts []string, indent string) {
 	for _, part := range parts {
 		b.lines = append(b.lines, renderLine{id: b.id, src: b.src, col: col, text: indent + part})
 		col += ansi.StringWidth(ansi.Strip(part))
+	}
+	b.src++
+}
+
+// addText adds a wrapped plain-text line; col is each part's byte offset in
+// the unwrapped text, which doesn't depend on where the wrap broke it.
+func (b *lineBuilder) addText(text string, parts []string, indent string) {
+	pos := 0
+	for _, part := range parts {
+		if i := strings.Index(text[pos:], part); i >= 0 {
+			pos += i
+		}
+		b.lines = append(b.lines, renderLine{id: b.id, src: b.src, col: pos, text: indent + part})
+		pos += len(part)
 	}
 	b.src++
 }
