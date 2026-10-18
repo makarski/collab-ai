@@ -13,7 +13,7 @@ from sandbox_releases import repository
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["publish"])
-    parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
+    parser.add_argument("--repo", type=repository, default="pairtask/pairtask")
     parser.add_argument("--dir", type=Path, required=True, help="A CI workspace artifact directory for one architecture")
     parser.add_argument("--architecture", choices=["aarch64", "x86_64"], required=True)
     args = parser.parse_args()

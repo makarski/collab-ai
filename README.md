@@ -1,6 +1,7 @@
-# collab-ai
+# pairtask
 
-**Codex and Claude, working together in a sandbox.**
+**Codex and Claude, working together in a sandbox.** pairtask pairs a Claude and
+a Codex agent as a duo that shares tasks, messages and a workspace.
 
 - Real-time collaboration with durable messages and automatic delivery.
 - An isolated Incus workspace with persistent projects and agent memory.
@@ -57,7 +58,7 @@ ssh -F infra/incus/ssh/config workspace
 # collab-codescene-login                  # optional CodeScene token; hidden prompt
 
 # First use only: clone if you have not already done so
-# git clone https://github.com/makarski/collab-ai.git /workspace/collab-ai
+# git clone https://github.com/pairtask/pairtask.git /workspace/collab-ai
 tmux new -A -s collab
 
 # In each tmux window: enter the project, then choose one agent or dashboard
@@ -165,7 +166,7 @@ Claude requires channel consent and account/organization support.
 [Protocol](docs/protocol.md) · [Manual MCP](docs/mcp.md) ·
 [Status API](docs/status.md) · [Agent skill](docs/skills/collab-ai/SKILL.md)
 
-[Report an issue](https://github.com/makarski/collab-ai/issues). Run checks with:
+[Report an issue](https://github.com/pairtask/pairtask/issues). Run checks with:
 
 ```sh
 go test -race ./... -timeout=30s

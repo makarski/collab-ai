@@ -12,8 +12,8 @@ account/organization that permits channels; otherwise use [manual MCP](mcp.md).
 Terminal 1:
 
 ```sh
-git clone https://github.com/makarski/collab-ai.git
-cd collab-ai
+git clone https://github.com/pairtask/pairtask.git
+cd pairtask
 go build -o broker ./cmd/broker
 go build -o collab-codex ./cmd/codex
 go build -o collab-mcp ./cmd/mcp

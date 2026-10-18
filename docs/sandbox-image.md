@@ -63,7 +63,7 @@ python3 scripts/sandbox-image.py --remote colima-collab-ai \
 | `--codex-version`, `--claude-version`, `--go-version` | Exact versions; defaults come from the lock |
 | `--base-image SHA256` | Ubuntu 24.04 fingerprint for the build server's architecture |
 | `--lock-file FILE` | A custom complete lock file, including checksums |
-| `--repo OWNER/REPO` | Repository holding the base image mirror releases (default `makarski/collab-ai`) |
+| `--repo OWNER/REPO` | Repository holding the base image mirror releases (default `pairtask/pairtask`) |
 | `--output DIRECTORY` | New directory for the build; existing directories are never overwritten |
 
 `tools.lock.json` (schema 2) has one `artifacts` entry per third-party tool:

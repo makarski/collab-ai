@@ -24,7 +24,7 @@ def main():
     source.add_argument("--release", type=release_tag, default="latest")
     source.add_argument("--from-dir", type=Path, help="Directory of extracted CI release assets")
     source.add_argument("--from-zip", type=Path, help="CI image ZIP downloaded in a browser; no extraction needed")
-    parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
+    parser.add_argument("--repo", type=repository, default="pairtask/pairtask")
     parser.add_argument("--output", type=Path, help="Optional new output directory; default keeps images under dist/images")
     args = parser.parse_args()
     if shutil.which("incus") is None:

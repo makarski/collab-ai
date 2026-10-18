@@ -101,7 +101,7 @@ RESERVED = {"workspace.tar.gz", "manifest.json", "image.tfvars.json", "bundle-so
 BUNDLE_RELEASE = re.compile(r"bundles-[0-9a-f]{64}")
 # Where bundles come from: a URL prefix to fetch them from on demand, or None
 # to copy them from the image source; repo resolves a manifest's bundle release.
-BundleSource = namedtuple("BundleSource", ["base", "repo"], defaults=(None, "makarski/collab-ai"))
+BundleSource = namedtuple("BundleSource", ["base", "repo"], defaults=(None, "pairtask/pairtask"))
 
 
 def validate_bundles(manifest, architecture):

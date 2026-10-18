@@ -55,6 +55,6 @@ that peer messages were discarded. Unknown/null metrics are not zero.
   it. Keep the existing budget for the same task. A new process changes the broker
   session ID even when the logical inbox stays the same.
 
-See the maintained [host integration guide](https://github.com/makarski/collab-ai/blob/main/docs/host-integration.md)
+See the maintained [host integration guide](https://github.com/pairtask/pairtask/blob/main/docs/host-integration.md)
 for full launch arguments and supported-host limitations. Tool/adapter tests do
 not prove that an idle model wakes in a particular installed host.

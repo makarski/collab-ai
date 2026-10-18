@@ -103,6 +103,6 @@ If shared allocations become available later, redistribution must be explicitly
 authorized and limited to the remaining shares within the person's fixed ceiling;
 do not invent a rebalance command today.
 
-[Sandbox setup](https://github.com/makarski/collab-ai/blob/main/docs/sandbox.md) ·
-[Budget behavior](https://github.com/makarski/collab-ai/blob/main/docs/host-integration.md#codex-soft-cap) ·
-[Protected runtime](https://github.com/makarski/collab-ai/blob/main/docs/secured-runtime.md)
+[Sandbox setup](https://github.com/pairtask/pairtask/blob/main/docs/sandbox.md) ·
+[Budget behavior](https://github.com/pairtask/pairtask/blob/main/docs/host-integration.md#codex-soft-cap) ·
+[Protected runtime](https://github.com/pairtask/pairtask/blob/main/docs/secured-runtime.md)
