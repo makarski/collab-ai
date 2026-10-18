@@ -15,8 +15,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from sandbox_artifacts import ARCHITECTURES
-from sandbox_base_image import (ASSETS, IntegrityError, Unavailable, combined_digest, fetch, fingerprint,
-                                mirror_release, release_shape, tag, verify_pair)
+from sandbox_base_image import (ASSETS, IntegrityError, Unavailable, cached_pair, combined_digest, fetch,
+                                fingerprint, install_pair, mirror_release, release_shape, tag, verify_pair)
 from sandbox_releases import repository
 
 
@@ -214,6 +214,21 @@ def base_notes(architecture, fp, serial):
     return (f"Input mirror, not a workspace release: the Ubuntu 24.04 container image {fp} "
             f"({architecture}, images.linuxcontainers.org build {serial}). Image builds and rollouts "
             "import it when upstream has pruned the build. Keep it while any workspace release pins it.")
+
+
+def cache(repo, lock, architecture, cache_root, index=None):
+    """Put the verified pair for one architecture's pin into the host cache,
+    from the mirror or else upstream, without publishing anything."""
+    fp = fingerprint(lock["architectures"][architecture]["base_image"])
+    if cached_pair(cache_root, fp) is not None:
+        return {fp: "cache"}
+    release = mirror_release(repo, fp)
+    if release is not None:
+        cached_pair(cache_root, fp, release)
+        return {fp: "mirror"}
+    entry = upstream_for(architecture, fp, lambda: index if index is not None else upstream_index())
+    install_pair(cache_root, fp, lambda staging: fetch_upstream(entry, staging, ASSETS))
+    return {fp: "upstream"}
 
 
 def check(repo, lock, index=None):

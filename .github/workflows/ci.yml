@@ -95,6 +95,10 @@ jobs:
           tofu_wrapper: false
       - name: Initialize disposable Incus host
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT bash scripts/ci-incus.sh
+      - name: Cache the verified base image pair without publishing it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo --preserve-env=GH_TOKEN python3 scripts/base-image-mirror.py cache --repo "$GITHUB_REPOSITORY" --architecture "$(uname -m)"
       - name: Build selected app and tools inside Incus
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,7 +111,12 @@ jobs:
           if [[ -n "$CODEX_VERSION" ]]; then args+=(--codex-version "$CODEX_VERSION"); fi
           if [[ -n "$CLAUDE_VERSION" ]]; then args+=(--claude-version "$CLAUDE_VERSION"); fi
           if [[ -n "$GO_VERSION" ]]; then args+=(--go-version "$GO_VERSION"); fi
-          sudo --preserve-env=GH_TOKEN python3 scripts/sandbox-image.py "${args[@]}"
+          set -o pipefail
+          sudo --preserve-env=GH_TOKEN python3 scripts/sandbox-image.py "${args[@]}" | tee build.log
+          # The build imported the cached split pair into its own project, and removed that project.
+          grep -Eq '^Base image [0-9a-f]{12} from cache$' build.log
+          if sudo incus project list local: --format csv -c n | grep '^collab-build-'; then exit 1; fi
+          if sudo incus image list local: --format csv -c f | grep .; then exit 1; fi
       - name: Enforce the image size budget
         run: |
           size=$(stat -c %s dist/workspace/release/collab-ai-workspace-linux-*.tar.gz)

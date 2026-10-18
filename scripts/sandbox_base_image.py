@@ -147,12 +147,19 @@ def cached_pair(cache_root, fp, release=None):
         return final
     if release is None:
         return None
+    urls = asset_urls(release)
+    return install_pair(cache_root, fp, lambda staging: [fetch(urls[name], staging / name) for name in ASSETS])
+
+
+def install_pair(cache_root, fp, populate):
+    """Fill a private staging directory with populate, verify it, and publish
+    it as the complete cache directory for fp."""
+    cache_root = Path(cache_root)
+    final = cache_root / fp
     cache_root.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".staging-", dir=cache_root))
     try:
-        urls = asset_urls(release)
-        for name in ASSETS:
-            fetch(urls[name], staging / name)
+        populate(staging)
         verify_pair(staging, fp)
         try:
             os.rename(staging, final)
