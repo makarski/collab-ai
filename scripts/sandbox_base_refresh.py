@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 
+from sandbox_base_image import fingerprint
 from sandbox_base_mirror import product
 
 
@@ -17,7 +18,7 @@ def newest_pins(index, architectures):
             items = version.get("items", {})
             fp = items.get("incus.tar.xz", {}).get("combined_squashfs_sha256")
             if fp and "root.squashfs" in items:
-                pins[architecture] = (serial, fp)
+                pins[architecture] = (serial, fingerprint(fp))
                 break
         else:
             raise ValueError(f"No upstream Ubuntu 24.04 container build for {architecture}")

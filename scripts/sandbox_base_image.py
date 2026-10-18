@@ -75,40 +75,52 @@ def in_store(remote, project, fp):
         images = json.loads(listing)
     except (subprocess.SubprocessError, OSError, ValueError) as error:
         raise Unavailable(f"Cannot list images in {remote}:{project}: {error}") from error
-    if not isinstance(images, list):
+    if not isinstance(images, list) or not all(isinstance(image, dict) and isinstance(image.get("fingerprint"), str)
+                                                for image in images):
         raise Unavailable(f"Unexpected image listing from {remote}:{project}")
-    return any(isinstance(image, dict) and image.get("fingerprint") == fp for image in images)
+    return any(image["fingerprint"] == fp for image in images)
 
 
-def get_json(url):
-    """The decoded JSON at url, or None for HTTP 404."""
+def get_object(url):
+    """The JSON object at url, or None for HTTP 404; any other reply is fatal."""
     try:
         with urlopen(Request(url, headers=api_headers()), timeout=30) as response:
-            return json.load(response)
+            value = json.load(response)
     except HTTPError as error:
         if error.code == 404:
             return None
         raise Unavailable(f"{url}: HTTP {error.code}") from error
     except (URLError, OSError, ValueError) as error:
         raise Unavailable(f"{url}: {error}") from error
+    if not isinstance(value, dict):
+        raise Unavailable(f"{url}: expected a JSON object")
+    return value
+
+
+def release_shape(release, fields):
+    """Fail unless release has a boolean draft flag and assets with string fields."""
+    assets = release.get("assets")
+    if not isinstance(release.get("draft"), bool) or not isinstance(assets, list) or not all(
+            isinstance(asset, dict) and all(isinstance(asset.get(field), str) for field in fields) for asset in assets):
+        raise Unavailable(f"Unexpected release response for {release.get('tag_name')}")
+    return release
 
 
 def mirror_release(repo, fp):
     """The published mirror release for fp, or None when there is none yet.
     A draft is still being written and is never used."""
-    release = get_json(f"https://api.github.com/repos/{repository(repo)}/releases/tags/{quote(tag(fp), safe='')}")
+    release = get_object(f"https://api.github.com/repos/{repository(repo)}/releases/tags/{quote(tag(fp), safe='')}")
     if release is None:
         return None
-    if not isinstance(release, dict):
-        raise Unavailable(f"Unexpected release response for {tag(fp)}")
     if release.get("tag_name") != tag(fp):
         raise IntegrityError(f"Release lookup for {tag(fp)} returned {release.get('tag_name')}")
-    if release.get("draft"):
+    release_shape(release, ("name",))
+    if release["draft"]:
         return None
-    names = sorted(asset.get("name") for asset in release.get("assets", []))
+    names = sorted(asset["name"] for asset in release["assets"])
     if names != sorted(ASSETS):
         raise IntegrityError(f"Release {tag(fp)} must hold exactly {', '.join(ASSETS)}; it has {names}")
-    return release
+    return release_shape(release, ("name", "browser_download_url"))
 
 
 def fetch(url, destination):

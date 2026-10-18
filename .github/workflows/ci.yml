@@ -61,6 +61,8 @@ jobs:
       - run: go test -race ./... -timeout=60s
       - run: python3 -m unittest discover -s scripts/tests -v
       - name: Check that every pinned base image is mirrored or still upstream
+        # Pushes skip this: base-mirror itself publishes, resumes drafts and verifies.
+        if: github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/base-image-mirror.py check --repo "$GITHUB_REPOSITORY"
@@ -124,7 +126,7 @@ jobs:
       - name: Prove containerized provisioning and host-state recovery
         env:
           GH_TOKEN: ${{ github.token }}
-        run: sudo --preserve-env=PATH,GH_TOKEN python3 scripts/sandbox-operator-smoke.py --remote local
+        run: sudo --preserve-env=PATH,GH_TOKEN python3 scripts/sandbox-operator-smoke.py --remote local --repo "$GITHUB_REPOSITORY"
       - name: Upload tested release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

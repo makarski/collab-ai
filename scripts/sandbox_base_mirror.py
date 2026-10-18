@@ -16,7 +16,7 @@ from urllib.request import urlopen
 
 from sandbox_artifacts import ARCHITECTURES
 from sandbox_base_image import (ASSETS, IntegrityError, Unavailable, combined_digest, fetch, fingerprint,
-                                mirror_release, tag, verify_pair)
+                                mirror_release, release_shape, tag, verify_pair)
 from sandbox_releases import repository
 
 
@@ -71,16 +71,26 @@ def find_release(repo, fp):
     """The release tagged base-<fp>, drafts included, or None."""
     listing = run(["gh", "api", "--paginate", f"repos/{repository(repo)}/releases",
                    "--jq", f'.[] | select(.tag_name == "{tag(fp)}")'], capture_output=True, text=True).stdout
-    matches = [json.loads(line) for line in listing.splitlines() if line.strip()]
+    try:
+        matches = [json.loads(line) for line in listing.splitlines() if line.strip()]
+    except ValueError as error:
+        raise Unavailable(f"Unexpected release listing for {tag(fp)}: {error}") from error
     if len(matches) > 1:
         raise IntegrityError(f"More than one release is tagged {tag(fp)}")
-    return matches[0] if matches else None
+    if not matches:
+        return None
+    if not isinstance(matches[0], dict):
+        raise Unavailable(f"Unexpected release listing for {tag(fp)}")
+    release = release_shape(matches[0], ("name",))
+    if not all(isinstance(asset.get("id"), int) for asset in release["assets"]):
+        raise Unavailable(f"Unexpected release listing for {tag(fp)}")
+    return release
 
 
 def release_assets(release):
     assets = {}
-    for asset in release.get("assets", []):
-        if asset.get("name") not in ASSETS or asset["name"] in assets:
+    for asset in release["assets"]:
+        if asset["name"] not in ASSETS or asset["name"] in assets:
             raise IntegrityError(f"Release {release.get('tag_name')} has an unexpected asset {asset.get('name')}")
         assets[asset["name"]] = asset
     return assets
