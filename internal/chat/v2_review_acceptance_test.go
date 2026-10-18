@@ -98,12 +98,19 @@ func TestChatV2ReviewLateOldHistoryCannotValidateEpochTarget(t *testing.T) {
 	late := chatHistory(chatIncoming("old-target", 7))
 	late.History.Watermark.Revision = 2
 	h.reply(oldRequest, late)
-	h.take(protocol.TypeOperatorHistory) // Stale scan completed; fresh catch-up begins.
+	freshRequest := h.take(protocol.TypeOperatorHistory) // Stale scan completed; fresh catch-up begins.
 	v2Command(h, "/reply #7")
 	chatEqual(t, "old page cannot bless target in new epoch", h.m.State().InReplyTo, "")
 	h.input(chatKey(tea.KeyEscape, 0))
 	v2Command(h, "/ack #7")
 	chatEqual(t, "old page cannot permit new ack", len(h.m.State().QueuedAcks), 0)
+	h.input(chatKey(tea.KeyEscape, 0))
+	current := chatHistory(chatIncoming("current-target", 7))
+	current.History.Watermark.Epoch = "new-epoch"
+	h.reply(freshRequest, current)
+	h.await(func() bool { return len(h.m.State().Entries) == 2 })
+	v2Command(h, "/reply #7")
+	chatEqual(t, "current epoch wins reused sequence", h.m.State().InReplyTo, "current-target")
 }
 
 func TestChatV2ReviewNullIsNotLiteralAudienceArray(t *testing.T) {
