@@ -164,3 +164,16 @@ func TestChatV2ReviewTabInRecipientIDIsVisibleAsControl(t *testing.T) {
 		t.Fatalf("tab-bearing ID indistinguishable from spaces: %q", hint)
 	}
 }
+
+func TestChatV2ReviewUnicodeWhitespaceDoesNotCrashComposer(t *testing.T) {
+	for _, text := range []string{"\u00a0", "\u2003", "\u3000"} {
+		t.Run(text, func(t *testing.T) {
+			h := newChatHarness(t, chat.Bounds{})
+			h.ready()
+			v2Type(h, text)
+			h.input(chatKey(tea.KeyEnter, 0))
+			chatEqual(t, "Unicode whitespace cannot send", h.m.State().Intent, nil)
+			chatEqual(t, "Unicode whitespace draft retained", h.m.State().Draft, text)
+		})
+	}
+}
