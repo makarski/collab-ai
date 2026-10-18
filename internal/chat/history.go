@@ -115,7 +115,7 @@ func (m *Model) insertHistory(page *protocol.HistoryPage, arrivals bool) bool {
 			m.timeline.paused = true
 			break
 		}
-		e, inserted := m.upsert(fresh)
+		e, inserted := m.upsert(fresh, page.Watermark.Epoch)
 		if arrivals {
 			m.arrived(inserted)
 		}

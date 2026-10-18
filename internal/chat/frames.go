@@ -139,7 +139,7 @@ func (m *Model) receiveResponse(req pendingRequest, resp protocol.Message) tea.C
 		m.status = "inbox not loaded: " + brokerReason(resp)
 		return nil
 	}
-	return m.receivedPage(req.page, resp.Page)
+	return m.receivedPage(req.page, resp.Page, req.epoch)
 }
 
 func (m *Model) catchupResponse(req pendingRequest, resp protocol.Message) tea.Cmd {

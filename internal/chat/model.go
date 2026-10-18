@@ -119,6 +119,7 @@ type Model struct {
 	view     viewport
 	cutoff   uint64 // /clear: rows with seq <= cutoff are hidden
 	find     string // the last /find query
+	found    uint64 // seq of the last /find match
 	keyboard bool
 	status   string
 	width    int
@@ -126,9 +127,10 @@ type Model struct {
 }
 
 type pendingRequest struct {
-	kind string
-	ids  []string
-	page protocol.PageRequest
+	kind  string
+	ids   []string
+	page  protocol.PageRequest
+	epoch string // the broker epoch the request was made in
 }
 
 // New builds a chat model; it connects when the program starts.
@@ -186,7 +188,7 @@ func (m *Model) request(kind string, msg protocol.Message, ids ...string) tea.Cm
 	}
 	m.nextReq++
 	msg.RequestID = "q" + strconv.Itoa(m.nextReq)
-	req := pendingRequest{kind: kind, ids: ids}
+	req := pendingRequest{kind: kind, ids: ids, epoch: m.epoch}
 	if msg.PageRequest != nil {
 		req.page = *msg.PageRequest
 	}

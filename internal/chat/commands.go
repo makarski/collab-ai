@@ -62,7 +62,7 @@ func toArg(arg string) error {
 	}
 	var ids []string
 	decoder := json.NewDecoder(strings.NewReader(arg))
-	if err := decoder.Decode(&ids); err != nil || decoder.More() || !onlyJSON(arg) {
+	if !strings.HasPrefix(arg, "[") || decoder.Decode(&ids) != nil || ids == nil || !onlyJSON(arg) {
 		return errors.New(`expects a JSON array such as ["codex-1"], or nothing to clear`)
 	}
 	return nil

@@ -147,36 +147,9 @@ func (m *Model) sendResult(req pendingRequest, resp protocol.Message) tea.Cmd {
 		in.State = IntentUnknown
 		return m.malformed("send response: " + brokerReason(resp))
 	}
+	// The outcome updates the intent only; the composer may hold a newer draft.
 	in.State, in.Detail = IntentRejected, brokerReason(resp)
-	m.restoreRejected(in)
 	return nil
-}
-
-// restoreRejected gives a rejected message back to an empty composer with
-// exactly its frozen audience and reply, so it can't widen into a broadcast.
-// A composer holding a newer draft is never touched.
-func (m *Model) restoreRejected(in *intent) {
-	c := &m.compose
-	if !c.draftEmpty() || c.cmd != nil || c.to != nil || c.reply != nil {
-		return
-	}
-	switch {
-	case in.InReplyTo != "" && m.timeline.entries[in.InReplyTo] != nil:
-		e := m.timeline.entries[in.InReplyTo]
-		c.reply = &replyTarget{messageID: e.msg.MessageID, sender: e.msg.From, seq: e.msg.Seq}
-	case in.Scope.To == protocol.Broadcast:
-	case in.Scope.To != "":
-		c.to = []string{in.Scope.To}
-	default:
-		c.to = append([]string(nil), in.Scope.Group...)
-	}
-	if in.InReplyTo != "" && c.reply == nil {
-		// The replied-to message is gone; keep the audience, drop nothing silently.
-		m.status = "rejected reply restored without its reply link; the original message isn't loaded"
-	}
-	c.editor.SetValue(payloadText(in.Payload))
-	c.pasted = true // literal: its mentions aren't re-read, the audience above is explicit
-	m.sizeComposer()
 }
 
 func sendAccepted(resp protocol.Message, id string) bool {

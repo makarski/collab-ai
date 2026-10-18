@@ -304,7 +304,7 @@ func (m *Model) transcript() []renderLine {
 }
 
 func (m *Model) entryLines(e *entry, width int) []string {
-	lines := []string{"", m.entryHeader(e, width)}
+	lines := append([]string{""}, m.entryHeader(e, width)...)
 	if e.msg.InReplyTo != "" {
 		lines = append(lines, mutedStyle.Render("  ↳ "+m.replyLabel(e.msg.InReplyTo)))
 	}
@@ -334,7 +334,7 @@ func wrap(text string, width int) []string {
 	return strings.Split(ansi.Hardwrap(ansi.Wordwrap(text, width, ""), width, true), "\n")
 }
 
-func (m *Model) entryHeader(e *entry, width int) string {
+func (m *Model) entryHeader(e *entry, width int) []string {
 	stamp := ""
 	if e.msg.TS != nil {
 		stamp = e.msg.TS.Local().Format("15:04") + "  "
@@ -349,10 +349,11 @@ func (m *Model) entryHeader(e *entry, width int) string {
 	left := mutedStyle.Render(stamp) + who
 	seq := mutedStyle.Render(fmt.Sprintf("#%d", e.msg.Seq))
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(seq)
-	if gap < 2 {
-		return left + "  " + seq
+	if gap >= 2 {
+		return []string{left + strings.Repeat(" ", gap) + seq}
 	}
-	return left + strings.Repeat(" ", gap) + seq
+	// Narrow: the number leads, and a long sender wraps instead of being cut.
+	return wrap(seq+"  "+left, width)
 }
 
 func recipientsLabel(msg protocol.Message) string {

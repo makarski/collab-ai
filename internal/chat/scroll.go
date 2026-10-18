@@ -96,31 +96,36 @@ func (m *Model) scrollOffset() int {
 	return max(0, len(lines)-(m.top(lines, height)+height))
 }
 
-// findCommand moves to the next older message containing text, starting
-// above the top of the view; /find alone continues the last search.
+// findCommand finds the newest message containing text, visible rows
+// included; /find alone continues with older matches from the last one.
 func (m *Model) findCommand(arg string) tea.Cmd {
+	below := uint64(0) // 0: search everything
 	if arg != "" {
-		m.find = arg
+		m.find, m.found = arg, 0
+	} else {
+		below = m.found
 	}
 	if m.find == "" {
 		m.status = "/find needs text"
 		return nil
 	}
 	lines := m.transcript()
-	height := max(1, m.layout().transcript)
-	start := m.top(lines, height)
 	want := strings.ToLower(m.find)
 	for i := len(m.timeline.order) - 1; i >= 0; i-- {
 		e := m.timeline.order[i]
+		if below != 0 && e.msg.Seq >= below {
+			continue
+		}
 		at := firstLine(lines, e.msg.MessageID)
-		if at < 0 || at >= start || e.omitted || !strings.Contains(strings.ToLower(payloadText(e.msg.Payload)), want) {
+		if at < 0 || e.omitted || !strings.Contains(strings.ToLower(payloadText(e.msg.Payload)), want) {
 			continue
 		}
 		m.anchor(lines, at)
+		m.found = e.msg.Seq
 		m.status = fmt.Sprintf("found #%d · /find continues", e.msg.Seq)
 		return nil
 	}
-	m.status = "no older message contains " + safe(m.find)
+	m.status = "no more messages contain " + safe(m.find)
 	return nil
 }
 
