@@ -31,6 +31,7 @@ type entry struct {
 	gapBelow        bool
 	gapUpper        uint64 // the upper_seq of the catch-up that left the gap
 	size            int
+	epoch           string // the broker epoch this entry was last read in
 }
 
 // stageState is a current delivery state with the watermark it was read at.

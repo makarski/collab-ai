@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"collab-ai/internal/chat"
 	"collab-ai/internal/protocol"
 )
@@ -85,10 +84,8 @@ func TestChatRepeatedStageFetchIsCoalesced(t *testing.T) {
 	h.reply(inbox, chatInbox())
 	h.reply(history, chatSentHistory("sent", 1, 1, protocol.RecipientStage{AgentID: "author", Stage: protocol.StageAccepted, SessionID: "session"}))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyDown, 0))
 	for range 100 {
-		h.input(chatKey('s', 0))
+		v2Command(h, "/stages #1")
 	}
 	state := h.m.State()
 	if state.InFlight != 1 || state.Queued != 0 {

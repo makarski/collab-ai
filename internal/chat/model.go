@@ -7,9 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	"collab-ai/internal/protocol"
@@ -57,13 +54,6 @@ const (
 	OwnerBusy    = "owner_busy"
 	Stopped      = "stopped"
 	Closed       = "closed"
-)
-
-// Focus areas.
-const (
-	FocusRecipients = "recipients"
-	FocusEditor     = "editor"
-	FocusTimeline   = "timeline"
 )
 
 // Messages produced by the model's own commands.
@@ -124,20 +114,23 @@ type Model struct {
 	send    sendState
 	agents  agentView
 
-	recipients textinput.Model
-	editor     textarea.Model
-	focus      string
-	help       bool
-	keyboard   bool
-	status     string
-	width      int
-	height     int
+	compose  composer
+	panel    *panel
+	view     viewport
+	cutoff   uint64 // /clear: rows with seq <= cutoff are hidden
+	find     string // the last /find query
+	found    uint64 // seq of the last /find match
+	keyboard bool
+	status   string
+	width    int
+	height   int
 }
 
 type pendingRequest struct {
-	kind string
-	ids  []string
-	page protocol.PageRequest
+	kind  string
+	ids   []string
+	page  protocol.PageRequest
+	epoch string // the broker epoch the request was made in
 }
 
 // New builds a chat model; it connects when the program starts.
@@ -151,17 +144,13 @@ func New(opts Options) *Model {
 	if opts.Backoff == (BackoffPolicy{}) {
 		opts.Backoff = defaultBackoff()
 	}
-	m := &Model{opts: opts, conn: Connecting, pending: map[string]pendingRequest{}, focus: FocusEditor, width: 100, height: 30}
+	m := &Model{opts: opts, conn: Connecting, pending: map[string]pendingRequest{}, width: 100, height: 30}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.timeline = newTimeline()
 	m.inbox.queuedAcks = map[string]*queuedAck{}
-	m.recipients = textinput.New()
-	m.recipients.Placeholder = "agent, agent2 or @all"
-	m.editor = textarea.New()
-	m.editor.ShowLineNumbers = false
-	m.editor.Placeholder = "Message (Enter sends, Shift+Enter new line)"
-	m.editor.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "alt+enter", "ctrl+j"))
-	m.editor.Focus()
+	m.compose = newComposer()
+	m.view.following = true
+	m.resize(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	return m
 }
 
@@ -199,7 +188,7 @@ func (m *Model) request(kind string, msg protocol.Message, ids ...string) tea.Cm
 	}
 	m.nextReq++
 	msg.RequestID = "q" + strconv.Itoa(m.nextReq)
-	req := pendingRequest{kind: kind, ids: ids}
+	req := pendingRequest{kind: kind, ids: ids, epoch: m.epoch}
 	if msg.PageRequest != nil {
 		req.page = *msg.PageRequest
 	}
@@ -290,7 +279,7 @@ func (m *Model) connectionUpdate(msg tea.Msg) (tea.Cmd, bool) {
 func (m *Model) terminalUpdate(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.resize(msg.Width, msg.Height)
+		m.resize(msg)
 	case tea.KeyboardEnhancementsMsg:
 		m.keyboard = msg.SupportsKeyDisambiguation()
 	case tea.PasteMsg:
@@ -442,7 +431,11 @@ func asOwnerBusy(err error, target **OwnerBusyError) bool {
 // Run starts the chat program on a terminal and returns the final model.
 func Run(ctx context.Context, opts Options, input io.Reader, output io.Writer) (*Model, error) {
 	m := New(opts)
-	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
+	// The caller owns SIGINT/SIGTERM through ctx. Bubble Tea's own handler would
+	// race it and can block forever sending to a loop that already exited,
+	// before the terminal is restored. Resize handling is separate and stays.
+	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output),
+		tea.WithoutSignalHandler()).Run()
 	m.cancel()
 	closeTransport(m.transport)
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {

@@ -907,3 +907,243 @@ runs outside `Update`, as commands.
   - narrow terminals
 - An integration test against a real broker on a temporary socket.
 - A manual end-to-end demonstration after rollout.
+
+## Chat v2: a chat-first operator UI (draft, 2026-10-18)
+
+Operator feedback on the PR3 chat after the first real use: the screen drew
+twice, long messages were cut off, the `To:` field could not be reached, and
+the layout was hard to read. Requested instead: a chat on the main screen,
+commands typed into the input, recipients chosen with `@name` and
+autocompletion, and "everyone" as the default. Inspired by the Claude Code
+terminal UI: one transcript, one input line, `@` and `/` pickers.
+
+### Prior art
+
+Studied for this draft: Claude Code and the Codex CLI (both offer a
+fullscreen alternate-screen mode and an inline scrollback mode, chosen with
+`/tui`), NousResearch/hermes-agent (prompt_toolkit inline CLI plus an
+alternate-screen Ink TUI), sigoden/aichat and Aider-AI/aider (inline REPLs).
+Borrowed:
+
+- Enter sends; Shift+Enter, Alt+Enter, Ctrl+J insert a line break, and
+  `\` + Enter as the fallback for terminals without modifier keys (all of
+  them).
+- `/` and `@` open a dropdown; Tab inserts the top match, ↑/↓ select, Enter
+  confirms (Claude Code). Commands accept unique prefixes and aliases (aider,
+  hermes), and only commands valid in the current state are offered (aichat).
+- (Deferred: hermes collapses long pastes to a `[pasted: N lines]` preview; that
+  needs its own editing model, so v2 shows pasted text wrapped in full.)
+- A one-line header that adapts to the width (hermes: full, compact, minimal).
+
+**Screen mode: fullscreen only, deliberately.** The inline tools print
+finished turns into scrollback because a finished turn never changes. Here a
+message keeps changing after it is shown: its delivery stages, acknowledgments,
+conflicts and gap markers update in place, and history pages arrive above it.
+Text already in the terminal's scrollback cannot be updated, so the chat uses
+the alternate screen. What inline gives up we provide in the app: PgUp/PgDn
+scrolling, `/find` to search the transcript, and `/copy #n` to ask the terminal to put
+a message's text on the clipboard (OSC 52).
+
+### Layout
+
+- **Full screen** (the terminal's alternate screen), redrawn in place; the
+  terminal's own scrollback is untouched.
+- **Header (one line):** connection state, agents online/known, unread count;
+  full, compact or minimal depending on the width.
+- **Transcript:** the operator conversation in sequence order, newest at the
+  bottom, every line **wrapped** to the window width. Each message:
+  ```
+  12:41  codex-1 → you                                   #127
+         Review is done; MERGE for 6cdc7c5.
+         ↳ re #126 · received · you acknowledged
+  12:42  you → everyone (claude-1, codex-1)               #128
+         Stand-up in 5 minutes.
+         ↳ claude-1 acknowledged · codex-1 received
+  ```
+  Sender and recipients are coloured per agent; delivery state is one dim
+  line. Peer text stays escaped (PR3 safety rules unchanged).
+- **Input (bottom):** a multi-line text box with a hint line above it:
+  `→ everyone (2 online)` or `→ codex-1` or `/command`.
+- No side panel, no separate `To:` field, no focus cycling.
+
+### Addressing
+
+**Grammar: mentions lead the message.** A draft is
+`[@id …] body`: zero or more mention tokens at the very start of its first
+line, then the body. Leading spaces are ignored; tokens are separated by
+spaces or tabs; the first token that isn't a mention, or the first line
+break, ends the prefix. Every `@` after that is inert text.
+
+- **Mention token:** `@` followed by `[A-Za-z0-9][A-Za-z0-9_.-]*` (ASCII,
+  case-sensitive, matched exactly, no punctuation stripped). This inline
+  grammar is deliberately narrower than `protocol.ValidateAgentID`, which
+  allows commas, `@`, spaces and controls; every other valid ID is addressed
+  with `/to`.
+- **A draft with mentions but no body** blocks sending ("message is empty").
+- **Literal leading `@`:** start the draft with `\@` to send text beginning
+  with `@`; the backslash is removed.
+- **Pasted text is literal.** When a draft begins with pasted text (the paste
+  went into an empty draft), its leading `@` and `/` are not parsed: it goes
+  to everyone (or the `/to`/reply audience) and the hint line says
+  "pasted text, mentions ignored". The flag resets when the draft is emptied.
+  Paste never runs a command or a picker action; a later Enter sends the
+  draft as a message under these rules. Pasted text is shown in full, wrapped.
+
+- **No leading mention → everyone (`*`).**
+- **One or more leading mentions → exactly those agents** (direct or group
+  send). Duplicates collapse; IDs are case-sensitive, as on the wire. The
+  leading tokens are kept in the sent text.
+- **`@all`** means everyone. `@all` together with another mention is
+  rejected, not resolved.
+- **A bare `@`, `@@`, or an `@` followed by characters outside the inline
+  grammar** in the leading prefix blocks sending, with the reason in the hint
+  line.
+- **Unknown versus invalid:** presence is advisory and incomplete, so a valid
+  ID that isn't online or seen is allowed; the hint line marks it "not seen".
+  Only invalid IDs block.
+- **IDs that can't be typed as `@id`** (spaces, commas, `@`, or the literal
+  name `all`) are addressed with `/to ["id", …]`, which sets explicit audience
+  metadata instead of text. A `/to` audience together with leading mentions is
+  rejected; clearing it is `/to` with no argument.
+
+**Autocompletion.** Typing `@` in the leading position opens a picker of agent
+IDs (online first, then seen in the conversation), filtered as you type. ↑/↓
+moves, Tab or Enter **only completes** (it never also sends), Esc closes and
+leaves the text as typed — an unfinished token still blocks sending, it is
+never dropped into a broadcast. The picker shows escaped labels but inserts
+the raw ID, and only when the ID round-trips as `@id`. For any other ID it
+removes the typed `@` fragment and sets the `/to` audience instead; if other
+leading mentions remain, the pick is refused with the reason. An agent whose
+ID is literally `all` is never turned into `@all`.
+
+**Hint line.** Always visible, at any window size, directly above the input:
+`→ EVERYONE (2 online, advisory)`, `→ codex-1`, `→ codex-1, claude-1 (claude-1
+not seen)`, `↳ reply to #127 from codex-1`, or the blocking reason. After a
+send the transcript shows the broker's accepted recipients, as today.
+
+**No broadcast confirmation.** The hint line replaces the PR3 y/n prompt (the
+operator's review of that decision). Presence changes never reinterpret a
+draft: an explicit audience stays explicit until sent or cleared.
+
+**Reply state.** `/reply` and Ctrl+R freeze the target from a received
+message: its sender becomes the explicit audience (metadata, never a
+synthesized `@` token) and its `message_id` the `in_reply_to`. The draft text
+is kept. If the draft already has leading mentions or a `/to` audience, the
+reply is refused with "draft is already addressed" rather than widened into a
+group. A missing or invalid target is an error that leaves the draft, audience
+and any existing reply state untouched. `/reply cancel` clears the reply ID
+and the reply's audience together and keeps the text. While a reply is
+active, `/to` (including `/to` with no argument) is refused with "use /reply
+cancel first", so an audience change can never leave an unrelated
+`in_reply_to` behind. `/to` with no argument clears only a `/to` audience.
+Replies to sent messages remain invalid. The hint line shows
+`↳ reply to #127 → codex-1`.
+
+**Draft lifetime.** On Enter the audience (mentions, `/to` or reply), the
+`in_reply_to` and the payload are frozen into the send intent, as in PR3. The
+composer and its audience/reply metadata are cleared only once that request is
+actually queued; a validation failure or an offline state keeps all of it.
+Late accepted, rejected or unknown outcomes update the intent only, never a
+newer draft. A `/to` audience lasts until a message using it is queued, or
+`/to` clears it. An unknown-outcome retry resends the frozen intent and never
+re-reads the composer, the picker or presence.
+
+### Commands
+
+**Grammar.** Commands are entered on a command line that never touches the
+draft: typing `/` into an empty draft, or Ctrl+K at any time, opens it. The
+command picker filters as you type. Tab completes and never runs. Enter runs
+an exact command or alias, or a unique prefix; an ambiguous prefix stays and
+lists the candidates. Esc closes the command line and restores the draft
+unchanged. Typing `/` as the first character of the command line leaves
+command mode and starts a draft beginning with `/`, without reopening the
+picker. Text pasted into the command line is inert: Enter refuses it with
+"type the command", so a pasted `/ack` never runs.
+Unknown or malformed commands are shown as an error and never sent. Aliases: `/who` = `/agents`, `/exit` = `/quit`, `/r` = `/reply`.
+The picker offers only commands that apply now (no `/ack` with nothing to
+acknowledge, no `/stages` without sent messages). Typing `//` therefore starts a
+message beginning with `/`. A pasted draft is
+always a message (see "Pasted text is literal"); paste never submits,
+acknowledges, quits or picks recipients.
+
+| Command | Does |
+|---|---|
+| `/agents` | List agents: online/offline, protocol, last seen |
+| `/reply [#n]` | Reply to received message #n (default: the newest message to you); `/reply cancel` clears |
+| `/ack [#n]` | Acknowledge received message #n (default: newest unacknowledged to you); received, not approval |
+| `/history` | Load older messages into the transcript |
+| `/stages #n` | Recipient delivery stages for a sent message (bounded, coalesced as today) |
+| `/to ["id", …]` | Explicit audience for the next message; `/to` alone clears it |
+| `/clear` | Hide everything above the current point (view only) |
+| `/find <text>` | Jump to the next message containing text; `/find` again continues |
+| `/copy #n` | Ask the terminal to copy message #n's text (OSC 52, base64 of the raw body); reports "copy requested", since terminals may not support it |
+| `/help` | Keys, commands and addressing rules |
+| `/quit` | Quit (warns about an unresolved send, as today) |
+
+**`#n` targeting.** `#n` is the broker sequence number shown on each row.
+A command resolves it to the exact `message_id` in the current epoch when it
+runs. Rows that are sent (for `/ack`, `/reply`), outside the loaded
+transcript, behind a gap or from an older epoch are refused with a reason
+(`/history` loads more). `/ack` keeps the receipt-before-ack rule: an
+acknowledgment for a message whose receipt isn't confirmed is queued, bound to
+its ID and content, exactly as in PR3.
+
+**`/clear`** sets a view cutoff only. Pinned inbox state, unconfirmed
+receipts, queued acknowledgments and the unresolved send are untouched;
+`#n` commands still reach hidden rows; unread counts and capacity warnings
+still count them; `/history` after `/clear` shows the older rows again.
+
+### Keys
+
+- Enter sends (or runs a command); Shift+Enter, Alt+Enter, Ctrl+J, or `\`
+  followed by Enter insert a new line. ↑/↓ move in the editor when no picker is open.
+- PgUp/PgDn scroll the transcript; Ctrl+End jumps to the newest message. New
+  messages while scrolled up raise the unread count instead of moving the view.
+- Ctrl+R replies to the newest message to you; Ctrl+K opens the command line;
+  F1 is `/help`; Ctrl+Q quits.
+- No key for acknowledging: `/ack` only (Ctrl+A is select-all/home for many).
+
+### Rendering
+
+- The alternate screen is entered on start and left on every exit path
+  (normal quit, startup failure, owner busy, fatal error), so the terminal's
+  scrollback is restored. Cause of the PR3 double drawing: `view.go` builds
+  `tea.NewView` for the main and the help screen without setting
+  `AltScreen`, so frames taller than the window scroll into the terminal's
+  history. Every view, help and modal views included, sets it.
+- Wrapping is by terminal cell width (wide and combining characters), on
+  text that was escaped before styling. Real line breaks in a message stay
+  line breaks; terminal control sequences are escaped as in PR3.
+- The transcript scrolls by visual line, keeps its anchor on resize, and
+  every line of every message is reachable.
+- **Small terminals degrade in a fixed order.** The hint line (audience or
+  blocking reason) and at least one composer line always come first; then the
+  header; then the transcript; a picker takes rows from the transcript only.
+  Below 4 rows or 20 columns the chat shows "terminal too small" and sending
+  is disabled, so a message can never be sent with its audience off screen.
+  Nothing renders taller than the window.
+
+### Unchanged from PR3
+
+The session, inbox admission and receipt rules, acknowledgment binding,
+catch-up/resync, frozen send intents, bounds, reconnect, safety and exit
+behaviour. Only the view, the input model and addressing change.
+
+### Follow-ups (not in v2)
+
+- Ctrl+G to edit a long draft in `$VISUAL`/`$EDITOR` (Codex CLI, hermes,
+  aider).
+- Draft history on ↑/↓ and Ctrl+R search; a recalled draft must restore its
+  audience and reply metadata or require choosing them again.
+- Configurable keymaps and themes.
+
+### Tests
+
+PR3's acceptance tests keep their invariants: handshake, transport,
+admission, receipts, epochs, conflicts, bounds, capacity, frozen intents,
+offline submit, quit, paste and payload limits. Replaced or adapted: the
+broadcast confirmation test becomes single-Enter default broadcast plus
+explicit-audience tests; the recipient-field and focus plumbing, recipient
+grammar, reply/selection and narrow-view tests move to the new input model.
+New: the addressing parser, pickers, commands, `/clear`, resize and wrapped
+reachability, and a real-terminal check of the alternate-screen lifecycle.

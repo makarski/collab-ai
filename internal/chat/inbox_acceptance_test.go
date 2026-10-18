@@ -40,13 +40,11 @@ func TestChatAdmissionPrecedesReceiptAndExplicitAckKeepsItsIdentity(t *testing.T
 			t.Fatalf("receipt prematurely confirmed: %+v", e)
 		}
 	}
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyDown, 0))
-	h.input(chatKey('a', 0))
+	v2Command(h, "/ack #2")
 	if len(h.m.State().QueuedAcks) != 1 {
 		t.Fatal("early explicit acknowledgment not queued")
 	}
-	h.input(chatKey(tea.KeyUp, 0))
+	h.input(chatKey(tea.KeyPgUp, 0)) // moving the view never retargets a queued ack
 	h.reply(receipt, chatReceipt("first", "second"))
 	ack := h.take(protocol.TypeOperatorAck)
 	if ack.MessageID != "second" {

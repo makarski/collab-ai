@@ -57,12 +57,10 @@ func TestChatReplyUsesLiteralSenderAndSentMessagesNeverInferScope(t *testing.T) 
 			msg.From = sender
 			h.reply(history, chatHistory(msg))
 			h.await(func() bool { return h.m.State().InFlight == 0 })
-			h.input(chatKey(tea.KeyEscape, 0))
-			h.input(chatKey(tea.KeyDown, 0))
-			h.input(chatKey('r', 0))
-			scope, err := chat.ParseRecipients(h.m.State().Recipients)
-			chatEqual(t, "recipient parsing", err, nil)
-			chatEqual(t, "literal sender", scope.To, sender)
+			v2Command(h, "/reply #1")
+			audience := h.m.State().Audience
+			chatEqual(t, "reply audience", audience.Source, "reply")
+			chatEqual(t, "literal sender", len(audience.IDs) == 1 && audience.IDs[0] == sender, true)
 			chatEqual(t, "reply correlation", h.m.State().InReplyTo, "received")
 		})
 	}
@@ -73,12 +71,10 @@ func TestChatReplyUsesLiteralSenderAndSentMessagesNeverInferScope(t *testing.T) 
 	page.History.Entries[0].Message.To = "group:sent"
 	h.reply(history, page)
 	h.await(func() bool { return h.m.State().InFlight == 0 })
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyDown, 0))
-	h.input(chatKey('r', 0))
-	chatEqual(t, "no inferred recipients", h.m.State().Recipients, "")
+	v2Command(h, "/reply #1")
+	chatEqual(t, "no inferred recipients", h.m.State().Audience.Source, "everyone")
 	chatEqual(t, "no inferred correlation", h.m.State().InReplyTo, "")
-	chatEqual(t, "recipient instruction", strings.Contains(h.m.State().Status, "choose recipients"), true)
+	chatEqual(t, "recipient instruction", strings.Contains(h.m.State().Status, "received messages"), true)
 }
 
 func TestChatRenderFocusAndScrollNeverAcknowledge(t *testing.T) {
@@ -89,9 +85,9 @@ func TestChatRenderFocusAndScrollNeverAcknowledge(t *testing.T) {
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	for range 3 {
 		h.m.View()
-		h.input(chatKey(tea.KeyTab, 0))
-		h.input(chatKey(tea.KeyUp, 0))
-		h.input(chatKey(tea.KeyDown, 0))
+		h.input(chatKey(tea.KeyPgUp, 0))
+		h.input(chatKey(tea.KeyPgDown, 0))
+		h.input(chatKey(tea.KeyEnd, tea.ModCtrl))
 	}
 	state := h.m.State()
 	chatEqual(t, "no display requests", state.InFlight, 0)

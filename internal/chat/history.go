@@ -115,7 +115,7 @@ func (m *Model) insertHistory(page *protocol.HistoryPage, arrivals bool) bool {
 			m.timeline.paused = true
 			break
 		}
-		e, inserted := m.upsert(fresh)
+		e, inserted := m.upsert(fresh, page.Watermark.Epoch)
 		if arrivals {
 			m.arrived(inserted)
 		}
@@ -142,15 +142,15 @@ func (m *Model) applyHistoryStages(e *entry, h protocol.HistoryEntry, wm protoco
 	e.stagesTruncated = h.ReceiptsTruncated
 }
 
-// loadOlder scrolls into older history below the oldest shown message, or
-// fills a gap below the selected entry.
-func (m *Model) loadOlder() tea.Cmd {
+// loadOlder fills the gap below gap, or loads history below the oldest
+// loaded message when gap is nil.
+func (m *Model) loadOlder(gap *entry) tea.Cmd {
 	if m.history.loadingOlder || m.history.scrollUpper == 0 {
 		return nil
 	}
 	before, upper := m.timeline.oldestSeq(), m.history.scrollUpper
-	if e := m.timeline.selectedEntry(); e != nil && e.gapBelow {
-		before, upper = e.msg.Seq, max(upper, e.gapUpper)
+	if gap != nil && gap.gapBelow {
+		before, upper = gap.msg.Seq, max(upper, gap.gapUpper)
 	} else if m.history.olderDone {
 		m.status = "no older messages"
 		return nil

@@ -73,13 +73,13 @@ func (m *Model) receivePage(after, upper uint64) tea.Cmd {
 }
 
 // receivedPage adopts a validated page, then confirms receipt of what it adopted.
-func (m *Model) receivedPage(req protocol.PageRequest, page *protocol.OperatorPage) tea.Cmd {
+func (m *Model) receivedPage(req protocol.PageRequest, page *protocol.OperatorPage, epoch string) tea.Cmd {
 	if err := validateReceivePage(req, page); err != nil {
 		m.inbox.draining = false
 		m.status = err.Error()
 		return nil
 	}
-	adopted, complete := m.adopt(page.Messages)
+	adopted, complete := m.adopt(page.Messages, epoch)
 	cmds := []tea.Cmd{m.confirmReceipts(adopted)}
 	switch {
 	case !complete:
@@ -116,7 +116,7 @@ func (m *Model) finishDrain() tea.Cmd {
 // adopt inserts complete bodies, deduplicated by ID. A message already known
 // from history still counts as adopted and is confirmed. It stops at the
 // first message that can't fit, without skipping it.
-func (m *Model) adopt(messages []protocol.Message) ([]string, bool) {
+func (m *Model) adopt(messages []protocol.Message, epoch string) ([]string, bool) {
 	var ids []string
 	for _, msg := range messages {
 		fresh := newEntry(msg, "received", false)
@@ -124,7 +124,7 @@ func (m *Model) adopt(messages []protocol.Message) ([]string, bool) {
 			m.timeline.paused = true
 			return ids, false
 		}
-		e, inserted := m.upsert(fresh)
+		e, inserted := m.upsert(fresh, epoch)
 		m.arrived(inserted)
 		if e.receipt != ReceiptConfirmed {
 			e.receipt = ReceiptPending
@@ -153,17 +153,23 @@ func (m *Model) room(fresh *entry) bool {
 
 // upsert inserts or merges an entry; conflicting content suspends any
 // queued acknowledgment for that ID at once.
-func (m *Model) upsert(fresh *entry) (*entry, bool) {
+// upsert admits an entry read in source, the epoch of the page it came on.
+// Only a read from the current epoch lets commands target the entry; a late
+// page from an older epoch never blesses or downgrades it.
+func (m *Model) upsert(fresh *entry, source string) (*entry, bool) {
 	e, inserted := m.timeline.upsert(fresh)
+	if source == m.epoch {
+		e.epoch = source
+	}
 	if e.conflict {
 		m.inbox.suspend(e.msg.MessageID, "content changed")
 	}
 	return e, inserted
 }
 
-// arrived counts a new message as unread while the selection is scrolled up.
+// arrived counts a new message as unread while the transcript is scrolled up.
 func (m *Model) arrived(inserted bool) {
-	if inserted && !m.timeline.atBottom() {
+	if inserted && !m.view.following {
 		m.timeline.unread++
 	}
 }
@@ -282,7 +288,7 @@ func (m *Model) acknowledge(e *entry) tea.Cmd {
 		return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, id)
 	default:
 		m.inbox.queuedAcks[id] = &queuedAck{hash: e.hash}
-		m.status = "acknowledgment queued until receipt is confirmed (press a again to cancel)"
+		m.status = "acknowledgment queued until receipt is confirmed (/ack again cancels)"
 	}
 	return nil
 }
