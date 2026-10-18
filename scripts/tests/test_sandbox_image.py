@@ -26,6 +26,7 @@ def module(name, path):
 
 image = module("sandbox_image", "scripts/sandbox-image.py")
 import sandbox_builder as builder  # noqa: E402  # cleanup_project runs through this module
+from sandbox_base_image import Base  # noqa: E402
 installer = module("tool_download", "infra/image/tool_download.py")  # the builder's verified downloads
 
 
@@ -110,7 +111,8 @@ class ImageTests(unittest.TestCase):
             return subprocess.CompletedProcess(args, 0, "[]")
 
         with tempfile.TemporaryDirectory() as directory, patch.object(image, "run", side_effect=run), \
-                patch.object(builder, "run", side_effect=run), patch.object(image, "source_archive", return_value={}):
+                patch.object(builder, "run", side_effect=run), patch.object(image, "source_archive", return_value={}), \
+                patch.object(image, "ensure_base", return_value=Base("images:" + "a" * 64, "upstream")):
                 with self.assertRaises(subprocess.CalledProcessError):
                     image.build(Namespace(remote="local", network="incusbr0", storage_pool="default"), Path(directory))
         created = next(args[3] for args, _ in calls if args[1:3] == ["project", "create"])

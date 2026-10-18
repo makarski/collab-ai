@@ -10,7 +10,9 @@ import tempfile
 import uuid
 
 from sandbox_artifacts import sha256, image_variables, release_assets
+from sandbox_base_image import DEFAULT_REPO, Store, ensure_base
 from sandbox_builder import cleanup_project, identifier, run
+from sandbox_releases import repository
 from sandbox_source import source_archive
 from sandbox_versions import resolve_lock, version, fingerprint
 
@@ -37,7 +39,8 @@ def build(args, output):
              "-c", "features.networks=false", "-c", "features.storage.volumes=true"])
         print(f"Building in {args.remote}:{project}; temporary network: {args.network}", flush=True)
         try:
-            run(command + ["init", f"images:{base}", target, "--no-profiles",
+            image = ensure_base(Store(args.remote, project), base, getattr(args, "repo", DEFAULT_REPO)).ref
+            run(command + ["init", image, target, "--no-profiles",
                            "--storage", args.storage_pool, "--network", args.network,
                            "-d", "root,size=12GiB", "-c", "security.privileged=false",
                            "-c", "security.nesting=false", "-c", "security.guestapi=false",
@@ -76,6 +79,7 @@ def main():
     parser.add_argument("--go-version", type=version)
     parser.add_argument("--codex-version", type=version)
     parser.add_argument("--claude-version", type=version)
+    parser.add_argument("--repo", type=repository, default=DEFAULT_REPO, help="Repository holding the base-<fingerprint> mirror releases")
     parser.add_argument("--base-image", type=fingerprint, help="Ubuntu 24.04 container fingerprint for the server architecture")
     args = parser.parse_args()
     output = args.output.resolve()

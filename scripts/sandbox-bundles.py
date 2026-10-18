@@ -8,8 +8,10 @@ import subprocess
 import sys
 
 from sandbox_artifacts import ARCHITECTURES
+from sandbox_base_image import DEFAULT_REPO
 from sandbox_builder import Builder, identifier, server_architecture
 from sandbox_bundles import BUNDLE_KINDS, ROOT, BundleBuild
+from sandbox_releases import repository
 
 
 def main():
@@ -20,6 +22,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "dist/workspace/release",
                         help="Release asset directory; bundles are added next to the image assets")
     parser.add_argument("--lock-file", type=Path, default=ROOT / "infra/image/tools.lock.json")
+    parser.add_argument("--repo", type=repository, default=DEFAULT_REPO, help="Repository holding the base-<fingerprint> mirror releases")
     parser.add_argument("--kinds", nargs="+", choices=BUNDLE_KINDS, default=list(BUNDLE_KINDS))
     args = parser.parse_args()
     machine = server_architecture(args.remote)
@@ -28,7 +31,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     builder = Builder(args.remote, "collab-bundles", args.storage_pool, args.network)
     try:
-        builder.create(lock["architectures"][machine]["base_image"])
+        builder.create(lock["architectures"][machine]["base_image"], args.repo)
         manifest = BundleBuild(builder, ARCHITECTURES[machine], output, args.lock_file).build(args.kinds)
     finally:
         builder.cleanup()

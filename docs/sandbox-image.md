@@ -63,6 +63,8 @@ python3 scripts/sandbox-image.py --remote colima-collab-ai \
 | `--codex-version`, `--claude-version`, `--go-version` | Exact versions; defaults come from the lock |
 | `--base-image SHA256` | Ubuntu 24.04 fingerprint for the build server's architecture |
 | `--lock-file FILE` | A custom complete lock file, including checksums |
+| `--repo OWNER/REPO` | Repository holding the base image mirror releases (default `makarski/collab-ai`) |
+| `--output DIRECTORY` | New directory for the build; existing directories are never overwritten |
 
 `tools.lock.json` (schema 2) has one `artifacts` entry per third-party tool:
 its version, kind (`archive`, `binary` or `zip`), a URL and entry template, and
@@ -75,7 +77,6 @@ Each release also carries the optional tool bundles built by
 `scripts/sandbox-bundles.py` in the same CI job (Playwright MCP with Chromium,
 Chromium's apt packages, Docker's apt packages) with their digests in
 `collab-ai-bundles-linux-<arch>.json`; see [sandbox tools](sandbox-tools.md).
-| `--output DIRECTORY` | New directory for the build; existing directories are never overwritten |
 
 Overrides resolve publisher checksums; unsupported packages and moving versions
 such as `latest` are rejected. The manifest records source commit, tracked edits,
@@ -91,8 +92,7 @@ removing it; Incus 6.0 LTS requires deleting its instances/images before the pro
 
 Output: `workspace.tar.gz`, manifest, `image.tfvars.json` and release files.
 Pass its output directory with `--image-dir` for [initial setup](sandbox.md#2-install-or-upgrade)
-or [upgrade](sandbox-storage.md#replace-dev-retain-data). Keep the exported image;
-upstream may prune pinned base images. Rebuilds are not bit-identical: OS packages
+or [upgrade](sandbox-storage.md#replace-dev-retain-data). Rebuilds are not bit-identical: OS packages
 resolve at build time and metadata includes timestamps. OS versions are recorded.
 
 ## CI and releases
@@ -107,5 +107,39 @@ Explicit `workspace-vX.Y.Z` tags publish versioned releases too. Publication hap
 only after all checks and both image builds pass; incomplete uploads stay in draft.
 Published assets are never overwritten. `latest` becomes available after the first
 successful main release build.
+
+### Base images
+
+`images.linuxcontainers.org` keeps only the last three daily Ubuntu builds, so a
+pinned base image disappears upstream within days. Each pin is therefore mirrored
+once into its own release, `base-<fingerprint>`, holding `incus.tar.xz` and
+`rootfs.squashfs`. The fingerprint is sha256 over those two files in that order,
+as Incus computes it, and is the only trust root.
+
+- **Lookup:** the image build, the bundle build and the rollout's operator
+  container look for the pin in this order:
+  1. the Incus project's image store;
+  2. the verified cache in `dist/base/<fingerprint>/`;
+  3. the mirror release;
+  4. upstream, as a last resort.
+  Only confirmed absence moves on to the next source. A checksum mismatch, a
+  network or API error, or a failed import stops the build. The operator uses
+  the pin from the host checkout, not the selected release.
+- **Publishing:** the `base-mirror` CI job runs on `main` and `workspace-v*`
+  pushes, one at a time per repository, and the release job waits for it. It
+  stages a draft, verifies the uploaded pair, and then publishes it without
+  making it `latest`. A published mirror is never changed. An interrupted draft
+  is resumed from its own verified assets, so a pin that upstream already
+  pruned isn't lost.
+- **PRs:** `checks` runs `scripts/base-image-mirror.py check`, which confirms
+  each pin is mirrored or still upstream. It checks availability only; builds
+  verify the bytes. A new pin builds from upstream in its PR and is mirrored
+  when it merges.
+- **Refreshing:** run `python3 scripts/base-image-refresh.py` to pin the newest
+  upstream builds for every architecture (for example for security updates),
+  then open a PR. It changes nothing unless every architecture resolves.
+
+Keep a `base-*` release while any published workspace release pins it: building
+or rolling out that release needs it.
 
 **Run workflow** accepts development source/tool overrides without publishing.

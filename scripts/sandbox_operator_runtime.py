@@ -7,6 +7,7 @@ import subprocess
 import uuid
 import zipfile
 
+from sandbox_base_image import DEFAULT_REPO, Store, ensure_base
 from sandbox_operator_config import ROOT
 from sandbox_operator_download import download_archive
 
@@ -29,15 +30,17 @@ class Operator:
     def push(self, source, destination):
         self.run("file", "push", str(source), self.target + destination)
 
-    def create(self):
+    def create(self, repo=DEFAULT_REPO):
         arch = self.server["architectures"][0]
+        # The operator deliberately uses the host checkout's pin, not the release's.
         image_lock = json.loads((ROOT / "infra/image/tools.lock.json").read_text())
         base = image_lock["architectures"][arch]["base_image"]
         subprocess.run(["incus", "project", "create", self.remote + self.project,
                         "-c", "features.images=true", "-c", "features.profiles=true",
                         "-c", "features.networks=false"], check=True)
         self.created = True
-        self.run("init", f"images:{base}", self.target, "--no-profiles", "--storage", self.pool,
+        image = ensure_base(Store(self.remote[:-1], self.project), base, repo).ref
+        self.run("init", image, self.target, "--no-profiles", "--storage", self.pool,
                  "--network", self.network, "-c", "security.privileged=false",
                  "-c", "security.idmap.isolated=true", "-c", "security.nesting=false",
                  "-c", "security.guestapi=false", "-c", "boot.autostart=false",

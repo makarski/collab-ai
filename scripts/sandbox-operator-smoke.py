@@ -12,6 +12,8 @@ import sys
 import tempfile
 import uuid
 
+from sandbox_releases import repository
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,7 +56,8 @@ output "operator_paths" {
 
 def invoke(directory, args, action, extra=()):
     command = [sys.executable, str(ROOT / "scripts/sandbox-provision.py"), action,
-               "--remote", args.remote, "--state-dir", str(directory / "state"), "--project", args.project]
+               "--remote", args.remote, "--state-dir", str(directory / "state"), "--project", args.project,
+               "--repo", args.repo]
     env = dict(os.environ, COLLAB_OPERATOR_HOME=str(directory / "registry"))
     return subprocess.run(command + list(extra), env=env, check=False)
 
@@ -93,6 +96,8 @@ def prove(directory, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", required=True)
+    parser.add_argument("--repo", type=repository, default="makarski/collab-ai",
+                        help="Repository holding the base-<fingerprint> mirror releases")
     args = parser.parse_args()
     args.project = "collab-operator-proof-" + uuid.uuid4().hex[:8]
     directory = Path(tempfile.mkdtemp(prefix=args.project + "-"))
