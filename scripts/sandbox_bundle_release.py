@@ -153,17 +153,24 @@ def reuse(repo, inputs, output):
         for asset in release["assets"]:
             fetch(asset["browser_download_url"], staging / asset["name"])
         manifest = verify_payload(staging, inputs)
-        for name in sorted(expected_assets(inputs)):
-            place(staging / name, output / name)
+        place_all(staging, output, sorted(expected_assets(inputs)))
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return manifest
 
 
-def place(source, target):
-    """Move a verified file into place, never replacing an existing one."""
-    os.link(source, target)  # fails if target exists
-    source.unlink()
+def place_all(staging, output, names):
+    """Move verified files into output, never replacing an existing one. On any
+    failure the files this call placed are removed again; others are kept."""
+    placed = []
+    try:
+        for name in names:
+            os.link(staging / name, output / name)  # fails if the target exists
+            placed.append(output / name)
+    except BaseException:
+        for path in placed:
+            path.unlink(missing_ok=True)
+        raise
 
 
 def write_release_files(output, inputs):
@@ -212,13 +219,17 @@ def compare_published(repo, release, inputs, directory):
     """An already published release must hold byte-identical files."""
     exact_assets(release, inputs)
     with tempfile.TemporaryDirectory(prefix="collab-bundles-") as temporary:
-        pulled = pull_all(repo, release, Path(temporary))
-        for name in sorted(expected_assets(inputs)):
-            if sha256(pulled / name) != sha256(Path(directory) / name):
-                raise IntegrityError(f"{release['tag_name']} already holds different {name}; "
-                                     "this run's tested bundles can't be released")
+        same_bytes(pull_all(repo, release, Path(temporary)), directory, inputs, "already holds different")
     print(f"Bundles {release['tag_name'][8:20]} ({inputs['architecture']}): published release verified", flush=True)
     return "verified"
+
+
+def same_bytes(pulled, tested, inputs, problem):
+    """Every asset of a release must be byte-identical to the tested payload."""
+    name = release_name(inputs_digest(inputs))
+    for asset in sorted(expected_assets(inputs)):
+        if sha256(Path(pulled) / asset) != sha256(Path(tested) / asset):
+            raise IntegrityError(f"{name} {problem} {asset}; this run's tested bundles can't be released")
 
 
 def pull_all(repo, release, directory):
@@ -240,7 +251,7 @@ def stage(repo, inputs, directory):
         raise Unavailable(f"Draft {name} is missing after upload")
     exact_assets(draft, inputs)
     with tempfile.TemporaryDirectory(prefix="collab-bundles-") as temporary:
-        verify_payload(pull_all(repo, draft, Path(temporary)), inputs)
+        same_bytes(pull_all(repo, draft, Path(temporary)), directory, inputs, "was uploaded with different")
     run(["gh", "release", "edit", name, "--repo", repo, "--draft=false", "--latest=false"])
 
 
