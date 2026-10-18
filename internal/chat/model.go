@@ -431,7 +431,11 @@ func asOwnerBusy(err error, target **OwnerBusyError) bool {
 // Run starts the chat program on a terminal and returns the final model.
 func Run(ctx context.Context, opts Options, input io.Reader, output io.Writer) (*Model, error) {
 	m := New(opts)
-	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output)).Run()
+	// The caller owns SIGINT/SIGTERM through ctx. Bubble Tea's own handler would
+	// race it and can block forever sending to a loop that already exited,
+	// before the terminal is restored. Resize handling is separate and stays.
+	_, err := tea.NewProgram(m, tea.WithContext(ctx), tea.WithInput(input), tea.WithOutput(output),
+		tea.WithoutSignalHandler()).Run()
 	m.cancel()
 	closeTransport(m.transport)
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {
