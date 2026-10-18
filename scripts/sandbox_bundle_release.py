@@ -106,18 +106,35 @@ def verify_payload(directory, inputs):
     """Check a complete local payload against inputs: the inputs file, the
     manifest's binding to the release, and every bundle digest."""
     directory = Path(directory)
-    arch, name = inputs["architecture"], release_name(inputs_digest(inputs))
+    check_inputs_file(directory, inputs)
+    manifest = bound_manifest(directory, inputs)
+    for kind, details in manifest["bundles"].items():
+        check_bundle(directory, inputs["architecture"], kind, details)
+    return manifest
+
+
+def check_inputs_file(directory, inputs):
+    arch = inputs["architecture"]
     recorded = json.loads((directory / inputs_file(arch)).read_text())
     if recorded != inputs or inputs_digest(recorded) != inputs_digest(inputs):
         raise IntegrityError(f"{inputs_file(arch)} doesn't describe these bundle inputs")
+
+
+def bound_manifest(directory, inputs):
+    """The payload's manifest, valid and bound to the release of inputs."""
+    arch, name = inputs["architecture"], release_name(inputs_digest(inputs))
     manifest = json.loads((directory / manifest_file(arch)).read_text())
     validate_bundles(manifest, machine(arch))
     if manifest.get("release") != name or sorted(manifest["bundles"]) != inputs["kinds"]:
         raise IntegrityError(f"{manifest_file(arch)} isn't the manifest of {name}")
-    for kind, details in manifest["bundles"].items():
-        if details["file"] != bundle_file(kind, arch) or sha256(directory / details["file"]) != details["sha256"]:
-            raise IntegrityError(f"Bundle {kind} doesn't match {manifest_file(arch)}")
     return manifest
+
+
+def check_bundle(directory, arch, kind, details):
+    if details["file"] != bundle_file(kind, arch):
+        raise IntegrityError(f"Bundle {kind} has an unexpected file name in {manifest_file(arch)}")
+    if sha256(directory / details["file"]) != details["sha256"]:
+        raise IntegrityError(f"Bundle {kind} doesn't match {manifest_file(arch)}")
 
 
 def machine(arch):
@@ -162,10 +179,12 @@ def write_release_files(output, inputs):
 
 def local_inputs(directory, architecture):
     """The inputs a CI payload directory records, checked for shape."""
-    inputs = json.loads((Path(directory) / inputs_file(ARCHITECTURES[architecture])).read_text())
-    if not isinstance(inputs, dict) or inputs.get("schema") != SCHEMA or \
-            inputs.get("architecture") != ARCHITECTURES[architecture]:
-        raise IntegrityError(f"{inputs_file(ARCHITECTURES[architecture])} isn't a bundle inputs record for {architecture}")
+    arch = ARCHITECTURES[architecture]
+    inputs = json.loads((Path(directory) / inputs_file(arch)).read_text())
+    if not isinstance(inputs, dict):
+        raise IntegrityError(f"{inputs_file(arch)} isn't a bundle inputs record")
+    if (inputs.get("schema"), inputs.get("architecture")) != (SCHEMA, arch):
+        raise IntegrityError(f"{inputs_file(arch)} isn't a schema {SCHEMA} bundle inputs record for {architecture}")
     checked_kinds(inputs.get("kinds", []))
     return inputs
 

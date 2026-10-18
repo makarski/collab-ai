@@ -219,13 +219,9 @@ def copy_bundles(output, manifest, obtain):
     """Copy every bundle file next to the image, each verified by digest.
     True when all were copied, False when the source holds none of them; a
     source holding only some, or a corrupt one, is an error."""
-    copied, absent = [], []
+    copied = []
     try:
-        for details in manifest["bundles"].values():
-            if copy_bundle(output, details, obtain):
-                copied.append(output / details["file"])
-            else:
-                absent.append(details["file"])
+        absent = copy_present(output, manifest, obtain, copied)
         if copied and absent:
             raise ValueError(f"The image source holds only some bundle files; missing: {', '.join(absent)}")
     except BaseException:
@@ -233,6 +229,18 @@ def copy_bundles(output, manifest, obtain):
             path.unlink(missing_ok=True)
         raise
     return not absent
+
+
+def copy_present(output, manifest, obtain, copied):
+    """Copy the bundle files the source has, recording each in copied; the
+    names it doesn't have."""
+    absent = []
+    for details in manifest["bundles"].values():
+        if copy_bundle(output, details, obtain):
+            copied.append(output / details["file"])
+        else:
+            absent.append(details["file"])
+    return absent
 
 
 def copy_bundle(output, details, obtain):
