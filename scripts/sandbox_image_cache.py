@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import uuid
 
-from sandbox_artifacts import fetch_bundles, fetch_image, fetch_manifest, image_variables, install_artifact, sha256
+from sandbox_artifacts import BundleSource, fetch_bundles, fetch_image, fetch_manifest, image_variables, install_artifact, sha256
 
 
 def prepare_image(architecture, obtain, output=None, cache=Path("dist/images")):
@@ -33,10 +33,10 @@ def prepare_image(architecture, obtain, output=None, cache=Path("dist/images")):
     return current.absolute(), manifest
 
 
-def record_bundles(directory, architecture, obtain, bundles_base=None):
+def record_bundles(directory, architecture, obtain, origin=BundleSource()):
     """Record once per image directory where its optional tool bundles come from."""
     if not (Path(directory) / "bundle-source.json").exists():
-        fetch_bundles(Path(directory), architecture, obtain, bundles_base)
+        fetch_bundles(Path(directory), architecture, obtain, origin)
 
 
 def verify_cached(destination, manifest):

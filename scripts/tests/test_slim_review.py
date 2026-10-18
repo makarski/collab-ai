@@ -44,7 +44,7 @@ class BundleDownloadReviewTests(unittest.TestCase):
             with self.subTest(status=code):
                 obtain = Mock(side_effect=HTTPError("https://example.invalid/manifest", code, "error", {}, None))
                 with self.assertRaises(HTTPError):
-                    artifacts.fetch_bundles(self.root, "aarch64", obtain, "https://example.invalid/")
+                    artifacts.fetch_bundles(self.root, "aarch64", obtain, artifacts.BundleSource("https://example.invalid/"))
                 self.assertFalse((self.root / "bundle-source.json").exists())
 
     def test_ambiguous_zip_manifest_is_not_cached_as_missing(self):
@@ -95,5 +95,5 @@ class BundleDownloadReviewTests(unittest.TestCase):
             target.write_text(json.dumps(self.manifest))
 
         with self.assertRaises(ValueError):
-            artifacts.fetch_bundles(self.root, "aarch64", obtain, "https://example.invalid/")
+            artifacts.fetch_bundles(self.root, "aarch64", obtain, artifacts.BundleSource("https://example.invalid/"))
         self.assertFalse((self.root / "bundle-source.json").exists())

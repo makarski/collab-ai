@@ -1,5 +1,6 @@
 """Native image release files and checksum-verified local downloads."""
 
+from collections import namedtuple
 import hashlib
 import json
 from pathlib import Path
@@ -97,6 +98,10 @@ def bundles_name(architecture):
 
 BUNDLE_KINDS = {"playwright": False, "chromium-deps": True, "docker": True}  # name: is a deb set
 RESERVED = {"workspace.tar.gz", "manifest.json", "image.tfvars.json", "bundle-source.json"}
+BUNDLE_RELEASE = re.compile(r"bundles-[0-9a-f]{64}")
+# Where bundles come from: a URL prefix to fetch them from on demand, or None
+# to copy them from the image source; repo resolves a manifest's bundle release.
+BundleSource = namedtuple("BundleSource", ["base", "repo"], defaults=(None, "makarski/collab-ai"))
 
 
 def validate_bundles(manifest, architecture):
@@ -105,6 +110,8 @@ def validate_bundles(manifest, architecture):
     image directory or replace its own files, digests and package inventories."""
     if manifest.get("architecture") != ARCHITECTURES[architecture]:
         raise ValueError("bundle manifest is for another architecture")
+    if "release" in manifest and not BUNDLE_RELEASE.fullmatch(str(manifest["release"])):
+        raise ValueError("bundle manifest names an invalid bundle release")
     for name, details in manifest["bundles"].items():
         validate_bundle(name, details, architecture)
 
@@ -130,7 +137,7 @@ SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*")  # dot-s
 def safe_file_name(value, architecture):
     if not SAFE_NAME.fullmatch(value or ""):
         raise ValueError(f"unsafe bundle file name {value!r}")
-    if value in reserved_names(architecture) or value.startswith(asset_name(architecture)):
+    if value in reserved_names(architecture) or value.startswith((asset_name(architecture), "collab-ai-bundle-inputs-")):
         raise ValueError(f"bundle file name {value!r} is reserved")
 
 
@@ -156,13 +163,15 @@ def fresh(obtain, name, target):
         raise
 
 
-def fetch_bundles(output, architecture, obtain, base=None):
+def fetch_bundles(output, architecture, obtain, origin=BundleSource()):
     """Record where this image's optional tool bundles come from.
 
-    The small bundle manifest is kept next to the image. With `base` (a URL
-    prefix the bundle files can be fetched from on demand) nothing else is
-    downloaded; without it, the bundle files are copied here and `base` becomes
-    this directory. A release without bundles leaves nothing behind."""
+    The small bundle manifest is kept next to the image. With a source base (a
+    URL prefix the bundle files can be fetched from on demand) nothing else is
+    downloaded, and a manifest naming a bundle release is fetched from that
+    release instead. Without one, the bundle files are copied here and the base
+    becomes this directory; a local source holding none of them falls back to
+    the manifest's bundle release. A release without bundles leaves nothing behind."""
     manifest_path = output / bundles_name(architecture)
     source = output / "bundle-source.json"
     try:
@@ -173,11 +182,26 @@ def fetch_bundles(output, architecture, obtain, base=None):
         source.write_text(json.dumps({"base": None}, indent=2) + "\n")  # remembered: no bundles
         return None
     manifest = checked_manifest(manifest_path, architecture)
-    if base is None:
-        copy_bundles(output, manifest, obtain)
-        base = output.resolve().as_uri() + "/"
+    base = remote_base(manifest, origin) if origin.base is not None else local_base(output, manifest, obtain, origin)
     source.write_text(json.dumps({"base": base}, indent=2) + "\n")
     return manifest
+
+
+def release_base(repo, release):
+    return f"https://github.com/{repo}/releases/download/{release}/"
+
+
+def remote_base(manifest, origin):
+    release = manifest.get("release")
+    return release_base(origin.repo, release) if release else origin.base
+
+
+def local_base(output, manifest, obtain, origin):
+    if copy_bundles(output, manifest, obtain):
+        return output.resolve().as_uri() + "/"
+    if not manifest.get("release"):
+        raise ValueError("The bundle files are missing from the image source, and its manifest names no bundle release")
+    return release_base(origin.repo, manifest["release"])
 
 
 def checked_manifest(path, architecture):
@@ -192,10 +216,35 @@ def checked_manifest(path, architecture):
 
 
 def copy_bundles(output, manifest, obtain):
-    """Copy every bundle file next to the image, each verified by digest."""
-    for details in manifest["bundles"].values():
-        target = output / details["file"]
+    """Copy every bundle file next to the image, each verified by digest.
+    True when all were copied, False when the source holds none of them; a
+    source holding only some, or a corrupt one, is an error."""
+    copied, absent = [], []
+    try:
+        for details in manifest["bundles"].values():
+            if copy_bundle(output, details, obtain):
+                copied.append(output / details["file"])
+            else:
+                absent.append(details["file"])
+        if copied and absent:
+            raise ValueError(f"The image source holds only some bundle files; missing: {', '.join(absent)}")
+    except BaseException:
+        for path in copied:
+            path.unlink(missing_ok=True)
+        raise
+    return not absent
+
+
+def copy_bundle(output, details, obtain):
+    """Copy and verify one bundle file; False if the source doesn't have it."""
+    target = output / details["file"]
+    try:
         fresh(obtain, details["file"], target)
-        if sha256(target) != details["sha256"]:
-            target.unlink()
-            raise ValueError(f"Bundle {details['file']} does not match its digest")
+    except (FileNotFoundError, urllib.error.HTTPError) as error:
+        if not confirmed_absent(error):
+            raise
+        return False
+    if sha256(target) != details["sha256"]:
+        target.unlink()
+        raise ValueError(f"Bundle {details['file']} does not match its digest")
+    return True

@@ -7,7 +7,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from sandbox_artifacts import fetch
+from sandbox_artifacts import BundleSource, fetch
 from sandbox_image_cache import prepare_image, record_bundles
 
 
@@ -72,5 +72,5 @@ def download_release(architecture, selection="latest", repo="makarski/collab-ai"
     print(f"Verified image: {manifest['image_fingerprint']}", flush=True)
     # Freeze the selection; a concurrent download may move the convenience link.
     selected = directory.parent / manifest["image_fingerprint"] if output is None else directory
-    record_bundles(selected, architecture, obtain, base)
+    record_bundles(selected, architecture, obtain, BundleSource(base, repo))
     return selected

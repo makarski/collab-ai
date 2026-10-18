@@ -73,10 +73,12 @@ a `sha256` plus the vendor's architecture label per machine architecture.
 same table drives the image build and, with [sandbox tools](sandbox-tools.md),
 the host-side artifact cache.
 
-Each release also carries the optional tool bundles built by
-`scripts/sandbox-bundles.py` in the same CI job (Playwright MCP with Chromium,
-Chromium's apt packages, Docker's apt packages) with their digests in
-`collab-ai-bundles-linux-<arch>.json`; see [sandbox tools](sandbox-tools.md).
+Each release also references the optional tool bundles built by
+`scripts/sandbox-bundles.py` (Playwright MCP with Chromium, Chromium's apt
+packages, Docker's apt packages). Its `collab-ai-bundles-linux-<arch>.json`
+holds their digests and names the `bundles-<digest>` release they're
+published in, once per set of inputs; see
+[bundle releases](sandbox-tools.md#bundle-releases).
 
 Overrides resolve publisher checksums; unsupported packages and moving versions
 such as `latest` are rejected. The manifest records source commit, tracked edits,

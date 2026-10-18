@@ -96,10 +96,41 @@ offline `dpkg -i`, no repository access from inside the sandbox.
 
 `scripts/sandbox-bundles.py` builds them in the images CI job, inside a
 disposable container of the pinned base image, so the `.deb` closure is
-exactly what the slim image lacks. Each release carries
+exactly what the slim image lacks. The output is
 `collab-ai-bundle-<kind>-linux-<arch>.tar.gz` per bundle and one
 `collab-ai-bundles-linux-<arch>.json` with every bundle's digest, package
 inventory (deb bundles) or pinned versions and Chromium path (playwright).
+
+### Bundle releases
+
+Bundles change far less often than the image, so they're published once per
+set of inputs instead of with every workspace release.
+
+- **The digest:** each architecture's bundle set is keyed by a digest of its
+  inputs, recorded in `collab-ai-bundle-inputs-linux-<arch>.json`. The inputs
+  are the recipe files (`scripts/sandbox_bundles.py`, `sandbox-bundles.py`,
+  `sandbox_builder.py`, `infra/image/build-playwright-bundle.py`,
+  `tool_download.py`, `tool_lock.py`, `mcp/package*.json`,
+  `docker-packages.txt`), the Node pin, the base image pin, the architecture
+  and the bundle kinds. Codex, Claude Code or Go bumps don't change it.
+- **CI:** the images job runs `sandbox-bundles.py --reuse`. If a published
+  `bundles-<digest>` release exists, it downloads and verifies those exact
+  files; otherwise it builds new ones. The smoke tests then use those bytes.
+  On `main` and `workspace-v*` pushes, the serialized `bundle-publish` job
+  either publishes a newly built set (staged as a draft, verified as
+  uploaded, never `latest`) or checks that the published release is
+  byte-identical to what the run tested. A published bundle release is never
+  changed.
+- **Workspace releases:** they carry only the bundle manifest, whose
+  `release` field names the bundle release. Rollouts fetch bundles from
+  there, checked by digest.
+- **Frozen package sets:** apt and Docker package sets resolve when a bundle
+  set is first built and stay frozen until an input changes. Newer packages
+  arrive with a deliberate change, such as a base image refresh
+  (`scripts/base-image-refresh.py`) or a package list edit.
+
+Keep a `bundles-*` release while any published workspace release references
+it.
 
 ## The tool stores
 
@@ -379,9 +410,12 @@ happens only when every artifact exists. PRs in order:
      `collab-tools-ready` fails; `tools-retry` reruns a crashed activation on
      never-released roots only.
 4. **Bundle delivery (4b).** `sandbox-download` records next to each image
-   where its bundles come from (`bundle-source.json`: the release URL, or the
-   local directory the assets were copied into) and keeps the small bundle
-   manifest; the activator already installs deb sets (4a). In a store-mode
+   where its bundles come from (`bundle-source.json`: the bundle release the
+   manifest names, the workspace release URL for releases from before bundle
+   releases, or the local directory the assets were copied into) and keeps the
+   small bundle manifest. A local `--from-dir`/`--from-zip` source without any
+   bundle files falls back to the manifest's bundle release; one with only
+   some, or a corrupt one, is an error; the activator already installs deb sets (4a). In a store-mode
    workspace the host adds the Playwright, Chromium-deps and Docker entries
    from that manifest and fetches their files by digest on demand; baked roots
    and `secured` never get them. A selection that needs bundles from a release
