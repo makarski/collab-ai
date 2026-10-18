@@ -234,7 +234,7 @@ class BaseLookupAcceptanceTests(unittest.TestCase):
         invalid = [dict(good, tag_name="base-" + "0" * 64),
                    dict(good, assets=good["assets"][:1]),
                    dict(good, assets=[good["assets"][0], good["assets"][0]]),
-                   dict(good, assets=good["assets"] + [{"name": "unexpected"}])]
+                   dict(good, assets=good["assets"] + [{"name": "unexpected", "browser_download_url": "https://example.invalid/extra"}])]
         for data in invalid:
             with self.subTest(data=data), patch.object(base, "urlopen", return_value=BytesIO(json.dumps(data).encode())):
                 with self.assertRaises(base.IntegrityError):
