@@ -182,14 +182,25 @@ func (m *Model) target(arg string, fallback func() *entry) (*entry, string) {
 	if err != nil {
 		return nil, err.Error()
 	}
+	return m.entryForSeq(n)
+}
+
+// entryForSeq finds the current-epoch entry numbered n. Entries from an older
+// epoch can share the number; they are skipped, and reported only when no
+// current entry has it.
+func (m *Model) entryForSeq(n uint64) (*entry, string) {
+	stale := false
 	for _, e := range m.timeline.order {
 		if e.msg.Seq != n {
 			continue
 		}
-		if e.epoch != m.epoch {
-			return nil, fmt.Sprintf("#%d is from before the broker restarted; /history reloads it", n)
+		if e.epoch == m.epoch {
+			return e, ""
 		}
-		return e, ""
+		stale = true
+	}
+	if stale {
+		return nil, fmt.Sprintf("#%d is from before the broker restarted; /history reloads it", n)
 	}
 	return nil, fmt.Sprintf("#%d isn't loaded; /history loads older messages", n)
 }

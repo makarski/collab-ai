@@ -13,7 +13,8 @@ import (
 type viewport struct {
 	following bool
 	anchorID  string
-	anchorRow int
+	anchorSrc int // logical line within the entry
+	anchorCol int // cell offset within that logical line
 }
 
 // top is the index of the first visible line for a transcript of lines and a
@@ -23,12 +24,29 @@ func (m *Model) top(lines []renderLine, height int) int {
 	if m.view.following {
 		return bottom
 	}
+	return max(0, min(m.anchorIndex(lines), bottom))
+}
+
+// anchorIndex finds the wrapped segment that holds the anchored text: the last
+// segment of the anchored logical line starting at or before the anchored
+// offset. A vanished entry falls back to the bottom.
+func (m *Model) anchorIndex(lines []renderLine) int {
+	found := -1
 	for i, l := range lines {
-		if l.id == m.view.anchorID {
-			return max(0, min(i+m.view.anchorRow, bottom))
+		if l.id != m.view.anchorID {
+			continue
+		}
+		if found < 0 {
+			found = i
+		}
+		if l.src == m.view.anchorSrc && l.col <= m.view.anchorCol {
+			found = i
 		}
 	}
-	return bottom
+	if found < 0 {
+		return len(lines)
+	}
+	return found
 }
 
 // transcriptWindow is the visible part of the transcript.
@@ -71,13 +89,8 @@ func (m *Model) anchor(lines []renderLine, index int) {
 	if len(lines) == 0 {
 		return
 	}
-	index = min(index, len(lines)-1)
-	id := lines[index].id
-	first := index
-	for first > 0 && lines[first-1].id == id {
-		first--
-	}
-	m.view = viewport{anchorID: id, anchorRow: index - first}
+	l := lines[min(index, len(lines)-1)]
+	m.view = viewport{anchorID: l.id, anchorSrc: l.src, anchorCol: l.col}
 }
 
 // follow returns to the newest message and clears the unread count.

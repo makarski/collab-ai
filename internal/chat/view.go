@@ -39,7 +39,7 @@ func safe(s string) string {
 	for _, r := range s {
 		switch {
 		case r == '\t':
-			b.WriteString("    ")
+			b.WriteString(`\t`) // identities must stay distinguishable
 		case r == utf8RuneError:
 			b.WriteString(`�`)
 		case unicode.IsPrint(r):
@@ -54,6 +54,11 @@ func safe(s string) string {
 }
 
 const utf8RuneError = '�'
+
+// safeText is safe for message text: tabs indent instead of showing as \t.
+func safeText(s string) string {
+	return safe(strings.ReplaceAll(s, "\t", "    "))
+}
 
 func agentStyle(id string) lipgloss.Style {
 	h := fnv.New32a()
@@ -282,10 +287,14 @@ func (m *Model) hintLine() string {
 	return warnStyle.Render(text) + mutedStyle.Render("   Enter send · / commands · F1 help")
 }
 
-// renderLine is one visual line of the transcript and the entry it belongs to.
+// renderLine is one visual line of the transcript: the entry it belongs to,
+// the logical line within the entry (src) and the cell offset of this wrapped
+// segment within that logical line (col). Anchoring by src and col keeps the
+// same text in view when a resize re-wraps it.
 type renderLine struct {
-	id   string
-	text string
+	id       string
+	src, col int
+	text     string
 }
 
 // transcript lays out every visible entry at the current width.
@@ -296,34 +305,54 @@ func (m *Model) transcript() []renderLine {
 		if e.msg.Seq <= m.cutoff {
 			continue
 		}
-		for _, text := range m.entryLines(e, width) {
-			lines = append(lines, renderLine{id: e.msg.MessageID, text: text})
-		}
+		lines = append(lines, m.entryLines(e, width)...)
 	}
 	return lines
 }
 
-func (m *Model) entryLines(e *entry, width int) []string {
-	lines := append([]string{""}, m.entryHeader(e, width)...)
+// entryLines lays out one entry as logical lines, each wrapped to width.
+func (m *Model) entryLines(e *entry, width int) []renderLine {
+	b := lineBuilder{id: e.msg.MessageID}
+	b.add([]string{""}, "")
+	b.add(m.entryHeader(e, width), "")
 	if e.msg.InReplyTo != "" {
-		lines = append(lines, mutedStyle.Render("  ↳ "+m.replyLabel(e.msg.InReplyTo)))
+		b.add([]string{mutedStyle.Render("↳ " + m.replyLabel(e.msg.InReplyTo))}, "  ")
 	}
 	if e.omitted {
-		lines = append(lines, mutedStyle.Render("  [text not available: this message exceeds the history page size]"))
+		b.add([]string{mutedStyle.Render("[text not available: this message exceeds the history page size]")}, "  ")
 	} else {
 		for _, line := range strings.Split(payloadText(e.msg.Payload), "\n") {
-			for _, part := range wrap(safe(line), width-2) {
-				lines = append(lines, "  "+part)
-			}
+			b.add(wrap(safeText(line), width-2), "  ")
 		}
 	}
-	for _, part := range wrap(m.entryStatus(e), width-4) {
-		lines = append(lines, mutedStyle.Render("  · "+part))
-	}
+	b.add(styled(wrap(m.entryStatus(e), width-4), mutedStyle), "  · ")
 	if e.gapBelow {
-		lines = append(lines, warnStyle.Render("  ── older messages may be missing here · /history loads them ──"))
+		b.add([]string{warnStyle.Render("── older messages may be missing here · /history loads them ──")}, "  ")
 	}
-	return lines
+	return b.lines
+}
+
+// lineBuilder numbers logical lines and the offsets of their wrapped parts.
+type lineBuilder struct {
+	id    string
+	src   int
+	lines []renderLine
+}
+
+func (b *lineBuilder) add(parts []string, indent string) {
+	col := 0
+	for _, part := range parts {
+		b.lines = append(b.lines, renderLine{id: b.id, src: b.src, col: col, text: indent + part})
+		col += ansi.StringWidth(ansi.Strip(part))
+	}
+	b.src++
+}
+
+func styled(parts []string, style lipgloss.Style) []string {
+	for i, p := range parts {
+		parts[i] = style.Render(p)
+	}
+	return parts
 }
 
 // wrap breaks text at word boundaries, and inside words longer than width.
