@@ -195,10 +195,10 @@ func (m *Model) mentionFragment() (string, bool) {
 }
 
 func lastMentionToken(value string) (string, bool) {
-	if !openToken(value) {
-		return "", false
-	}
 	fields := strings.Fields(value)
+	if len(fields) == 0 || !openToken(value) {
+		return "", false // also Unicode-only whitespace, which Fields drops
+	}
 	for _, f := range fields {
 		if !strings.HasPrefix(f, "@") {
 			return "", false // the prefix already ended
