@@ -70,28 +70,33 @@ def upstream_entry(index, fp):
 
 def find_release(repo, fp):
     """The release tagged base-<fp>, drafts included, or None."""
+    return find_tagged(repo, tag(fp))
+
+
+def find_tagged(repo, name):
+    """The release tagged name, drafts included, or None."""
     listing = run(["gh", "api", "--paginate", f"repos/{repository(repo)}/releases",
-                   "--jq", f'.[] | select(.tag_name == "{tag(fp)}")'], capture_output=True, text=True).stdout
-    matches = listed(listing, fp)
+                   "--jq", f'.[] | select(.tag_name == "{name}")'], capture_output=True, text=True).stdout
+    matches = listed(listing, name)
     if len(matches) > 1:
-        raise IntegrityError(f"More than one release is tagged {tag(fp)}")
-    return listed_release(matches[0], fp) if matches else None
+        raise IntegrityError(f"More than one release is tagged {name}")
+    return listed_release(matches[0], name) if matches else None
 
 
-def listed(listing, fp):
+def listed(listing, name):
     try:
         return [json.loads(line) for line in listing.splitlines() if line.strip()]
     except ValueError as error:
-        raise Unavailable(f"Unexpected release listing for {tag(fp)}: {error}") from error
+        raise Unavailable(f"Unexpected release listing for {name}: {error}") from error
 
 
-def listed_release(release, fp):
+def listed_release(release, name):
     """A listed release, checked to have the fields the publisher relies on."""
     if not isinstance(release, dict):
-        raise Unavailable(f"Unexpected release listing for {tag(fp)}")
+        raise Unavailable(f"Unexpected release listing for {name}")
     release_shape(release, ("name",))
     if not all(isinstance(asset.get("id"), int) for asset in release["assets"]):
-        raise Unavailable(f"Unexpected release listing for {tag(fp)}")
+        raise Unavailable(f"Unexpected release listing for {name}")
     return release
 
 

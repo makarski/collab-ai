@@ -66,7 +66,7 @@ class BundleSourceTests(unittest.TestCase):
         files = {"collab-ai-bundles-linux-arm64.json": json.dumps(manifest).encode(), "docker.tar.gz": b"d"}
         with tempfile.TemporaryDirectory() as directory:
             fetched = []
-            artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from(files, fetched), "https://r/")
+            artifacts.fetch_bundles(Path(directory), "aarch64", self.obtain_from(files, fetched), artifacts.BundleSource("https://r/"))
             self.assertEqual(fetched, ["collab-ai-bundles-linux-arm64.json"])
             self.assertEqual(json.loads((Path(directory) / "bundle-source.json").read_text())["base"], "https://r/")
 
