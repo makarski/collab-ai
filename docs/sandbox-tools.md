@@ -313,6 +313,28 @@ and the tool-dependent entry points stay in maintenance with that message.
   the preset and run rollout".
 - `secured`'s supervised Codex uses the same launcher against its own store.
 
+### Image layout
+
+During an upgrade, a host checkout drives both the image it provisioned
+before and the one it is rolling out. So the host first asks each container
+which names its image uses for the paths, helpers and units it drives
+(`scripts/sandbox_layout.py`).
+
+- **How:** one Python probe reads `/usr/local/share/pairtask/layout.json`.
+  It answers either "absent" or the parsed marker.
+- **Legacy layout:** a confirmed missing marker, or an explicit
+  `{"layout": 1}`, means the legacy (`collab-*`) layout. Every image so far
+  uses it.
+- **Hard stops:** an unreadable or malformed marker, a failed probe, or a
+  layout version this checkout doesn't know stops tool activation and SSH
+  key admission for that container. After a failed probe, the activation
+  path neither downloads nor pushes tool artifacts. Steps that run earlier
+  in a rollout, such as fetching the image, aren't affected. A newer image
+  layout asks for a newer host checkout.
+- **Compatibility:** images that use new names keep the legacy names the
+  host relies on (the readiness helper, the tools-mode file, the units) as
+  forwarders, so an older host checkout keeps its readiness gate.
+
 ## Extraction policy
 
 Before anything is extracted, the activator validates every archive member

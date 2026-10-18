@@ -10,30 +10,28 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import hashlib
 import json
+import shlex
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 
 from sandbox_artifacts import ARCHITECTURES, bundles_name
+from sandbox_layout import discover
 from sandbox_tools import CACHE, cache_artifact, resolve
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "infra/image"))
 from tool_store import generation_id, manifest_for  # noqa: E402
 
-SHARE = "/usr/local/share/collab-ai"
 INCOMING = "/var/lib/collab-ai-tools/incoming"
-SELECTION_FILE = "/etc/collab-ai/tools.json"
 AGENT_KEY = "/etc/ssh/authorized_keys/agent"
-ACTIVATOR = "/usr/local/bin/collab-tools-activate"
 # Every launch mode needs these; the rest can be turned off per preset.
 REQUIRED_TOOLS = ("go", "codex", "claude", "rtk", "starship")
 OPTIONAL_TOOLS = ("cs-mcp", "playwright", "docker")
 # Optional tools delivered as release bundles rather than lock artifacts. They
 # are installed into store-mode roots only; a baked root already has them.
 BUNDLE_TOOLS = ("playwright", "docker")
-MODE_FILE = f"{SHARE}/tools-mode"
 PLAYWRIGHT_ENTRY = "node_modules/@playwright/mcp/cli.js"
 # The release bundles each bundle-backed tool consists of: (bundle, kind, entry).
 BUNDLE_PARTS = {
@@ -42,11 +40,10 @@ BUNDLE_PARTS = {
 }
 SECURED_TOOLS = ("codex", "claude")
 PROVENANCE_KEYS = ("collab", "recipe_commit", "files_sha256")
-# Units that wait for collab-tools-ready; started by the host once a root is released.
+# Units (layout keys) that wait for tools readiness; started by the host once a root is released.
 GATED_UNITS = {
-    "workspace": ("collab-tools-ready.service", "collab-rtk-setup.service", "collab-docker-session.service",
-                  "collab-docker-setup.service"),
-    "secured": ("collab-tools-ready.service",),
+    "workspace": ("tools_ready", "rtk_setup", "docker_session", "docker_setup"),
+    "secured": ("tools_ready",),
 }
 RETRY_COMMAND = "python3 scripts/sandbox-provision.py tools-retry"
 
@@ -60,6 +57,14 @@ class Container:
         self.command = ["incus", "--project", project]
         self.target = f"{remote}:{name}"
         self.run = run
+        self._layout = None
+
+    @property
+    def layout(self):
+        """The image layout, probed once for this container."""
+        if self._layout is None:
+            self._layout = discover(self)
+        return self._layout
 
     def as_role(self, role):
         self.role = role
@@ -125,7 +130,7 @@ def digest(data):
 
 
 def status(container):
-    return json.loads(container.output("collab-tools-activate", "status"))
+    return json.loads(container.output(container.layout.tools_activate, "status"))
 
 
 # The probe exits 0 whenever it evaluated and names its verdict; the Incus
@@ -153,7 +158,7 @@ def agent_key_installed(container):
 def has_tool_store(container):
     """Whether this root's image carries the activator: the evidence that the
     release supports the tool store. Older releases keep their baked tools."""
-    return probe(container, "-x", ACTIVATOR)
+    return probe(container, "-x", container.layout.tools_activate)
 
 
 def never_released(container, state):
@@ -189,7 +194,7 @@ def load_bundles(image_dir, machine):
 
 
 # Prints exactly one verdict line; any other output, or a failed exec, is an error.
-MODE_SCRIPT = f'if [ -e {MODE_FILE} ]; then printf "mode:%s\\n" "$(cat {MODE_FILE})"; else echo mode:absent; fi'
+MODE_SCRIPT = 'if [ -e {0} ]; then printf "mode:%s\\n" "$(cat {0})"; else echo mode:absent; fi'
 MODES = {"mode:store": True, "mode:baked": False, "mode:absent": False}
 
 
@@ -197,7 +202,8 @@ def store_mode(container):
     """Whether this root's launchers depend on the store (tools-mode = store).
     Only a confirmed absent file means an older, baked image; a transport error
     or an unknown mode fails closed rather than omitting tools."""
-    verdict = container.output("sh", "-c", MODE_SCRIPT).strip()
+    mode_file = shlex.quote(f"{container.layout.share_dir}/tools-mode")
+    verdict = container.output("sh", "-c", MODE_SCRIPT.format(mode_file)).strip()
     if verdict not in MODES:
         raise ValueError(f"{container.name}: unknown tools mode ({verdict!r})")
     return MODES[verdict]
@@ -206,8 +212,9 @@ def store_mode(container):
 def build_manifest(container, release, selected):
     """The manifest for this container's root: digests of the root's own lock
     and build source, which must agree with the release."""
-    lock_text = container.output("cat", f"{SHARE}/tools.lock.json")
-    source_text = container.output("cat", f"{SHARE}/build-source.json")
+    share = container.layout.share_dir
+    lock_text = container.output("cat", f"{share}/tools.lock.json")
+    source_text = container.output("cat", f"{share}/build-source.json")
     lock = json.loads(lock_text)
     if release.lock is not None and lock["artifacts"] != release.lock["artifacts"]:
         raise ValueError(f"{container.name}: the image's tool lock differs from the release manifest")
@@ -225,7 +232,7 @@ def release_units(container):
     """Start the gated entry points after a successful release. Idempotent: in
     baked mode they are already running; in store mode their first boot failed
     on the readiness gate and they need a reset."""
-    units = GATED_UNITS.get(container.role, GATED_UNITS["secured"])
+    units = [container.layout.units[key] for key in GATED_UNITS.get(container.role, GATED_UNITS["secured"])]
     container.execute("systemctl", "reset-failed", *units)
     container.execute("systemctl", "start", *units)
 
@@ -294,9 +301,10 @@ def activate(container, manifest, selected):
             path = Path(directory) / name
             path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
             container.push(path, f"{INCOMING}/{name}")
-    container.execute("install", "-d", "-m", "0755", "/etc/collab-ai")
-    container.execute("install", "-m", "0644", f"{INCOMING}/tools.json", SELECTION_FILE)
-    container.execute("collab-tools-activate", "activate", f"{INCOMING}/manifest.json", "--incoming", INCOMING)
+    layout = container.layout
+    container.execute("install", "-d", "-m", "0755", layout.etc_dir)
+    container.execute("install", "-m", "0644", f"{INCOMING}/tools.json", f"{layout.etc_dir}/tools.json")
+    container.execute(layout.tools_activate, "activate", f"{INCOMING}/manifest.json", "--incoming", INCOMING)
     container.execute("rm", "-rf", INCOMING)
 
 
