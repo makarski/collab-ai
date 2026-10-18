@@ -11,7 +11,7 @@ from unittest.mock import patch
 import sandbox_base_image as base
 import sandbox_base_mirror as mirror
 import sandbox_base_refresh as refresh
-from test_sandbox_base_acceptance import FILES, FP, release, upstream_fixture
+from test_sandbox_base_acceptance import FILES, FP, download, release, upstream_fixture
 
 
 class SourceValidationTests(unittest.TestCase):
@@ -61,6 +61,38 @@ class PublisherReviewTests(unittest.TestCase):
 
     def pull(self, repo, asset, destination):
         Path(destination).write_bytes(FILES[asset["name"]])
+
+    def test_new_mirror_stages_verified_pair_and_publishes_only_after_readback(self):
+        index = upstream_fixture()
+        index["products"]["ubuntu:noble:arm64:default"]["versions"]["20261018_05:25"]["items"]["incus.tar.xz"]["combined_squashfs_sha256"] = FP
+        events = []
+        uploaded = {}
+
+        def run(command, **kwargs):
+            events.append(command[2])
+            self.assertIn("--repo", command)
+            if command[2] == "create":
+                self.assertIn("--draft", command)
+                self.assertIn("--latest=false", command)
+            elif command[2] == "upload":
+                for path in command[-2:]:
+                    uploaded[Path(path).name] = Path(path).read_bytes()
+                self.assertEqual(uploaded, FILES)
+            elif command[2] == "edit":
+                self.assertIn("--draft=false", command)
+                self.assertIn("--latest=false", command)
+                self.assertEqual(events[-3:-1], ["readback", "readback"])
+
+        def readback(repo, asset, destination):
+            events.append("readback")
+            Path(destination).write_bytes(uploaded[asset["name"]])
+
+        with patch.object(mirror, "find_release", side_effect=[None, self.state(draft=True)]), \
+                patch.object(mirror, "fetch", side_effect=download), patch.object(mirror, "run", side_effect=run), \
+                patch.object(mirror, "pull_asset", side_effect=readback), \
+                patch.object(mirror, "mirror_release", return_value=self.state()):
+            self.assertEqual(mirror.publish_one("owner/repo", "aarch64", FP, lambda: index), "published")
+        self.assertEqual(events, ["create", "upload", "readback", "readback", "edit"])
 
     def test_verified_published_release_survives_upstream_pruning_without_writes(self):
         with patch.object(mirror, "find_release", return_value=self.state()), \
