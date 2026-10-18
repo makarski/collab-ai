@@ -196,7 +196,7 @@ class BundleSourceTests(BundleFixture):
 
     def test_complete_local_source_remains_offline_even_with_release_reference(self):
         artifacts.fetch_bundles(self.directory, "aarch64", self.obtain, artifacts.BundleSource(None, "owner/fork"))
-        self.assertEqual(self.source_record(), self.directory.as_uri() + "/")
+        self.assertEqual(self.source_record(), self.directory.resolve().as_uri() + "/")
         for name, data in self.payload.items():
             if name.endswith(".tar.gz"):
                 self.assertEqual((self.directory / name).read_bytes(), data)
@@ -216,7 +216,7 @@ class BundleSourceTests(BundleFixture):
                 zip_file.writestr(name, data)
         artifacts.fetch_bundles(self.directory, "aarch64",
                                 lambda name, target: artifacts.from_zip(archive, name, target))
-        self.assertEqual(self.source_record(), self.directory.as_uri() + "/")
+        self.assertEqual(self.source_record(), self.directory.resolve().as_uri() + "/")
         for name, data in self.payload.items():
             if name.endswith(".tar.gz"):
                 self.assertEqual((self.directory / name).read_bytes(), data)
