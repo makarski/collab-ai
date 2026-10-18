@@ -63,7 +63,7 @@ def published_tag(release, selection):
     return tag
 
 
-def download_release(architecture, selection="latest", repo="makarski/collab-ai", output=None):
+def download_release(architecture, selection="latest", repo="pairtask/pairtask", output=None):
     tag = resolve_release(repo, selection)
     print(f"Downloading {tag} for {architecture}…", flush=True)
     base = f"https://github.com/{repo}/releases/download/{quote(tag, safe='')}/"

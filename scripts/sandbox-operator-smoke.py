@@ -96,7 +96,7 @@ def prove(directory, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", required=True)
-    parser.add_argument("--repo", type=repository, default="makarski/collab-ai",
+    parser.add_argument("--repo", type=repository, default="pairtask/pairtask",
                         help="Repository holding the base-<fingerprint> mirror releases")
     args = parser.parse_args()
     args.project = "collab-operator-proof-" + uuid.uuid4().hex[:8]

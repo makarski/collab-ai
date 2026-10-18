@@ -33,7 +33,7 @@ def arguments():
     parser.add_argument("--storage-pool", default="default", type=identifier)
     parser.add_argument("--network", default="incusbr0", type=identifier)
     parser.add_argument("--release", type=release_tag, help="Rollout release tag; defaults to latest")
-    parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
+    parser.add_argument("--repo", type=repository, default="pairtask/pairtask")
     parser.add_argument("--ssh-state-dir", type=Path, default=Path(__file__).resolve().parents[1] / "infra/incus/ssh")
     parser.add_argument("--tools", nargs="*", default=["cs-mcp", "playwright", "docker"], metavar="TOOL",
                         help="Optional tools to enable (default: all); required tools are always installed")

@@ -23,7 +23,7 @@ from sandbox_releases import api_headers, repository
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_REPO = "makarski/collab-ai"
+DEFAULT_REPO = "pairtask/pairtask"
 CACHE = ROOT / "dist/base"
 ASSETS = ("incus.tar.xz", "rootfs.squashfs")  # combined digest order
 

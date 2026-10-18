@@ -138,7 +138,7 @@ can remove its volumes; use [explicit removal](sandbox-storage.md#deliberate-rem
 
 This separate path still takes JSON protocol input, not terminal prompts.
 Subscription login, protected terminal/resume support and Claude/shared accounting
-remain under [#34](https://github.com/makarski/collab-ai/issues/34). Its managed
+remain under [#34](https://github.com/pairtask/pairtask/issues/34). Its managed
 provider points to an unused loopback fixture port (`18080`).
 
 Run on your host. On Linux replace `colima-collab-ai:` with `local:`:

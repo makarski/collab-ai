@@ -20,7 +20,7 @@ def main():
     parser.add_argument("action", choices=["check", "publish", "cache"],
                         help="check: each pin is mirrored or still upstream; publish: mirror and verify every pin; "
                              "cache: put one architecture's verified pin into the host cache")
-    parser.add_argument("--repo", type=repository, default="makarski/collab-ai")
+    parser.add_argument("--repo", type=repository, default="pairtask/pairtask")
     parser.add_argument("--lock-file", type=Path, default=ROOT / "infra/image/tools.lock.json")
     parser.add_argument("--architecture", choices=["aarch64", "x86_64"], help="cache: the pin to fetch")
     parser.add_argument("--cache", type=Path, default=CACHE, help="cache: the host cache directory")

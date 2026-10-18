@@ -49,6 +49,6 @@ the grant after owner restart. Never solve a listener fault by taking over the
 parent's inbox. A child with a different ID has its own inbox and cannot listen
 for messages addressed to the parent.
 
-The [delegation protocol guide](https://github.com/makarski/collab-ai/blob/main/docs/delegated-listeners.md)
+The [delegation protocol guide](https://github.com/pairtask/pairtask/blob/main/docs/delegated-listeners.md)
 contains API limits and capability details. A successful child read alone does
 not prove that its parent was notified or resumed.
