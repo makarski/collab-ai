@@ -143,7 +143,7 @@ class BaseResolverAcceptanceTests(unittest.TestCase):
     def test_existing_project_image_avoids_host_cache_and_network(self):
         with patch.object(base, "in_store", return_value=True) as store, \
                 patch.object(base, "cached_pair") as cache, patch.object(base, "mirror_release") as mirror:
-            result = base.ensure_base("remote", "owned-project", FP, "owner/repo", Path("unused"))
+            result = base.ensure_base(base.Store("remote", "owned-project"), FP, "owner/repo", Path("unused"))
         self.assertEqual((result.ref, result.source), ("remote:" + FP, "store"))
         store.assert_called_once_with("remote", "owned-project", FP)
         cache.assert_not_called()
@@ -156,7 +156,7 @@ class BaseResolverAcceptanceTests(unittest.TestCase):
             with patch.object(base, "in_store", side_effect=[False, True]), \
                     patch.object(base, "mirror_release", side_effect=AssertionError("offline cache must not use network")), \
                     patch.object(base, "run") as run:
-                result = base.ensure_base("remote", "owned-project", FP, "owner/repo", cache)
+                result = base.ensure_base(base.Store("remote", "owned-project"), FP, "owner/repo", cache)
             self.assertEqual((result.ref, result.source), ("remote:" + FP, "cache"))
             command = [str(value) for value in run.call_args.args[0]]
             self.assertEqual(command, ["incus", "--project", "owned-project", "image", "import",
@@ -165,7 +165,7 @@ class BaseResolverAcceptanceTests(unittest.TestCase):
     def test_only_confirmed_absence_selects_upstream_exact_fingerprint(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(base, "in_store", return_value=False), \
                 patch.object(base, "mirror_release", return_value=None), patch.object(base, "run") as run:
-            result = base.ensure_base("remote", "owned-project", FP, "owner/repo", Path(tmp))
+            result = base.ensure_base(base.Store("remote", "owned-project"), FP, "owner/repo", Path(tmp))
         self.assertEqual((result.ref, result.source), ("images:" + FP, "upstream"))
         run.assert_not_called()
 
@@ -174,7 +174,7 @@ class BaseResolverAcceptanceTests(unittest.TestCase):
                 patch.object(base, "mirror_release", side_effect=base.Unavailable("HTTP 503")), \
                 patch.object(base, "run") as run:
             with self.assertRaises(base.Unavailable):
-                base.ensure_base("remote", "owned-project", FP, "owner/repo", Path(tmp))
+                base.ensure_base(base.Store("remote", "owned-project"), FP, "owner/repo", Path(tmp))
         run.assert_not_called()
 
     def test_import_failure_does_not_fall_back(self):
@@ -184,7 +184,7 @@ class BaseResolverAcceptanceTests(unittest.TestCase):
             with patch.object(base, "in_store", return_value=False), \
                     patch.object(base, "run", side_effect=subprocess.CalledProcessError(1, ["incus"])):
                 with self.assertRaises((subprocess.CalledProcessError, base.Unavailable)):
-                    base.ensure_base("remote", "owned-project", FP, "owner/repo", cache)
+                    base.ensure_base(base.Store("remote", "owned-project"), FP, "owner/repo", cache)
 
     def test_successful_import_must_leave_exact_fingerprint_in_project(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,7 +192,7 @@ class BaseResolverAcceptanceTests(unittest.TestCase):
             populate(cache)
             with patch.object(base, "in_store", return_value=False), patch.object(base, "run"):
                 with self.assertRaises(base.IntegrityError):
-                    base.ensure_base("remote", "owned-project", FP, "owner/repo", cache)
+                    base.ensure_base(base.Store("remote", "owned-project"), FP, "owner/repo", cache)
 
 
 class BaseLookupAcceptanceTests(unittest.TestCase):
