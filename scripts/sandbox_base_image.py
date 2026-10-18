@@ -28,6 +28,7 @@ CACHE = ROOT / "dist/base"
 ASSETS = ("incus.tar.xz", "rootfs.squashfs")  # combined digest order
 
 Base = namedtuple("Base", ["ref", "source"])
+Store = namedtuple("Store", ["remote", "project"])  # an Incus project's image store
 
 
 class IntegrityError(ValueError):
@@ -69,16 +70,28 @@ def verify_pair(directory, fp):
 def in_store(remote, project, fp):
     """Whether the project's image store holds exactly fp. Only a successful,
     well-formed listing can say no."""
+    return fp in image_fingerprints(remote, project)
+
+
+def image_fingerprints(remote, project):
     try:
         listing = run(["incus", "--project", project, "image", "list", f"{remote}:", "--format=json"],
                       capture_output=True, text=True).stdout
         images = json.loads(listing)
     except (subprocess.SubprocessError, OSError, ValueError) as error:
         raise Unavailable(f"Cannot list images in {remote}:{project}: {error}") from error
-    if not isinstance(images, list) or not all(isinstance(image, dict) and isinstance(image.get("fingerprint"), str)
-                                                for image in images):
+    if not records(images, ("fingerprint",)):
         raise Unavailable(f"Unexpected image listing from {remote}:{project}")
-    return any(image["fingerprint"] == fp for image in images)
+    return {image["fingerprint"] for image in images}
+
+
+def records(value, fields):
+    """Whether value is a list of objects whose fields are all strings."""
+    return isinstance(value, list) and all(has_strings(item, fields) for item in value)
+
+
+def has_strings(item, fields):
+    return isinstance(item, dict) and all(isinstance(item.get(field), str) for field in fields)
 
 
 def get_object(url):
@@ -99,10 +112,10 @@ def get_object(url):
 
 def release_shape(release, fields):
     """Fail unless release has a boolean draft flag and assets with string fields."""
-    assets = release.get("assets")
-    if not isinstance(release.get("draft"), bool) or not isinstance(assets, list) or not all(
-            isinstance(asset, dict) and all(isinstance(asset.get(field), str) for field in fields) for asset in assets):
+    if not isinstance(release.get("draft"), bool):
         raise Unavailable(f"Unexpected release response for {release.get('tag_name')}")
+    if not records(release.get("assets"), fields):
+        raise Unavailable(f"Unexpected release assets for {release.get('tag_name')}")
     return release
 
 
@@ -173,28 +186,34 @@ def install_pair(cache_root, fp, populate):
     return final
 
 
-def import_pair(remote, project, fp, directory):
-    run(["incus", "--project", project, "image", "import",
-         *(str(Path(directory) / name) for name in ASSETS), f"{remote}:"])
-    if not in_store(remote, project, fp):
-        raise IntegrityError(f"Importing the base image into {remote}:{project} didn't produce {fp}")
+def import_pair(store, fp, directory):
+    run(["incus", "--project", store.project, "image", "import",
+         *(str(Path(directory) / name) for name in ASSETS), f"{store.remote}:"])
+    if not in_store(store.remote, store.project, fp):
+        raise IntegrityError(f"Importing the base image into {store.remote}:{store.project} didn't produce {fp}")
 
 
-def ensure_base(remote, project, fp, repo=DEFAULT_REPO, cache_root=CACHE):
-    """The image reference to create an instance from, and where it came from.
-    Only confirmed absence moves on to the next source."""
+def local_pair(fp, repo, cache_root):
+    """The verified pair from the cache, else from the mirror, with its source;
+    (None, None) when neither has it."""
+    directory = cached_pair(cache_root, fp)
+    if directory is not None:
+        return directory, "cache"
+    directory = cached_pair(cache_root, fp, mirror_release(repo, fp))
+    return (directory, "mirror") if directory is not None else (None, None)
+
+
+def ensure_base(store, fp, repo=DEFAULT_REPO, cache_root=CACHE):
+    """The image reference to create an instance in store from, and where it
+    came from. Only confirmed absence moves on to the next source."""
     fingerprint(fp)
-    if in_store(remote, project, fp):
-        base = Base(f"{remote}:{fp}", "store")
-    else:
-        directory, source = cached_pair(cache_root, fp), "cache"
-        if directory is None:
-            release = mirror_release(repo, fp)
-            directory, source = cached_pair(cache_root, fp, release), "mirror"
+    base = Base(f"{store.remote}:{fp}", "store")
+    if not in_store(store.remote, store.project, fp):
+        directory, source = local_pair(fp, repo, cache_root)
         if directory is None:
             base = Base(f"images:{fp}", "upstream")
         else:
-            import_pair(remote, project, fp, directory)
-            base = Base(f"{remote}:{fp}", source)
+            import_pair(store, fp, directory)
+            base = Base(base.ref, source)
     print(f"Base image {fp[:12]} from {base.source}", flush=True)
     return base

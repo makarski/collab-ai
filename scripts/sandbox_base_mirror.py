@@ -6,6 +6,7 @@ is never changed. A draft is resumed from its own verified assets when
 possible, so a pin that upstream already pruned isn't lost.
 """
 
+from collections import namedtuple
 import hashlib
 import json
 from pathlib import Path
@@ -71,17 +72,24 @@ def find_release(repo, fp):
     """The release tagged base-<fp>, drafts included, or None."""
     listing = run(["gh", "api", "--paginate", f"repos/{repository(repo)}/releases",
                    "--jq", f'.[] | select(.tag_name == "{tag(fp)}")'], capture_output=True, text=True).stdout
-    try:
-        matches = [json.loads(line) for line in listing.splitlines() if line.strip()]
-    except ValueError as error:
-        raise Unavailable(f"Unexpected release listing for {tag(fp)}: {error}") from error
+    matches = listed(listing, fp)
     if len(matches) > 1:
         raise IntegrityError(f"More than one release is tagged {tag(fp)}")
-    if not matches:
-        return None
-    if not isinstance(matches[0], dict):
+    return listed_release(matches[0], fp) if matches else None
+
+
+def listed(listing, fp):
+    try:
+        return [json.loads(line) for line in listing.splitlines() if line.strip()]
+    except ValueError as error:
+        raise Unavailable(f"Unexpected release listing for {tag(fp)}: {error}") from error
+
+
+def listed_release(release, fp):
+    """A listed release, checked to have the fields the publisher relies on."""
+    if not isinstance(release, dict):
         raise Unavailable(f"Unexpected release listing for {tag(fp)}")
-    release = release_shape(matches[0], ("name",))
+    release_shape(release, ("name",))
     if not all(isinstance(asset.get("id"), int) for asset in release["assets"]):
         raise Unavailable(f"Unexpected release listing for {tag(fp)}")
     return release
@@ -131,73 +139,102 @@ def fetch_upstream(entry, directory, names):
             raise IntegrityError(f"Upstream {name} doesn't match its published checksum")
 
 
+Pin = namedtuple("Pin", ["repo", "architecture", "fp", "load_index"])
+
+
+def lazy_index(index=None):
+    """A loader that fetches the upstream index at most once, when first needed."""
+    loaded = [index]
+
+    def load():
+        if loaded[0] is None:
+            loaded[0] = upstream_index()
+        return loaded[0]
+    return load
+
+
 def publish(repo, lock, index=None):
     """Make sure every pinned base image has a verified, published mirror."""
-    results = {}
+    load_index, results = lazy_index(index), {}
     for architecture, entry in lock["architectures"].items():
         fp = fingerprint(entry["base_image"])
-        results[fp] = publish_one(repo, architecture, fp, lambda: index if index is not None else upstream_index())
+        results[fp] = publish_one(repo, architecture, fp, load_index)
     return results
 
 
 def publish_one(repo, architecture, fp, load_index):
+    pin = Pin(repo, architecture, fp, load_index)
     release = find_release(repo, fp)
+    if release is not None and not release["draft"]:
+        return verify_published(pin, release)
     with tempfile.TemporaryDirectory(prefix="collab-base-") as temporary:
         directory = Path(temporary)
-        if release is not None and not release.get("draft"):
-            if sorted(pull_release(repo, release, directory)) != sorted(ASSETS):
-                raise IntegrityError(f"Published release {tag(fp)} is missing assets")
-            verify_pair(directory, fp)
-            print(f"Base image {fp[:12]} ({architecture}): mirror verified", flush=True)
-            return "verified"
         if release is None:
-            stage_new(repo, architecture, fp, directory, load_index)
+            stage_new(pin, directory)
         else:
-            resume_draft(repo, release, architecture, fp, directory, load_index)
+            resume_draft(pin, release, directory)
         verify_uploaded(repo, fp, directory / "uploaded")
         run(["gh", "release", "edit", tag(fp), "--repo", repo, "--draft=false", "--latest=false"])
-    if mirror_release(repo, fp) is None and find_release(repo, fp).get("draft"):
+    if mirror_release(repo, fp) is None:
         raise Unavailable(f"Release {tag(fp)} didn't publish")
     print(f"Base image {fp[:12]} ({architecture}): mirror published", flush=True)
     return "published"
 
 
+def verify_published(pin, release):
+    """A published mirror is only ever checked, never changed."""
+    with tempfile.TemporaryDirectory(prefix="collab-base-") as temporary:
+        directory = Path(temporary)
+        if sorted(pull_release(pin.repo, release, directory)) != sorted(ASSETS):
+            raise IntegrityError(f"Published release {tag(pin.fp)} is missing assets")
+        verify_pair(directory, pin.fp)
+    print(f"Base image {pin.fp[:12]} ({pin.architecture}): mirror verified", flush=True)
+    return "verified"
+
+
 def upstream_for(architecture, fp, load_index):
     entry = upstream_entry(load_index(), fp)
     if entry is None:
-        raise ValueError(f"Base image {fp} is neither mirrored nor available upstream; {REFRESH}")
+        raise ValueError(f"Base image {fp} ({architecture}) is neither mirrored nor available upstream; {REFRESH}")
     if entry[0] != architecture:
         raise IntegrityError(f"Base image {fp} is an {entry[0]} build, but the lock pins it for {architecture}")
     return entry
 
 
-def stage_new(repo, architecture, fp, directory, load_index):
-    entry = upstream_for(architecture, fp, load_index)
+def stage_new(pin, directory):
+    entry = upstream_for(pin.architecture, pin.fp, pin.load_index)
     fetch_upstream(entry, directory, ASSETS)
-    verify_pair(directory, fp)
-    run(["gh", "release", "create", tag(fp), "--repo", repo, "--draft", "--latest=false",
-         "--title", f"Base image {fp[:12]} ({architecture}, upstream {entry[1]})",
-         "--notes", base_notes(architecture, fp, entry[1])])
-    run(["gh", "release", "upload", tag(fp), "--repo", repo, *(str(directory / name) for name in ASSETS)])
+    verify_pair(directory, pin.fp)
+    run(["gh", "release", "create", tag(pin.fp), "--repo", pin.repo, "--draft", "--latest=false",
+         "--title", f"Base image {pin.fp[:12]} ({pin.architecture}, upstream {entry[1]})",
+         "--notes", base_notes(pin.architecture, pin.fp, entry[1])])
+    upload(pin, directory, ASSETS)
 
 
-def resume_draft(repo, release, architecture, fp, directory, load_index):
+def upload(pin, directory, names):
+    run(["gh", "release", "upload", tag(pin.fp), "--repo", pin.repo, *(str(directory / name) for name in names)])
+
+
+def resume_draft(pin, release, directory):
     """Finish an interrupted draft. Its own complete, verified pair is used as
     it is; otherwise only its missing or wrong assets are replaced."""
-    assets = release_assets(release)
-    pulled = pull_release(repo, release, directory)
-    if sorted(pulled) == sorted(ASSETS) and pair_matches(directory, fp):
+    pulled = pull_release(pin.repo, release, directory)
+    if sorted(pulled) == sorted(ASSETS) and pair_matches(directory, pin.fp):
         return
-    entry = upstream_for(architecture, fp, load_index)
-    _, _, files = entry
-    replace = [name for name in ASSETS
-               if name not in pulled or file_sha256(directory / name) != files[name]["sha256"]]
+    entry = upstream_for(pin.architecture, pin.fp, pin.load_index)
+    replace = [name for name in ASSETS if name not in pulled or not upstream_file(entry, directory, name)]
+    assets = release_assets(release)
     for name in replace:
         if name in assets:
-            run(["gh", "api", "-X", "DELETE", f"repos/{repository(repo)}/releases/assets/{assets[name]['id']}"])
+            run(["gh", "api", "-X", "DELETE", f"repos/{repository(pin.repo)}/releases/assets/{assets[name]['id']}"])
     fetch_upstream(entry, directory, replace)
-    verify_pair(directory, fp)
-    run(["gh", "release", "upload", tag(fp), "--repo", repo, *(str(directory / name) for name in replace)])
+    verify_pair(directory, pin.fp)
+    upload(pin, directory, replace)
+
+
+def upstream_file(entry, directory, name):
+    """Whether a pulled draft asset is byte-identical to the upstream file."""
+    return file_sha256(Path(directory) / name) == entry[2][name]["sha256"]
 
 
 def verify_uploaded(repo, fp, directory):
@@ -216,7 +253,7 @@ def base_notes(architecture, fp, serial):
             "import it when upstream has pruned the build. Keep it while any workspace release pins it.")
 
 
-def cache(repo, lock, architecture, cache_root, index=None):
+def cache(repo, lock, architecture, cache_root):
     """Put the verified pair for one architecture's pin into the host cache,
     from the mirror or else upstream, without publishing anything."""
     fp = fingerprint(lock["architectures"][architecture]["base_image"])
@@ -226,7 +263,7 @@ def cache(repo, lock, architecture, cache_root, index=None):
     if release is not None:
         cached_pair(cache_root, fp, release)
         return {fp: "mirror"}
-    entry = upstream_for(architecture, fp, lambda: index if index is not None else upstream_index())
+    entry = upstream_for(architecture, fp, upstream_index)
     install_pair(cache_root, fp, lambda staging: fetch_upstream(entry, staging, ASSETS))
     return {fp: "upstream"}
 
@@ -234,18 +271,10 @@ def cache(repo, lock, architecture, cache_root, index=None):
 def check(repo, lock, index=None):
     """Availability, not integrity: each pin has a published mirror with both
     assets, or is still listed upstream. Consumers verify the bytes."""
-    results, loaded = {}, index
+    load_index, results = lazy_index(index), {}
     for architecture, entry in lock["architectures"].items():
         fp = fingerprint(entry["base_image"])
-        if mirror_release(repo, fp) is not None:
-            results[fp] = "mirror"
-            continue
-        if loaded is None:
-            loaded = upstream_index()
-        found = upstream_entry(loaded, fp)
-        if found is None:
-            raise ValueError(f"Base image {fp} ({architecture}) is neither mirrored nor available upstream; {REFRESH}")
-        if found[0] != architecture:
-            raise IntegrityError(f"Base image {fp} is an {found[0]} build, but the lock pins it for {architecture}")
-        results[fp] = "upstream"
+        results[fp] = "mirror" if mirror_release(repo, fp) is not None else "upstream"
+        if results[fp] == "upstream":
+            upstream_for(architecture, fp, load_index)
     return results

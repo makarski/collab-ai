@@ -6,7 +6,7 @@ import re
 import subprocess
 import uuid
 
-from sandbox_base_image import DEFAULT_REPO, ensure_base
+from sandbox_base_image import DEFAULT_REPO, Store, ensure_base
 
 
 def run(args, **kwargs):
@@ -58,7 +58,7 @@ class Builder:
              "-c", "features.images=true", "-c", "features.profiles=true",
              "-c", "features.networks=false", "-c", "features.storage.volumes=true"])
         self.created = True
-        image = ensure_base(self.remote, self.project, base, repo).ref
+        image = ensure_base(Store(self.remote, self.project), base, repo).ref
         run(self.command + ["init", image, self.target, "--no-profiles",
                             "--storage", self.storage_pool, "--network", self.network,
                             "-d", f"root,size={disk}", "-c", "security.privileged=false",

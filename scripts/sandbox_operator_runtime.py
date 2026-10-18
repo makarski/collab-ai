@@ -7,7 +7,7 @@ import subprocess
 import uuid
 import zipfile
 
-from sandbox_base_image import DEFAULT_REPO, ensure_base
+from sandbox_base_image import DEFAULT_REPO, Store, ensure_base
 from sandbox_operator_config import ROOT
 from sandbox_operator_download import download_archive
 
@@ -39,7 +39,7 @@ class Operator:
                         "-c", "features.images=true", "-c", "features.profiles=true",
                         "-c", "features.networks=false"], check=True)
         self.created = True
-        image = ensure_base(self.remote[:-1], self.project, base, repo).ref
+        image = ensure_base(Store(self.remote[:-1], self.project), base, repo).ref
         self.run("init", image, self.target, "--no-profiles", "--storage", self.pool,
                  "--network", self.network, "-c", "security.privileged=false",
                  "-c", "security.idmap.isolated=true", "-c", "security.nesting=false",

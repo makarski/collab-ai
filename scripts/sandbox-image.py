@@ -10,7 +10,7 @@ import tempfile
 import uuid
 
 from sandbox_artifacts import sha256, image_variables, release_assets
-from sandbox_base_image import DEFAULT_REPO, ensure_base
+from sandbox_base_image import DEFAULT_REPO, Store, ensure_base
 from sandbox_builder import cleanup_project, identifier, run
 from sandbox_releases import repository
 from sandbox_source import source_archive
@@ -39,7 +39,7 @@ def build(args, output):
              "-c", "features.networks=false", "-c", "features.storage.volumes=true"])
         print(f"Building in {args.remote}:{project}; temporary network: {args.network}", flush=True)
         try:
-            image = ensure_base(args.remote, project, base, getattr(args, "repo", DEFAULT_REPO)).ref
+            image = ensure_base(Store(args.remote, project), base, getattr(args, "repo", DEFAULT_REPO)).ref
             run(command + ["init", image, target, "--no-profiles",
                            "--storage", args.storage_pool, "--network", args.network,
                            "-d", "root,size=12GiB", "-c", "security.privileged=false",
