@@ -374,7 +374,11 @@ func TestChatV2MalformedCommandsNeverPerformPartialAction(t *testing.T) {
 			chatEqual(t, "malformed command does not acknowledge", len(state.QueuedAcks), 0)
 			chatEqual(t, "malformed command does not reply", state.InReplyTo, "")
 			chatEqual(t, "malformed command does not change audience", state.Audience.Source, "everyone")
-			if state.Status == "" && (state.CommandLine == nil || state.CommandLine.Error == "") {
+			errorText := state.Status
+			if state.CommandLine != nil {
+				errorText += state.CommandLine.Error
+			}
+			if errorText == "" {
 				t.Fatal("malformed command did not report an error")
 			}
 		})
