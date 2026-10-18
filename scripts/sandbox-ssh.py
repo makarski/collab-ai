@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import sys
 
+from sandbox_layout import discover
+
 
 DEFAULT_STATE = Path(__file__).resolve().parents[1] / "infra/incus/ssh"
 
@@ -78,6 +80,16 @@ def ssh_config(directory, transport):
 """
 
 
+class Instance:
+    """The exec seam layout discovery probes through."""
+
+    def __init__(self, name, execute):
+        self.name, self.execute = name, execute
+
+    def output(self, *args):
+        return run(self.execute + list(args), capture_output=True, text=True).stdout
+
+
 def setup(args):
     for tool in ("incus", "ssh", "ssh-keygen"):
         if not shutil.which(tool):
@@ -89,11 +101,14 @@ def setup(args):
     private_state(directory, endpoint)
     execute = [shutil.which("incus"), "--project", args.project, "exec",
                f"{args.remote}:{args.instance}", "-T", "--"]
-    run(execute + ["test", "-f", "/etc/ssh/sshd_config.collab-ai"])
+    # Before anything changes: which names this image uses. Any probe failure stops here.
+    layout = discover(Instance(args.instance, execute))
+    run(execute + ["test", "-f", layout.sshd_config])
     # Incus start may return before first-boot volume initialization finishes.
-    run(execute + ["systemctl", "start", "collab-workspace-setup.service"])
+    run(execute + ["systemctl", "start", layout.units["workspace_setup"]])
     # Admission: no agent key before this root's tools are released (docs/sandbox-tools.md).
-    run(execute + ["sh", "-c", "test ! -x /usr/local/bin/collab-tools-ready || exec /usr/local/bin/collab-tools-ready"])
+    # Only images from before the tool store lack the readiness helper.
+    run(execute + ["sh", "-c", 'test ! -x "$1" || exec "$1"', "ready", layout.tools_ready])
     run(execute + ["ssh-keygen", "-A"], stdout=subprocess.DEVNULL)
     host_key = run(execute + ["cat", "/etc/ssh/ssh_host_ed25519_key.pub"],
                    capture_output=True, text=True).stdout
@@ -109,10 +124,10 @@ def setup(args):
     run(execute + ["tee", "/etc/ssh/authorized_keys/agent"], input=public_key,
         text=True, stdout=subprocess.DEVNULL)
     run(execute + ["chmod", "644", "/etc/ssh/authorized_keys/agent"])
-    run(execute + ["/usr/sbin/sshd", "-t", "-f", "/etc/ssh/sshd_config.collab-ai"])
+    run(execute + ["/usr/sbin/sshd", "-t", "-f", layout.sshd_config])
     # Incus start can return before systemd-tmpfiles has recreated /run/sshd.
     transport = execute + ["sh", "-c", "install -d -m 755 /run/sshd && "
-                           "exec /usr/sbin/sshd -i -e -o LogLevel=ERROR -f /etc/ssh/sshd_config.collab-ai"]
+                           f"exec /usr/sbin/sshd -i -e -o LogLevel=ERROR -f {layout.sshd_config}"]
     config = directory / "config"
     config.write_text(ssh_config(directory, transport))
     config.chmod(0o600)

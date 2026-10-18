@@ -10,6 +10,7 @@ import unittest.mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 import sandbox_tools_install as install  # noqa: E402
+import sandbox_layout as install_layout  # noqa: E402
 
 LOCK = json.loads((ROOT / "infra/image/tools.lock.json").read_text())
 
@@ -34,6 +35,10 @@ class FakeContainer(install.Container):
         return subprocess.CompletedProcess(command, 0, stdout=self.answer(args))
 
     def answer(self, args):
+        if args[:2] == ("python3", "-c"):
+            return '{"absent": true}\n'  # the legacy layout: no layout marker
+        if args and args[0] == install_layout.LEGACY.tools_activate:
+            args = ("collab-tools-activate", *args[1:])
         if args[:2] == ("collab-tools-activate", "status"):
             return json.dumps({"state": self.state, "current": self.current, "complete": self.complete})
         if args[:2] == ("sh", "-c") and "tools-mode" in args[2]:
@@ -147,7 +152,8 @@ class InstallTests(unittest.TestCase):
         container = FakeContainer("workspace")
         container.expected = self.expected(container)
         install.install(container, RELEASE, self.selected, self.cache)
-        self.assertIn(("systemctl", "start", *install.GATED_UNITS["workspace"]), container.executed)
+        units = [install_layout.LEGACY.units[key] for key in install.GATED_UNITS["workspace"]]
+        self.assertIn(("systemctl", "start", *units), container.executed)
         ready = FakeContainer("secured")
         ready.state, ready.current = {"state": "ready"}, self.expected(ready)
         install.install(ready, RELEASE, self.selected, self.cache)
