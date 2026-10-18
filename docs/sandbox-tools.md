@@ -322,11 +322,14 @@ which names its image uses for the paths, helpers and units it drives
 
 - **How:** one Python probe reads `/usr/local/share/pairtask/layout.json`.
   It answers either "absent" or the parsed marker.
-- **Legacy layout:** only a confirmed missing marker means the legacy
-  (`collab-*`) layout, which is what every image so far uses.
+- **Legacy layout:** a confirmed missing marker, or an explicit
+  `{"layout": 1}`, means the legacy (`collab-*`) layout. Every image so far
+  uses it.
 - **Hard stops:** an unreadable or malformed marker, a failed probe, or a
-  layout version this checkout doesn't know stops the operation before
-  anything changes: no downloads, no activation, no SSH key. A newer image
+  layout version this checkout doesn't know stops tool activation and SSH
+  key admission for that container. After a failed probe, the activation
+  path neither downloads nor pushes tool artifacts. Steps that run earlier
+  in a rollout, such as fetching the image, aren't affected. A newer image
   layout asks for a newer host checkout.
 - **Compatibility:** images that use new names keep the legacy names the
   host relies on (the readiness helper, the tools-mode file, the units) as
