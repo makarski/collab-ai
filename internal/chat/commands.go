@@ -258,6 +258,12 @@ func (m *Model) replyCommand(arg string) {
 }
 
 func (m *Model) historyCommand(string) tea.Cmd {
+	if m.cutoff != 0 {
+		// /clear only hid rows; /history shows them again before loading more.
+		m.cutoff = 0
+		m.status = "cleared messages shown again"
+		return nil
+	}
 	for i := len(m.timeline.order) - 1; i >= 0; i-- {
 		if e := m.timeline.order[i]; e.gapBelow {
 			return m.loadOlder(e)

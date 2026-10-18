@@ -84,10 +84,7 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		return m.enter()
 	case "esc":
-		if c.draftEmpty() && c.reply != nil {
-			c.reply = nil
-		}
-		return nil
+		return nil // a reply is cancelled only by /reply cancel
 	}
 	if msg.Text == "/" && c.draftEmpty() {
 		m.openCommandLine()
@@ -386,8 +383,16 @@ func (m *Model) globalKey(k string) (tea.Cmd, bool) {
 	case "ctrl+r":
 		return m.ctrlR(), true
 	case "pgup":
+		if m.panel != nil {
+			m.panel.scroll(-1, m.layout().transcript)
+			return nil, true
+		}
 		return m.scrollPage(-1), true
 	case "pgdown":
+		if m.panel != nil {
+			m.panel.scroll(1, m.layout().transcript)
+			return nil, true
+		}
 		return m.scrollPage(1), true
 	case "ctrl+end":
 		m.follow()

@@ -141,9 +141,18 @@ const (
 )
 
 type panel struct {
-	kind string
-	seq  uint64
-	id   string
+	kind   string
+	seq    uint64
+	id     string
+	offset int // first visible row, moved with PgUp/PgDn
+	rows   int // rows at the last render, to bound scrolling
+}
+
+// scroll moves the panel by a page. A panel taller than the window shows
+// height-1 rows plus a position line, so that is the page.
+func (p *panel) scroll(direction, height int) {
+	page := max(1, height-1)
+	p.offset = max(0, min(p.offset+direction*page, max(0, p.rows-page)))
 }
 
 func (m *Model) panelRows(height int) []string {
@@ -160,10 +169,19 @@ func (m *Model) panelRows(height int) []string {
 	for _, row := range rows {
 		out = append(out, wrap(row, max(minWidth, m.width))...)
 	}
-	if len(out) > height {
-		out = out[:height]
+	m.panel.rows = len(out)
+	if len(out) <= height {
+		return out
 	}
-	return out
+	// One row reports the position; every content row is reachable with PgDn.
+	body := max(1, height-1)
+	start := max(0, min(m.panel.offset, len(out)-body))
+	end := min(len(out), start+body)
+	rows = append([]string(nil), out[start:end]...)
+	if height > 1 {
+		rows = append(rows, mutedStyle.Render(fmt.Sprintf("… rows %d–%d of %d · PgUp/PgDn", start+1, end, len(out))))
+	}
+	return rows
 }
 
 func (m *Model) stageRows() []string {
