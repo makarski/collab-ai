@@ -2,10 +2,10 @@
   "schema": 2,
   "architectures": {
     "aarch64": {
-      "base_image": "84aa11002646c93140b07044e3ee415200f84eef6f05f2017c99b07bdb9a78a0"
+      "base_image": "7426b27524c11fa8fa007a9dadeb8d4fe42efd4a794696b4b7f5984ca52c060e"
     },
     "x86_64": {
-      "base_image": "c60935adc526471096ba45ecde4c991a5ce84cf9996ec36c415e7758b1ec5c3f"
+      "base_image": "8d7438a6bf45fef5d31d041419c4a5f073819180b5c774b3f7dda76853ab33ee"
     }
   },
   "artifacts": {
