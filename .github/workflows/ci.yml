@@ -73,7 +73,11 @@ jobs:
           tofu -chdir=infra/incus test
 
   images:
-    needs: checks
+    # On pushes, wait for base-mirror so images build from the just-published mirror; elsewhere it is skipped.
+    needs: [checks, base-mirror]
+    if: >-
+      !cancelled() && needs.checks.result == 'success' &&
+      (needs.base-mirror.result == 'success' || needs.base-mirror.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
