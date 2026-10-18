@@ -150,7 +150,7 @@ func New(opts Options) *Model {
 	m.inbox.queuedAcks = map[string]*queuedAck{}
 	m.compose = newComposer()
 	m.view.following = true
-	m.resize(m.width, m.height)
+	m.resize(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	return m
 }
 
@@ -279,7 +279,7 @@ func (m *Model) connectionUpdate(msg tea.Msg) (tea.Cmd, bool) {
 func (m *Model) terminalUpdate(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.resize(msg.Width, msg.Height)
+		m.resize(msg)
 	case tea.KeyboardEnhancementsMsg:
 		m.keyboard = msg.SupportsKeyDisambiguation()
 	case tea.PasteMsg:

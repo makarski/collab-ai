@@ -124,23 +124,31 @@ func (m *Model) findCommand(arg argument) tea.Cmd {
 		return nil
 	}
 	lines := m.transcript()
+	e, at := m.findBelow(lines, below)
+	if e == nil {
+		m.status = "no more messages contain " + safe(m.find)
+		return nil
+	}
+	m.anchor(lines, at)
+	m.found = e.msg.Seq
+	m.status = fmt.Sprintf("found #%d · /find continues", e.msg.Seq)
+	return nil
+}
+
+// findBelow is the newest visible entry older than below (0: any) whose text
+// contains the search, and its first line.
+func (m *Model) findBelow(lines []renderLine, below uint64) (*entry, int) {
 	want := strings.ToLower(m.find)
 	for i := len(m.timeline.order) - 1; i >= 0; i-- {
 		e := m.timeline.order[i]
 		if below != 0 && e.msg.Seq >= below {
 			continue
 		}
-		at := firstLine(lines, e.msg.MessageID)
-		if at < 0 || !contains(e, want) {
-			continue
+		if at := firstLine(lines, e.msg.MessageID); at >= 0 && contains(e, want) {
+			return e, at
 		}
-		m.anchor(lines, at)
-		m.found = e.msg.Seq
-		m.status = fmt.Sprintf("found #%d · /find continues", e.msg.Seq)
-		return nil
 	}
-	m.status = "no more messages contain " + safe(m.find)
-	return nil
+	return nil, -1
 }
 
 // contains reports whether e's text includes want (already lower-cased).

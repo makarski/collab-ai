@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -184,86 +183,6 @@ func (c *composer) closePicker(kind string) {
 	}
 }
 
-// mentionFragment is the "@…" token being typed at the end of the leading
-// prefix, without the "@".
-func (m *Model) mentionFragment() (string, bool) {
-	c := &m.compose
-	if c.pasted || c.editor.Line() != 0 {
-		return "", false
-	}
-	return lastMentionToken(c.editor.Value())
-}
-
-func lastMentionToken(value string) (string, bool) {
-	fields := strings.Fields(value)
-	if len(fields) == 0 || !openToken(value) {
-		return "", false // also Unicode-only whitespace, which Fields drops
-	}
-	for _, f := range fields {
-		if !strings.HasPrefix(f, "@") {
-			return "", false // the prefix already ended
-		}
-	}
-	return strings.TrimPrefix(fields[len(fields)-1], "@"), true
-}
-
-// openToken reports a single-line, unescaped draft whose cursor (at the end)
-// is still inside a word.
-func openToken(value string) bool {
-	if value == "" || strings.Contains(value, "\n") {
-		return false
-	}
-	if strings.HasPrefix(strings.TrimLeft(value, " \t"), `\@`) {
-		return false
-	}
-	last := value[len(value)-1]
-	return last != ' ' && last != '\t'
-}
-
-// agentCandidates lists agent IDs matching a fragment: online first, then
-// agents seen in the conversation. The @all keyword is typed, never picked,
-// so an agent named "all" stays distinct from it.
-func (m *Model) agentCandidates(fragment string) []string {
-	return append(m.onlineIDs(fragment), m.conversationIDs(fragment)...)
-}
-
-func (m *Model) onlineIDs(fragment string) []string {
-	var ids []string
-	for _, a := range m.agents.list {
-		ids = append(ids, a.AgentID)
-	}
-	return pickable(ids, fragment, nil)
-}
-
-// conversationIDs lists agents seen in the loaded conversation that aren't online.
-func (m *Model) conversationIDs(fragment string) []string {
-	online := map[string]bool{}
-	for _, a := range m.agents.list {
-		online[a.AgentID] = true
-	}
-	var ids []string
-	for _, e := range m.timeline.order {
-		ids = append(append(ids, e.msg.From, e.msg.To), e.msg.Group...)
-	}
-	return pickable(ids, fragment, online)
-}
-
-// pickable keeps agent IDs that start with fragment, once each, sorted,
-// leaving out the broker's own names and anything in skip.
-func pickable(ids []string, fragment string, skip map[string]bool) []string {
-	seen := map[string]bool{"": true, "*": true, "operator": true}
-	var out []string
-	for _, id := range ids {
-		if seen[id] || skip[id] || !strings.HasPrefix(id, fragment) {
-			continue
-		}
-		seen[id] = true
-		out = append(out, id)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // pickerKey handles keys while a picker is open. Tab and Enter only complete.
 func (m *Model) pickerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	p := m.compose.picker
@@ -286,13 +205,13 @@ func (m *Model) pickerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // can't be written as a mention becomes the /to audience instead.
 func (m *Model) complete(id string) {
 	c := &m.compose
-	value := c.editor.Value()
-	cut := strings.LastIndex(value, "@")
 	// An agent named "all" must never become the everyone keyword.
 	if id == "all" || !mentionID.MatchString(id) {
-		m.pickLiteral(id, value[:cut])
+		m.pickLiteral(id)
 		return
 	}
+	value := c.editor.Value()
+	cut := strings.LastIndex(value, "@")
 	c.editor.SetValue(value[:cut] + "@" + id + " ")
 	c.editor.CursorEnd()
 	c.picker = nil
@@ -300,8 +219,10 @@ func (m *Model) complete(id string) {
 }
 
 // pickLiteral sets a /to audience for an ID that isn't a valid mention.
-func (m *Model) pickLiteral(id, before string) {
+func (m *Model) pickLiteral(id string) {
 	c := &m.compose
+	value := c.editor.Value()
+	before := value[:strings.LastIndex(value, "@")]
 	c.picker = nil
 	if strings.TrimSpace(before) != "" {
 		m.status = "remove the other mentions to address " + safe(id)
@@ -475,7 +396,7 @@ func (m *Model) manualRetry() tea.Cmd {
 	return m.dial()
 }
 
-func (m *Model) resize(width, height int) {
-	m.width, m.height = width, height
-	m.compose.editor.SetWidth(max(10, width))
+func (m *Model) resize(size tea.WindowSizeMsg) {
+	m.width, m.height = size.Width, size.Height
+	m.compose.editor.SetWidth(max(10, size.Width))
 }
