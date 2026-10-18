@@ -136,7 +136,7 @@ func TestChatV2ReviewResizeKeepsReadingAnchorWithinLongMessage(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
 	msg := chatIncoming("long", 7)
 	var body strings.Builder
-	for i := range 200 {
+	for i := range 2000 {
 		fmt.Fprintf(&body, "token%03d ", i)
 	}
 	msg.Payload, _ = json.Marshal(map[string]string{"text": body.String()})
