@@ -89,28 +89,33 @@ message; it is not approval.
 incus --project collab-ai exec -t colima-collab-ai:secured -- collab operator chat
 ```
 
-The chat needs an interactive terminal (`-t`). It shows connected agents, the
-operator conversation and a composer, and it updates live.
+The chat needs an interactive terminal (`-t`). It runs full screen: the
+conversation fills the window, newest at the bottom, and you type at the
+bottom. A hint line above the input always shows who your message will reach.
 
-- **Recipients:** one ID, a comma-separated group, or `@all` (alias `*`).
-  `@all` asks "Send to N agents (current preview)? y/n" first. A JSON array
-  such as `["a,b"]` addresses IDs literally.
-- **Keys:**
-  - Enter sends. Shift+Enter inserts a new line, as do Alt+Enter and Ctrl+J
-    if your terminal passes them through. Pasting never sends.
-  - Tab moves between the timeline, recipients and editor.
-  - In the timeline: ↑/↓ select, `a` acknowledges (received, not approval),
-    `r` replies to a received message, `s` shows more recipient stages,
-    PgUp loads older history or fills a gap.
-  - F1 shows help and whether your terminal reports Shift+Enter distinctly.
-    Ctrl+Q quits.
+- **Addressing:**
+  - No mention sends to everyone: `Stand-up in 5 minutes`.
+  - Mentions at the start pick recipients: `@codex-1 please review`, or
+    `@codex-1 @claude-1 sync at 3`. Typing `@` opens a picker; Tab or Enter
+    completes.
+  - An `@` later in the text is plain text, and pasted text is always literal.
+    Start with `\@` for a message that begins with `@`.
+  - IDs that can't be typed as `@id` are addressed with `/to ["id"]`.
+- **Commands:** `/` in an empty input, or Ctrl+K at any time, opens the command
+  line; it never touches your draft. `/agents`, `/reply [#n]`, `/ack [#n]`
+  (received, not approval), `/history`, `/stages #n`, `/to`, `/find`,
+  `/copy #n`, `/clear`, `/help`, `/quit`. `#n` is the number shown on each
+  message.
+- **Keys:** Enter sends. Shift+Enter, Alt+Enter, Ctrl+J, or `\` then Enter
+  insert a new line. PgUp/PgDn scroll, Ctrl+End jumps to the newest message,
+  Ctrl+R replies to the newest message to you, F1 shows help, Ctrl+Q quits.
 - **One chat at a time:** a second chat exits with `owner_busy`. While a chat
   is open, one-shot `collab operator receive` and `ack` are refused; `send`
   and `history` still work.
 - **Reconnects** retry with backoff. A malformed broker frame stops retrying;
   press Ctrl+R to retry. If you quit while a send's outcome is unknown, the
   chat says so; `collab operator history` shows whether the broker accepted
-  it.
+  it. The design is in [operator chat](operator-chat.md), "Chat v2".
 
 ## Status, stop and restart
 

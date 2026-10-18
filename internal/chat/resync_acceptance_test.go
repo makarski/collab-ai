@@ -38,9 +38,7 @@ func TestChatEpochChangeSuspendsQueuedAcknowledgment(t *testing.T) {
 	h.reply(history, chatHistory())
 	h.reply(inbox, chatInbox(chatIncoming("queued", 1)))
 	receipt := h.take(protocol.TypeOperatorReceived)
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyDown, 0))
-	h.input(chatKey('a', 0))
+	v2Command(h, "/ack #1")
 	h.event(protocol.EventResyncRequired, "new-epoch", 1)
 	h.take(protocol.TypeOperatorSnapshot)
 	state := h.m.State()
@@ -60,9 +58,7 @@ func TestChatConflictingBodyPreservesRenderedContentAndSuspendsAck(t *testing.T)
 	msg := chatIncoming("same-id", 1)
 	h.reply(history, chatHistory(msg))
 	h.await(func() bool { return len(h.m.State().Entries) == 1 })
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyDown, 0))
-	h.input(chatKey('a', 0))
+	v2Command(h, "/ack #1")
 	msg.Payload = json.RawMessage(`{"text":"replacement body"}`)
 	h.reply(inbox, chatInbox(msg))
 	h.await(func() bool { return h.m.State().Entries[0].Conflict })
@@ -120,25 +116,25 @@ func TestChatCatchupCapLeavesPageableGap(t *testing.T) {
 	if len(state.Entries) != 2 || !state.Entries[1].GapBelow {
 		t.Fatalf("catchup limit hid gap: %+v", state.Entries)
 	}
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyDown, 0))
-	h.input(chatKey(tea.KeyPgUp, 0))
+	v2Command(h, "/history")
 	older := h.take(protocol.TypeOperatorHistory)
 	if older.PageRequest.BeforeSeq != 100 || older.PageRequest.UpperSeq < 100 {
 		t.Fatalf("gap paging used old scroll bounds: %+v", older.PageRequest)
 	}
 }
 
-func TestChatArrivalDoesNotMoveScrolledSelection(t *testing.T) {
+func TestChatArrivalDoesNotMoveScrolledView(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
+	h.input(tea.WindowSizeMsg{Width: 80, Height: 8})
 	inbox, history := h.baseline()
 	h.reply(inbox, chatInbox())
 	h.reply(history, chatHistory(chatIncoming("second", 2), chatIncoming("first", 1)))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
-	h.input(chatKey(tea.KeyEscape, 0))
-	h.input(chatKey(tea.KeyUp, 0))
+	h.input(chatKey(tea.KeyPgUp, 0))
 	before := h.m.State()
-	selected := before.Entries[before.Selected].MessageID
+	if before.ScrollOffset == 0 {
+		t.Fatalf("view did not scroll up: %+v", before)
+	}
 	h.event(protocol.EventConversationChanged, "epoch", 2)
 	req := h.take(protocol.TypeOperatorHistory)
 	page := chatHistory(chatIncoming("third", 3), chatIncoming("second", 2))
@@ -146,8 +142,8 @@ func TestChatArrivalDoesNotMoveScrolledSelection(t *testing.T) {
 	h.reply(req, page)
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	after := h.m.State()
-	if after.Entries[after.Selected].MessageID != selected || after.Unread != before.Unread+1 {
-		t.Fatalf("arrival moved selection or lost unread count: %+v", after)
+	if after.ScrollOffset <= before.ScrollOffset || after.Unread != before.Unread+1 {
+		t.Fatalf("arrival moved the view or lost unread count: before %d after %+v", before.ScrollOffset, after)
 	}
 }
 

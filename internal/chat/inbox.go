@@ -155,15 +155,16 @@ func (m *Model) room(fresh *entry) bool {
 // queued acknowledgment for that ID at once.
 func (m *Model) upsert(fresh *entry) (*entry, bool) {
 	e, inserted := m.timeline.upsert(fresh)
+	e.epoch = m.epoch // read (again) in this epoch: commands may target it
 	if e.conflict {
 		m.inbox.suspend(e.msg.MessageID, "content changed")
 	}
 	return e, inserted
 }
 
-// arrived counts a new message as unread while the selection is scrolled up.
+// arrived counts a new message as unread while the transcript is scrolled up.
 func (m *Model) arrived(inserted bool) {
-	if inserted && !m.timeline.atBottom() {
+	if inserted && !m.view.following {
 		m.timeline.unread++
 	}
 }
@@ -282,7 +283,7 @@ func (m *Model) acknowledge(e *entry) tea.Cmd {
 		return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, id)
 	default:
 		m.inbox.queuedAcks[id] = &queuedAck{hash: e.hash}
-		m.status = "acknowledgment queued until receipt is confirmed (press a again to cancel)"
+		m.status = "acknowledgment queued until receipt is confirmed (/ack again cancels)"
 	}
 	return nil
 }

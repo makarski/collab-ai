@@ -2,8 +2,6 @@ package chat
 
 import (
 	"encoding/json"
-	"strconv"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
@@ -32,18 +30,8 @@ type intent struct {
 	Detail     string
 }
 
-// broadcastConfirm holds an @all send until the operator answers y or n.
-type broadcastConfirm struct {
-	scope     protocol.Message
-	payload   json.RawMessage
-	inReplyTo string
-	preview   int
-}
-
 type sendState struct {
-	intent    *intent
-	confirm   *broadcastConfirm
-	inReplyTo string
+	intent *intent
 }
 
 func (s *sendState) unresolved() bool {
@@ -57,13 +45,25 @@ func (s *sendState) disconnected() {
 	}
 }
 
-// submit freezes the draft into a send, asking first for @all.
+// submit freezes the draft, its audience and reply into a send intent. The
+// hint line shows the audience beforehand, so there is no confirmation.
 func (m *Model) submit() tea.Cmd {
-	text := m.editor.Value()
-	if strings.TrimSpace(text) == "" {
+	if !m.draftBody() {
+		if !m.compose.draftEmpty() {
+			m.status = "message is empty"
+		}
 		return nil
 	}
-	scope, err := ParseRecipients(m.recipients.Value())
+	if m.tooSmall() {
+		m.status = "terminal too small to send"
+		return nil
+	}
+	aud := m.resolveAudience()
+	if aud.err != "" {
+		m.status = aud.err
+		return nil
+	}
+	scope, err := aud.scope()
 	if err != nil {
 		m.status = err.Error()
 		return nil
@@ -76,16 +76,16 @@ func (m *Model) submit() tea.Cmd {
 		m.status = "the previous send is still unresolved"
 		return nil
 	}
-	payload, err := encodeText(text)
+	payload, err := encodeText(m.outgoingText())
 	if err != nil {
 		m.status = err.Error()
 		return nil
 	}
-	if isBroadcast(scope) {
-		m.send.confirm = &broadcastConfirm{scope: scope, payload: payload, inReplyTo: m.send.inReplyTo, preview: len(m.agents.list)}
-		return nil
+	inReplyTo := ""
+	if r := m.compose.reply; r != nil {
+		inReplyTo = r.messageID
 	}
-	return m.dispatch(scope, payload, m.send.inReplyTo)
+	return m.dispatch(scope, payload, inReplyTo)
 }
 
 // encodeText builds the payload and enforces the operator payload cap on its
@@ -105,11 +105,16 @@ func encodeText(text string) (json.RawMessage, error) {
 	return payload, nil
 }
 
+// dispatch queues the frozen intent; only once it is queued does the composer
+// let go of the draft and its audience.
 func (m *Model) dispatch(scope protocol.Message, payload json.RawMessage, inReplyTo string) tea.Cmd {
 	m.send.intent = &intent{ID: uuid.NewString(), Scope: scope, Payload: payload, InReplyTo: inReplyTo, State: IntentSending}
-	m.send.inReplyTo = ""
-	m.editor.Reset()
-	return m.sendIntent()
+	cmd := m.sendIntent()
+	m.compose.resetDraft()
+	m.sizeComposer()
+	m.status = ""
+	m.follow()
+	return cmd
 }
 
 func (m *Model) sendIntent() tea.Cmd {
@@ -125,20 +130,6 @@ func (m *Model) resendUnknown() tea.Cmd {
 		return nil
 	}
 	return m.sendIntent()
-}
-
-func (m *Model) confirmAnswer(yes bool) tea.Cmd {
-	c := m.send.confirm
-	m.send.confirm = nil
-	if !yes {
-		m.status = "broadcast cancelled; draft kept"
-		return nil
-	}
-	if !m.ready() {
-		m.status = "not connected; broadcast not sent, draft kept"
-		return nil
-	}
-	return m.dispatch(c.scope, c.payload, c.inReplyTo)
 }
 
 func (m *Model) sendResult(req pendingRequest, resp protocol.Message) tea.Cmd {
@@ -157,8 +148,11 @@ func (m *Model) sendResult(req pendingRequest, resp protocol.Message) tea.Cmd {
 		return m.malformed("send response: " + brokerReason(resp))
 	}
 	in.State, in.Detail = IntentRejected, brokerReason(resp)
-	if m.editor.Value() == "" {
-		m.editor.SetValue(payloadText(in.Payload))
+	// Give the text back only to an empty composer; never touch a newer draft.
+	if m.compose.draftEmpty() && m.compose.cmd == nil {
+		m.compose.editor.SetValue(payloadText(in.Payload))
+		m.compose.pasted = true // restored text is literal; its audience isn't re-read
+		m.sizeComposer()
 	}
 	return nil
 }
@@ -168,29 +162,6 @@ func sendAccepted(resp protocol.Message, id string) bool {
 		return false
 	}
 	return resp.Stage == protocol.StageAccepted && resp.MessageID == id
-}
-
-// reply addresses the sender of a received message; sent messages carry no
-// trusted original scope, so they never get an automatic recipient.
-func (m *Model) reply(e *entry) {
-	if e.direction != "received" {
-		m.status = "choose recipients for a new send"
-		return
-	}
-	m.recipients.SetValue(literalRecipient(e.msg.From))
-	m.send.inReplyTo = e.msg.MessageID
-	m.setFocus(FocusEditor)
-	m.status = "replying to " + strconv.Quote(e.msg.MessageID)
-}
-
-// literalRecipient writes an ID so ParseRecipients reads it back unchanged;
-// anything that wouldn't round-trip as plain text is written as a JSON array.
-func literalRecipient(id string) string {
-	if scope, err := ParseRecipients(id); err == nil && scope.To == id {
-		return id
-	}
-	data, _ := json.Marshal([]string{id})
-	return string(data)
 }
 
 func payloadText(payload json.RawMessage) string {

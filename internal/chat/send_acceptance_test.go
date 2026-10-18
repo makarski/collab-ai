@@ -2,7 +2,6 @@ package chat_test
 
 import (
 	"encoding/json"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -18,11 +17,14 @@ func (h *chatHarness) ready() {
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 }
 
+// draft addresses text: "@all" means everyone (no audience), anything else is
+// a comma-separated list set with /to, then the text is pasted.
 func (h *chatHarness) draft(to, text string) {
 	h.t.Helper()
-	h.input(chatKey(tea.KeyTab, tea.ModShift))
-	h.input(tea.PasteMsg{Content: to})
-	h.input(chatKey(tea.KeyEnter, 0))
+	if to != "@all" {
+		ids, _ := json.Marshal(strings.Split(to, ","))
+		v2Command(h, "/to "+string(ids))
+	}
 	h.input(tea.PasteMsg{Content: text})
 }
 
@@ -59,32 +61,6 @@ func TestChatPasteAndFallbackNewlinesNeverSend(t *testing.T) {
 	}
 	if h.m.State().Intent.State != chat.IntentSending {
 		t.Fatal("optimistic send acceptance")
-	}
-}
-
-func TestChatBroadcastConfirmationPreservesDraftOnCancel(t *testing.T) {
-	for _, cancel := range []tea.KeyPressMsg{chatKey('n', 0), chatKey(tea.KeyEscape, 0)} {
-		t.Run(cancel.String(), func(t *testing.T) {
-			h := newChatHarness(t, chat.Bounds{})
-			h.ready()
-			h.draft("@all", "broadcast\nbody")
-			h.input(chatKey(tea.KeyEnter, 0))
-			chatEqual(t, "broadcast confirmation", h.m.State().Confirm != nil, true)
-			chatEqual(t, "no unconfirmed send", h.m.State().Intent, nil)
-			h.input(cancel)
-			chatEqual(t, "cancel prompt", h.m.State().Confirm, nil)
-			chatEqual(t, "cancel preserves draft", h.m.State().Draft, "broadcast\nbody")
-			chatEqual(t, "cancel preserves recipients", h.m.State().Recipients, "@all")
-			h.input(chatKey(tea.KeyEnter, 0))
-			h.input(chatKey('y', 0))
-			req := h.take(protocol.TypeOperatorSend)
-			chatEqual(t, "broker broadcast", req.To, protocol.Broadcast)
-			chatEqual(t, "no preview group", len(req.Group), 0)
-			h.reply(req, protocol.Message{Type: protocol.TypeAck, MessageID: req.MessageID, Stage: protocol.StageAccepted, Seq: 1, Recipients: []protocol.Recipient{{AgentID: "new-member", SessionID: "new-session"}}, Excluded: []string{"old-client"}})
-			h.await(func() bool { return h.m.State().Intent.State == chat.IntentAccepted })
-			chatEqual(t, "accepted member count", len(h.m.State().Intent.Recipients), 1)
-			chatEqual(t, "authoritative exclusions", reflect.DeepEqual(h.m.State().Intent.Excluded, []string{"old-client"}), true)
-		})
 	}
 }
 

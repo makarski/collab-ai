@@ -7,9 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/textarea"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	"collab-ai/internal/protocol"
@@ -57,13 +54,6 @@ const (
 	OwnerBusy    = "owner_busy"
 	Stopped      = "stopped"
 	Closed       = "closed"
-)
-
-// Focus areas.
-const (
-	FocusRecipients = "recipients"
-	FocusEditor     = "editor"
-	FocusTimeline   = "timeline"
 )
 
 // Messages produced by the model's own commands.
@@ -124,14 +114,15 @@ type Model struct {
 	send    sendState
 	agents  agentView
 
-	recipients textinput.Model
-	editor     textarea.Model
-	focus      string
-	help       bool
-	keyboard   bool
-	status     string
-	width      int
-	height     int
+	compose  composer
+	panel    *panel
+	view     viewport
+	cutoff   uint64 // /clear: rows with seq <= cutoff are hidden
+	find     string // the last /find query
+	keyboard bool
+	status   string
+	width    int
+	height   int
 }
 
 type pendingRequest struct {
@@ -151,17 +142,13 @@ func New(opts Options) *Model {
 	if opts.Backoff == (BackoffPolicy{}) {
 		opts.Backoff = defaultBackoff()
 	}
-	m := &Model{opts: opts, conn: Connecting, pending: map[string]pendingRequest{}, focus: FocusEditor, width: 100, height: 30}
+	m := &Model{opts: opts, conn: Connecting, pending: map[string]pendingRequest{}, width: 100, height: 30}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.timeline = newTimeline()
 	m.inbox.queuedAcks = map[string]*queuedAck{}
-	m.recipients = textinput.New()
-	m.recipients.Placeholder = "agent, agent2 or @all"
-	m.editor = textarea.New()
-	m.editor.ShowLineNumbers = false
-	m.editor.Placeholder = "Message (Enter sends, Shift+Enter new line)"
-	m.editor.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "alt+enter", "ctrl+j"))
-	m.editor.Focus()
+	m.compose = newComposer()
+	m.view.following = true
+	m.resize(m.width, m.height)
 	return m
 }
 

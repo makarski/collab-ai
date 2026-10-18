@@ -14,7 +14,6 @@ type StateView struct {
 	Revision          uint64
 	Baseline          bool
 	Entries           []EntryView
-	Selected          int
 	Agents            []protocol.AgentPresence
 	AgentsTotal       int
 	AgentsPartial     bool
@@ -23,19 +22,48 @@ type StateView struct {
 	Unread            int
 	Paused            bool
 	Intent            *IntentView
-	Confirm           *ConfirmView
 	QueuedAcks        []QueuedAckView
 	InFlight          int
 	Queued            int
-	Focus             string
-	Recipients        string
 	Draft             string
+	Pasted            bool
+	Audience          AudienceView
 	InReplyTo         string
+	ReplySender       string
+	CommandLine       *CommandLineView
+	Picker            *PickerView
+	Hint              string
+	ScrollOffset      int
+	Cutoff            uint64
 	Status            string
 	Help              bool
+	TooSmall          bool
 	KeyDisambiguation bool
 	ExitCode          int
 	Fatal             string
+}
+
+// AudienceView is who the draft would go to, or why it can't be sent.
+type AudienceView struct {
+	Everyone bool
+	IDs      []string
+	NotSeen  []string
+	Source   string
+	Error    string
+}
+
+// CommandLineView is the open command line.
+type CommandLineView struct {
+	Text       string
+	Candidates []string
+	Error      string
+}
+
+// PickerView is the open @ or / picker; Items are raw IDs or command names.
+type PickerView struct {
+	Kind     string
+	Items    []string
+	Selected int
 }
 
 // EntryView is one timeline message.
@@ -67,10 +95,6 @@ type IntentView struct {
 	Detail     string
 }
 
-type ConfirmView struct {
-	Preview int
-}
-
 type QueuedAckView struct {
 	MessageID string
 	Suspended string
@@ -78,14 +102,28 @@ type QueuedAckView struct {
 
 // State returns a copy; changing it doesn't affect the model.
 func (m *Model) State() StateView {
+	c := &m.compose
 	v := StateView{
 		Connection: m.conn, Session: m.session, Epoch: m.epoch, Revision: m.revision, Baseline: m.baseline,
-		Selected: m.timeline.selected, Agents: append([]protocol.AgentPresence(nil), m.agents.list...),
+		Agents:      append([]protocol.AgentPresence(nil), m.agents.list...),
 		AgentsTotal: m.agents.total, AgentsPartial: m.agents.partial, InboxPending: m.inbox.pending,
 		InboxHeadSeq: m.inbox.headSeq, Unread: m.timeline.unread, Paused: m.timeline.paused,
-		InFlight: m.inFlight(), Queued: len(m.outbox), Focus: m.focus, Recipients: m.recipients.Value(),
-		Draft: m.editor.Value(), InReplyTo: m.send.inReplyTo, Status: m.status, Help: m.help,
+		InFlight: m.inFlight(), Queued: len(m.outbox), Draft: c.editor.Value(), Pasted: c.pasted,
+		Audience: m.audienceView(), Hint: m.hintText(), ScrollOffset: m.scrollOffset(), Cutoff: m.cutoff,
+		Status: m.status, Help: m.panel != nil && m.panel.kind == panelHelp, TooSmall: m.tooSmall(),
 		KeyDisambiguation: m.keyboard, ExitCode: m.exitCode, Fatal: m.fatal,
+	}
+	if r := c.reply; r != nil {
+		v.InReplyTo, v.ReplySender = r.messageID, r.sender
+	}
+	if c.cmd != nil {
+		v.CommandLine = &CommandLineView{Text: c.cmd.input.Value(), Error: m.status}
+		if c.picker != nil && c.picker.kind == PickerCommand {
+			v.CommandLine.Candidates = append([]string(nil), c.picker.items...)
+		}
+	}
+	if p := c.picker; p != nil {
+		v.Picker = &PickerView{Kind: p.kind, Items: append([]string(nil), p.items...), Selected: p.selected}
 	}
 	for _, e := range m.timeline.order {
 		v.Entries = append(v.Entries, e.view())
@@ -93,14 +131,16 @@ func (m *Model) State() StateView {
 	if in := m.send.intent; in != nil {
 		v.Intent = &IntentView{MessageID: in.ID, Scope: in.Scope, InReplyTo: in.InReplyTo, State: in.State, Recipients: in.Recipients, Excluded: in.Excluded, Detail: in.Detail}
 	}
-	if c := m.send.confirm; c != nil {
-		v.Confirm = &ConfirmView{Preview: c.preview}
-	}
 	for id, q := range m.inbox.queuedAcks {
 		v.QueuedAcks = append(v.QueuedAcks, QueuedAckView{MessageID: id, Suspended: q.suspended})
 	}
 	sort.Slice(v.QueuedAcks, func(i, j int) bool { return v.QueuedAcks[i].MessageID < v.QueuedAcks[j].MessageID })
 	return v
+}
+
+func (m *Model) audienceView() AudienceView {
+	a := m.resolveAudience()
+	return AudienceView{Everyone: a.everyone, IDs: append([]string(nil), a.ids...), NotSeen: append([]string(nil), a.notSeen...), Source: a.source, Error: a.err}
 }
 
 func (e *entry) view() EntryView {
