@@ -23,7 +23,7 @@ def stop(process):
 
 
 def lock(stack, remote, project):
-    directory = Path.home() / ".local/state/collab-ai/shares"
+    directory = Path.home() / ".local/state/pairtask/shares"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     key = hashlib.sha256(f"{remote}:{project}".encode()).hexdigest()[:16]
     path = directory / (key + ".lock")

@@ -139,9 +139,9 @@ class MountTests(unittest.TestCase):
 
     def test_mac_changes_require_stop_and_preserve_other_settings(self):
         self.manifest_with()
-        profile = self.root / ".colima/collab-ai"
-        stopped = subprocess.CompletedProcess([], 0, '{"name":"collab-ai","status":"Stopped"}\n')
-        running = subprocess.CompletedProcess([], 0, '{"name":"collab-ai","status":"Running"}\n')
+        profile = self.root / ".colima/pairtask"
+        stopped = subprocess.CompletedProcess([], 0, '{"name":"pairtask","status":"Stopped"}\n')
+        running = subprocess.CompletedProcess([], 0, '{"name":"pairtask","status":"Running"}\n')
         with patch.object(host.Path, "home", return_value=self.root), \
                 patch.object(host.platform, "system", return_value="Darwin"), \
                 patch.object(host.platform, "machine", return_value="arm64"), \

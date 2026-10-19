@@ -23,7 +23,7 @@ sudo python3 scripts/sandbox-boundary.py --remote local --image-dir dist/install
 On macOS, with the dedicated Colima host already running:
 
 ```sh
-python3 scripts/sandbox-boundary.py --remote colima-collab-ai --image-dir dist/installed
+python3 scripts/sandbox-boundary.py --remote colima-pairtask --image-dir dist/installed
 ```
 
 For local Go changes, `--bin-dir /absolute/path/to/bins` overlays Linux `pairtask`

@@ -20,7 +20,7 @@ class CleanupTests(unittest.TestCase):
             state.write_text("retained state")
             with patch.object(smoke, "run", side_effect=subprocess.CalledProcessError(1, ["tofu"])):
                 with self.assertRaises(subprocess.CalledProcessError):
-                    smoke.destroy_deployment(["tofu"], directory, "collab-smoke-test")
+                    smoke.destroy_deployment(["tofu"], directory, "pairtask-smoke-test")
             self.assertEqual(state.read_text(), "retained state")
 
     def test_successful_teardown_removes_only_its_temporary_state(self):
@@ -30,7 +30,7 @@ class CleanupTests(unittest.TestCase):
             directory.mkdir()
             (parent / "unrelated").write_text("keep")
             with patch.object(smoke, "run") as run:
-                smoke.destroy_deployment(["tofu", "-chdir=" + str(directory)], directory, "collab-smoke-test")
+                smoke.destroy_deployment(["tofu", "-chdir=" + str(directory)], directory, "pairtask-smoke-test")
             self.assertIn("destroy", run.call_args.args[0])
             self.assertFalse(directory.exists())
             self.assertEqual((parent / "unrelated").read_text(), "keep")

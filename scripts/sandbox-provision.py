@@ -4,7 +4,6 @@
 import argparse
 import json
 from pathlib import Path
-import platform
 import re
 import signal
 import subprocess
@@ -14,6 +13,7 @@ from sandbox_operator_config import deployment_directory, remember
 from sandbox_operator_workflow import run_operation
 from sandbox_operator_recovery import recover
 from sandbox_releases import release_tag, repository
+from sandbox_remote import REMOTE, colima_profile, default_remote
 from sandbox_rollout import rollout, tools_retry
 
 
@@ -26,10 +26,10 @@ def identifier(value):
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=["rollout", "plan", "apply", "recover", "tools-retry"])
-    parser.add_argument("--remote", default="colima-collab-ai" if platform.system() == "Darwin" else "local")
+    parser.add_argument("--remote", default=default_remote())
     parser.add_argument("--image-dir", type=Path, help="Verified workspace image directory; remembered after first selection")
     parser.add_argument("--state-dir", type=Path, help="Select an existing operator checkout once; otherwise discover it")
-    parser.add_argument("--project", default="collab-ai", type=identifier)
+    parser.add_argument("--project", default="pairtask", type=identifier)
     parser.add_argument("--storage-pool", default="default", type=identifier)
     parser.add_argument("--network", default="incusbr0", type=identifier)
     parser.add_argument("--release", type=release_tag, help="Rollout release tag; defaults to latest")
@@ -52,8 +52,8 @@ def arguments():
 
 def main():
     args = arguments()
-    if args.remote not in ("local", "colima-collab-ai"):
-        raise ValueError("Use Linux local or macOS colima-collab-ai")
+    if args.remote != "local" and colima_profile(args.remote) is None:
+        raise ValueError(f"Use Linux local or macOS {REMOTE}")
     metadata = json.loads(subprocess.check_output(["incus", "query", args.remote + ":/1.0"]))
     directory = deployment_directory(args.state_dir, args.project)
     remember(directory, args.project)

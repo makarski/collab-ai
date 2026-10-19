@@ -208,6 +208,6 @@ resource "incus_instance" "workspace" {
   running   = var.running
 
   config = {
-    "user.collab-ai.managed" = "infra/incus"
+    "user.pairtask.managed" = "infra/incus"
   }
 }

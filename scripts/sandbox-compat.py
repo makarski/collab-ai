@@ -203,8 +203,8 @@ def main():
     baseline = json.loads(args.baseline.read_text())
     print(f"Baseline: {baseline['release']} at {baseline['source']}", flush=True)
     smoke = smoke_module()
-    project = "collab-smoke-compat-" + uuid.uuid4().hex[:8]
-    directory = Path(tempfile.mkdtemp(prefix="collab-compat-"))
+    project = "pairtask-smoke-compat-" + uuid.uuid4().hex[:8]
+    directory = Path(tempfile.mkdtemp(prefix="pairtask-compat-"))
     image = download_baseline(args, directory, baseline)
     checkout = old_host(directory, baseline)
     smoke.prepare_state(directory, SimpleNamespace(remote=args.remote, image_dir=image), project)

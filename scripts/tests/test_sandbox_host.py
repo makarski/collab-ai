@@ -60,12 +60,12 @@ class HostTests(unittest.TestCase):
         self.assertEqual(config["runtime"], "incus")
         for call in (call for call in run.call_args_list if call.args[0][0] == "colima"):
             command = call.args[0]
-            self.assertEqual(command[:3], ["colima", "start", "collab-ai"])
+            self.assertEqual(command[:3], ["colima", "start", "pairtask"])
             self.assertIn("--save-config=false", command)
             self.assertIn("--activate=false", command)
             self.assertEqual(command[-2:], ["--mount", "none"])
         queries = [call.args[0] for call in run.call_args_list if call.args[0][:2] == ["incus", "query"]]
-        self.assertEqual(queries, [["incus", "query", "colima-collab-ai:/1.0"]] * 2)
+        self.assertEqual(queries, [["incus", "query", "colima-pairtask:/1.0"]] * 2)
 
     def test_foreign_remote_is_rejected_before_creating_profile(self):
         remote = {host.REMOTE: {"Addrs": ["https://another-server:8443"], "Protocol": "incus"}}
@@ -84,7 +84,7 @@ class HostTests(unittest.TestCase):
             self.run_action("apply")
         self.assertEqual(settings.read_text(), "runtime: docker\n")
         config = host.desired_config()
-        (self.profile / "collab-ai-owner.json").write_text(json.dumps({"schema": 1, "config": config}))
+        (self.profile / "pairtask-owner.json").write_text(json.dumps({"schema": 1, "config": config}))
         settings.write_text(json.dumps({**config, "forwardAgent": True}))
         with self.assertRaisesRegex(ValueError, "drifted"):
             self.run_action("apply")

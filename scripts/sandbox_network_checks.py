@@ -9,7 +9,7 @@ from sandbox_secured_checks import Deployment, run
 def prepare(directory, project):
     # A second instance named workspace cannot share the operator's bridge DNS.
     # Own the test bridge in this disposable state so teardown also removes it.
-    suffix = project.removeprefix("collab-smoke-")
+    suffix = project.removeprefix("pairtask-smoke-")
     name = "cs-" + suffix[:12]
     # Incus auto subnet probes cannot work behind every VM network (e.g. Lima).
     # Use benchmark address space without NAT, only for the disposable bridge.

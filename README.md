@@ -35,17 +35,17 @@ and use `local:` / `--remote local`. For host mounts, see the
 # HOST: run from your provisioning checkout
 # Start the Mac VM, then the containers
 python3 scripts/sandbox-host.py apply
-incus --project collab-ai start colima-collab-ai:secured   # if secured_runtime = true
-incus --project collab-ai start colima-collab-ai:workspace
+incus --project pairtask start colima-pairtask:secured   # if secured_runtime = true
+incus --project pairtask start colima-pairtask:workspace
 
 # Check: expect workspace (and secured, if enabled) to show RUNNING
-incus --project collab-ai list colima-collab-ai:
+incus --project pairtask list colima-pairtask:
 
 # Optional: preview host mounts; uncomment with your file (does not apply)
 # python3 scripts/sandbox-host.py mounts-plan --mounts-file /path/to/mounts.json
 
 # Configure SSH once, check the broker, then enter dev
-python3 scripts/sandbox-ssh.py --remote colima-collab-ai
+python3 scripts/sandbox-ssh.py --remote colima-pairtask
 ssh -F infra/incus/ssh/config workspace pairtask status
 ssh -F infra/incus/ssh/config workspace
 
@@ -78,9 +78,9 @@ codex                         # new managed Codex conversation
 exit
 
 # HOST AGAIN: optional shutdown; stops agents, keeps persistent files
-# incus --project collab-ai stop colima-collab-ai:workspace
-# incus --project collab-ai stop colima-collab-ai:secured   # if secured_runtime = true
-# colima stop collab-ai
+# incus --project pairtask stop colima-pairtask:workspace
+# incus --project pairtask stop colima-pairtask:secured   # if secured_runtime = true
+# colima stop pairtask
 ```
 
 Expect `Broker: ready`. Run one Codex and one Claude session; additional sessions
@@ -104,10 +104,10 @@ Run on your host:
 ssh -t -F infra/incus/ssh/config workspace pairtask dashboard
 
 # Containers, resources and logs (browser UI)
-incus webui colima-collab-ai:  # Linux: incus webui local:
+incus webui colima-pairtask:  # Linux: incus webui local:
 ```
 
-For Incus, open the printed URL and select project `collab-ai`.
+For Incus, open the printed URL and select project `pairtask`.
 The collaboration dashboard is read-only; prompts and approvals stay in agent
 terminals. [Controls](docs/dashboard.md) · [UI help](docs/sandbox.md#incus-web-ui).
 

@@ -1,10 +1,10 @@
 # Copy to sandbox.auto.tfvars and set your Incus socket.
 # macOS bootstrap prints the socket; Linux commonly uses /var/lib/incus/unix.socket.
-incus_socket = "/absolute/path/to/.colima/collab-ai/incus.sock"
+incus_socket = "/absolute/path/to/.colima/pairtask/incus.sock"
 # Copy the builder's image.tfvars.json to image.auto.tfvars.json alongside this file.
 # It supplies image_file and image_fingerprint; do not duplicate them here.
 
-project_name = "collab-ai"
+project_name = "pairtask"
 storage_pool = "default"
 cpu_count    = 2
 memory_gib   = 4

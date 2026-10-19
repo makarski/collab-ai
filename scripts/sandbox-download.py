@@ -4,7 +4,6 @@
 import argparse
 import json
 from pathlib import Path
-import platform
 import shlex
 import shutil
 import subprocess
@@ -14,12 +13,13 @@ import zipfile
 from sandbox_artifacts import BundleSource, from_zip
 from sandbox_image_cache import prepare_image, record_bundles
 from sandbox_releases import download_release, release_tag, repository
+from sandbox_remote import REMOTE, default_remote
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--remote", default="colima-collab-ai" if platform.system() == "Darwin" else "local",
-                        help="Incus remote name; defaults to colima-collab-ai on Mac, local on Linux")
+    parser.add_argument("--remote", default=default_remote(),
+                        help=f"Incus remote name; defaults to {REMOTE} on Mac, local on Linux")
     source = parser.add_mutually_exclusive_group(required=False)
     source.add_argument("--release", type=release_tag, default="latest")
     source.add_argument("--from-dir", type=Path, help="Directory of extracted CI release assets")

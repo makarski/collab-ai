@@ -13,10 +13,9 @@ import sys
 
 from sandbox_mounts import colima_mounts, mount_variables, read_mounts, write_json
 from sandbox_colima_config import check_settings
+from sandbox_remote import PROFILE, REMOTE
 
 
-PROFILE = "collab-ai"
-REMOTE = "colima-collab-ai"
 CONFIG = Path(__file__).resolve().parents[1] / "infra/incus/colima.json"
 
 
@@ -35,7 +34,7 @@ def profile_config(directory):
         return base
     # Check ownership and drift before adopting only the managed mount list.
     check_profile_files(directory)
-    config = json.loads((directory / "collab-ai-owner.json").read_text())["config"]
+    config = json.loads((directory / "pairtask-owner.json").read_text())["config"]
     if {**config, "mounts": None} != base:
         raise ValueError("Host settings changed; reconcile the existing profile explicitly before proceeding")
     check_profile(directory, config)
@@ -46,7 +45,7 @@ def check_profile(directory, config):
     check_profile_files(directory)
     if not directory.exists():
         return
-    marker = directory / "collab-ai-owner.json"
+    marker = directory / "pairtask-owner.json"
     settings = directory / "colima.yaml"
     if json.loads(marker.read_text()) != {"schema": 1, "config": config}:
         raise ValueError("Host settings changed; reconcile the existing profile explicitly before proceeding")
@@ -58,10 +57,10 @@ def check_profile_files(directory):
         raise ValueError("Refusing a symlinked Colima profile")
     if not directory.exists():
         return
-    marker = directory / "collab-ai-owner.json"
+    marker = directory / "pairtask-owner.json"
     settings = directory / "colima.yaml"
     if not marker.is_file() or not settings.is_file():
-        raise ValueError("Existing collab-ai profile is not managed by this script; refusing to adopt it")
+        raise ValueError("Existing pairtask profile is not managed by this script; refusing to adopt it")
     if marker.is_symlink() or settings.is_symlink():
         raise ValueError("Refusing symlinked profile configuration")
 
@@ -75,7 +74,7 @@ def apply_profile(directory, config):
     with (directory / "colima.yaml").open("x") as stream:
         json.dump(config, stream, indent=2)
         stream.write("\n")
-    with (directory / "collab-ai-owner.json").open("x") as stream:
+    with (directory / "pairtask-owner.json").open("x") as stream:
         json.dump({"schema": 1, "config": config}, stream, indent=2)
         stream.write("\n")
 
@@ -153,7 +152,7 @@ def require_stopped():
     profiles = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
     for profile in profiles:
         if profile["name"] == PROFILE and profile["status"] != "Stopped":
-            raise ValueError("Stop the dedicated VM first: colima stop collab-ai")
+            raise ValueError("Stop the dedicated VM first: colima stop pairtask")
 
 
 def configure_profile_mounts(mounts):
@@ -165,7 +164,7 @@ def configure_profile_mounts(mounts):
     require_stopped()
     apply_profile(directory, current)
     write_json(directory / "colima.yaml", desired)
-    write_json(directory / "collab-ai-owner.json", {"schema": 1, "config": desired})
+    write_json(directory / "pairtask-owner.json", {"schema": 1, "config": desired})
 
 
 def configure_mounts(args):
@@ -198,7 +197,7 @@ def parse_args():
     parser.add_argument("action", choices=["plan", "apply", "mounts-plan", "mounts-apply"])
     parser.add_argument("--mounts-file", type=Path, help="JSON list of project_name/host_path/container_mount_path/container_readonly mount objects")
     parser.add_argument("--output", type=Path, help="Override the discovered deployment mount-variable file")
-    parser.add_argument("--project", default="collab-ai", help="Deployment project for automatic state discovery")
+    parser.add_argument("--project", default="pairtask", help="Deployment project for automatic state discovery")
     parser.add_argument("--share-user", help="Dedicated local Linux sharing account; required for writable mounts")
     return parser.parse_args()
 

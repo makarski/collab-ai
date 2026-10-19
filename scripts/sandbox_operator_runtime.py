@@ -15,7 +15,7 @@ from sandbox_operator_download import download_archive
 class Operator:
     def __init__(self, remote, server, pool, network):
         self.remote = remote + ":"
-        self.project = "collab-operator-" + uuid.uuid4().hex[:16]
+        self.project = "pairtask-operator-" + uuid.uuid4().hex[:16]
         self.target = self.remote + "operator"
         self.base = ["incus", "--project", self.project]
         self.server, self.pool, self.network = server, pool, network

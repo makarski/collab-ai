@@ -126,7 +126,7 @@ def run_locked_operation(args, directory, server):
     try:
         operator.create(getattr(args, "repo", DEFAULT_REPO))
         with ExitStack() as stack:
-            temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="collab-operator-")))
+            temporary = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="pairtask-operator-")))
             operator.install(temporary)
             backend = stack.enter_context(state_server(directory))
             address = stack.enter_context(state_connection(backend.server_port, args.remote))

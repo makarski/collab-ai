@@ -86,6 +86,15 @@ class RolloutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unexpected"):
             rollout.managed_instances(self.root, "wrong-project")
 
+    def test_instances_marked_by_an_older_host_are_still_managed(self):
+        # The compat proof's baseline host writes user.collab-ai.managed into the shared
+        # state; this host writes user.pairtask.managed. Neither key identifies an instance.
+        state = json.loads((self.root / "terraform.tfstate").read_text())
+        for marker, instance in zip(("user.collab-ai.managed", "user.pairtask.managed"), state["resources"][1]["instances"]):
+            instance["attributes"]["config"] = {marker: "infra/incus"}
+        (self.root / "terraform.tfstate").write_text(json.dumps(state))
+        self.assertEqual(rollout.managed_instances(self.root, "proof"), ["workspace", "secured"])
+
     def test_fresh_install_does_not_query_a_nonexistent_project(self):
         (self.root / "terraform.tfstate").unlink()
         names = rollout.managed_instances(self.root, "proof")

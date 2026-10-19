@@ -92,8 +92,8 @@ def check_deployment(args, directory, project, manifest):
 
 def main():
     args = parse_args()
-    project = "collab-smoke-" + uuid.uuid4().hex[:12]
-    directory = Path(tempfile.mkdtemp(prefix="collab-smoke-"))
+    project = "pairtask-smoke-" + uuid.uuid4().hex[:12]
+    directory = Path(tempfile.mkdtemp(prefix="pairtask-smoke-"))
     manifest = prepare_state(directory, args, project)
     if args.mount_check:
         sandbox_mount_checks.prepare(directory, args.remote)

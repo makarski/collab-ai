@@ -11,7 +11,7 @@ python3 scripts/sandbox-provision.py rollout
 # python3 scripts/sandbox-provision.py rollout --release workspace-vX.Y.Z
 ```
 
-Defaults to `latest`; macOS uses `colima-collab-ai`, Linux uses `local`.
+Defaults to `latest`; macOS uses `colima-pairtask`, Linux uses `local`.
 No GitHub CLI, login or manual download. The script selects the server architecture,
 resolves one release tag, verifies its checksum, and imports the container archive.
 [First setup](sandbox.md) · [Upgrade and retained data](sandbox-storage.md#replace-dev-retain-data).
@@ -52,7 +52,7 @@ Build locally only when you need a custom source or tool version:
 
 ```sh
 # macOS; Linux: --remote local. Defaults use tools.lock.json.
-python3 scripts/sandbox-image.py --remote colima-collab-ai \
+python3 scripts/sandbox-image.py --remote colima-pairtask \
   --collab-ref HEAD --output dist/workspace-dev
 ```
 

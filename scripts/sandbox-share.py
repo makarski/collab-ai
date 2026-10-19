@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from sandbox_mac_shares import account_commands, acl_commands, identity, setup, validate_mounts
+from sandbox_remote import REMOTE
 from sandbox_share_runtime import serve
 from sandbox_share_links import warn_uncovered_links
 from sandbox_share_install import install_commands, require_installed
@@ -21,8 +22,8 @@ def arguments():
     parser.add_argument("action", choices=["plan", "setup", "run"])
     parser.add_argument("--mounts-file", type=Path, required=True)
     parser.add_argument("--share-user", default="collab-share")
-    parser.add_argument("--remote", default="colima-collab-ai")
-    parser.add_argument("--project", default="collab-ai")
+    parser.add_argument("--remote", default=REMOTE)
+    parser.add_argument("--project", default="pairtask")
     return parser.parse_args()
 
 

@@ -99,7 +99,7 @@ def main():
     parser.add_argument("--repo", type=repository, default="pairtask/pairtask",
                         help="Repository holding the base-<fingerprint> mirror releases")
     args = parser.parse_args()
-    args.project = "collab-operator-proof-" + uuid.uuid4().hex[:8]
+    args.project = "pairtask-operator-proof-" + uuid.uuid4().hex[:8]
     directory = Path(tempfile.mkdtemp(prefix=args.project + "-"))
     try:
         prove(directory, args)
