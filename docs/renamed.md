@@ -32,15 +32,30 @@ rely on stay as permanent forwarders: the readiness and activation helpers,
 names (`collab-mcp`, `broker`, `collab-tool`, …) keep working for one more
 release. The full list is `infra/image/layout-v2.json`.
 
+## On your host
+
+| Old | New | Old name |
+| --- | --- | --- |
+| Colima profile `collab-ai` (`colima stop collab-ai`) | `pairtask` (`colima stop pairtask`) | Not migrated; see below |
+| Incus remote `colima-collab-ai:` | `colima-pairtask:` | Not migrated; `--remote colima-collab-ai` is still recognized and prints a deprecation line |
+| Incus project `collab-ai` (`--project collab-ai`) | `pairtask` | Not migrated |
+| Host state `~/.local/state/collab-ai/operator/` and `…/shares/` | `~/.local/state/pairtask/…` | Not migrated |
+| Instance marker `user.collab-ai.managed` | `user.pairtask.managed` | Written by the next apply; the host finds managed instances by name and project, never by this key |
+| Disposable CI projects `collab-smoke-*`, `collab-operator-*` | `pairtask-smoke-*`, `pairtask-operator-*` | Test deployments only |
+
+Existing deployments are not migrated, and this host does not drive them.
+Deleting the VM deletes its projects and agent home, so
+[back up](sandbox-storage.md#back-up-and-restore) anything you need first. Then
+stop and delete the old VM (`colima stop collab-ai`, `colima delete collab-ai`)
+and follow the [first install](sandbox.md).
+
 ## Kept on purpose
 
 These names live in stored state or saved sessions, so renaming them would
 mean migrating existing data:
 
-- The Incus project `collab-ai`, its instances and volumes, and the Colima
-  profile `collab-ai` (remote `colima-collab-ai`).
-- Data paths: `/var/lib/collab-ai*`, `~/.local/state/collab-ai/`, the broker
-  database, and the `/mnt/collab-*` mounts.
+- Data paths inside the image: `/var/lib/collab-ai*`, `~/.local/state/collab-ai/`
+  (budgets and setup markers), the broker database, and the `/mnt/collab-*` mounts.
 - `/tmp/collab-ai.sock`, the `collab-clients` group and `sshd_config.collab-ai`.
 - Release asset names (`collab-ai-workspace-*`, `collab-ai-bundle*`).
 - The skill directory `collab-ai`.

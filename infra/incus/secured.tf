@@ -155,8 +155,8 @@ resource "incus_instance" "secured" {
   ephemeral = false
   running   = var.running
   config = {
-    "user.collab-ai.managed" = "infra/incus"
-    "user.collab-ai.role"    = "secured"
+    "user.pairtask.managed" = "infra/incus"
+    "user.pairtask.role"    = "secured"
   }
 }
 

@@ -17,13 +17,13 @@ python3 scripts/sandbox-host.py plan
 python3 scripts/sandbox-host.py apply
 ```
 
-This starts the dedicated `collab-ai` Colima VM running Incus. Existing Docker
+This starts the dedicated `pairtask` Colima VM running Incus. Existing Docker
 profiles stay separate. Starting the VM does **not** create the workspace.
 
 **Linux** — [install Incus](https://linuxcontainers.org/incus/docs/main/installing/),
 Python 3.9+, Git and OpenSSH. Use an existing
 quota-capable pool (ZFS/Btrfs), a managed network bridge and Incus access.
-Skip Colima; replace `colima-collab-ai:` with `local:` throughout.
+Skip Colima; replace `colima-pairtask:` with `local:` throughout.
 Do not reinitialize an existing server. Mac requires Colima 0.10.3+.
 
 ## 2. Install or upgrade
@@ -153,27 +153,27 @@ select a different bridge: instances named `workspace` cannot share its managed 
 Run on the host (Linux: `local:`):
 
 ```sh
-incus --project collab-ai list colima-collab-ai:
+incus --project pairtask list colima-pairtask:
 ```
 
 Expect `workspace` (and optional `secured`) to be `RUNNING`; allow a few seconds
-for the broker. **Keep the colon.** The remote is `colima-collab-ai:`, not `collab-ai:`.
+for the broker. **Keep the colon.** The remote is `colima-pairtask:`, not `pairtask:`.
 
 | Problem | Action |
 | --- | --- |
 | Remote missing | Check `colima list`; rerun `sandbox-host.py apply` |
-| Empty list / missing project | Check `incus project list colima-collab-ai:`; run step 2 |
+| Empty list / missing project | Check `incus project list colima-pairtask:`; run step 2 |
 | SSH host key changed | Follow the [replacement procedure](sandbox-storage.md#replace-dev-retain-data) |
-| Need a recovery shell | `incus --project collab-ai exec colima-collab-ai:workspace -- /bin/sh` (root) |
+| Need a recovery shell | `incus --project pairtask exec colima-pairtask:workspace -- /bin/sh` (root) |
 
 ## Stop or remove
 
 On the host; these retain data:
 
 ```sh
-incus --project collab-ai stop colima-collab-ai:workspace
-incus --project collab-ai stop colima-collab-ai:secured  # only in control mode
-colima stop collab-ai                                 # macOS only
+incus --project pairtask stop colima-pairtask:workspace
+incus --project pairtask stop colima-pairtask:secured  # only in control mode
+colima stop pairtask                                 # macOS only
 ```
 
 Use the [daily block](../README.md#set-up-a-sandbox) to restart. Containers do not
@@ -186,10 +186,10 @@ For deletion, follow [back up and remove](sandbox-storage.md#deliberate-removal)
 On the host, with Incus running:
 
 ```sh
-incus webui colima-collab-ai:  # Linux: incus webui local:
+incus webui colima-pairtask:  # Linux: incus webui local:
 ```
 
-Open the printed URL, select project `collab-ai`, and keep the command running.
+Open the printed URL, select project `pairtask`, and keep the command running.
 The URL contains a temporary login token; keep it private. Ctrl+C closes the UI
 proxy without stopping containers. Use the provisioning helper for managed changes to avoid drift.
 
@@ -199,8 +199,8 @@ On Debian/Ubuntu with the [Zabbly repository](https://github.com/zabbly/incus#ot
 
 ```sh
 # Mac: install in the dedicated VM only if missing
-colima ssh --profile collab-ai -- sudo apt-get update
-colima ssh --profile collab-ai -- sudo apt-get install incus-ui-canonical
+colima ssh --profile pairtask -- sudo apt-get update
+colima ssh --profile pairtask -- sudo apt-get install incus-ui-canonical
 # Linux: run apt-get update/install incus-ui-canonical on the Incus server
 ```
 

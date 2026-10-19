@@ -20,7 +20,7 @@ Later plans reuse the selected image unless you pass another `--image-dir`. `--r
 | State + backup, settings, plan, SSH keys | Pinned OpenTofu, provider, configuration/image copies | Projects and agent home |
 
 The helper prints and remembers the state directory. New deployments use
-`~/.local/state/collab-ai/operator/PROJECT/`; `PAIRTASK_OPERATOR_HOME` changes the base.
+`~/.local/state/pairtask/operator/PROJECT/`; `PAIRTASK_OPERATOR_HOME` changes the base.
 Existing Git worktree state is discovered without moving it. Ambiguous matches need
 one `--state-dir` selection. Keep the entire state directory and selected image.
 

@@ -24,7 +24,7 @@ mounts: null
 sshConfig: false
 forwardAgent: false
 autoActivate: false
-hostname: colima-collab-ai
+hostname: colima-pairtask
 network:
   address: false
   mode: ""

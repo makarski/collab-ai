@@ -16,7 +16,7 @@ def operator_home():
     canonical value is an error, never the current directory."""
     value, present, legacy_used = lookup("OPERATOR_HOME")
     if not present or (legacy_used and value == ""):
-        return Path.home() / ".local/state/collab-ai/operator"
+        return Path.home() / ".local/state/pairtask/operator"
     home = Path(value).expanduser()
     if value == "" or not home.is_absolute():
         raise ValueError(f"{canonical_name('OPERATOR_HOME')} must be an absolute path")

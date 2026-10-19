@@ -33,13 +33,13 @@ first, so the archives contain sandbox data only. Keep backups private and outsi
 a writable sandbox mount; a home may contain credentials once login is configured.
 
 Run on the operator's host. These commands use macOS names; on Linux replace
-`colima-collab-ai:` with `local:`:
+`colima-pairtask:` with `local:`:
 
 ```sh
 umask 077
-incus --project collab-ai exec colima-collab-ai:workspace -T --user 1001 --group 1001 -- \
+incus --project pairtask exec colima-pairtask:workspace -T --user 1001 --group 1001 -- \
   tar -C /workspace --one-file-system -czf - . > workspace-data.tgz
-incus --project collab-ai exec colima-collab-ai:workspace -T --user 1001 --group 1001 -- \
+incus --project pairtask exec colima-pairtask:workspace -T --user 1001 --group 1001 -- \
   tar -C /home/agent --one-file-system -czf - . > agent-home.tgz
 # Both exports must succeed; inspect and retain the archives before changing storage.
 tar -tzf workspace-data.tgz
@@ -50,9 +50,9 @@ Restore into a **fresh, initialized** workspace, with no agents running. Substit
 its project name below if different. Extraction runs as `agent`, not root:
 
 ```sh
-incus --project collab-ai exec colima-collab-ai:workspace -T --user 1001 --group 1001 -- \
+incus --project pairtask exec colima-pairtask:workspace -T --user 1001 --group 1001 -- \
   tar -C /workspace --no-same-owner --no-overwrite-dir -xzf - < workspace-data.tgz
-incus --project collab-ai exec colima-collab-ai:workspace -T --user 1001 --group 1001 -- \
+incus --project pairtask exec colima-pairtask:workspace -T --user 1001 --group 1001 -- \
   tar -C /home/agent --no-same-owner --no-overwrite-dir -xzf - < agent-home.tgz
 ```
 

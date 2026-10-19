@@ -8,6 +8,7 @@ import subprocess
 import uuid
 
 from sandbox_artifacts import sha256
+from sandbox_remote import REMOTE, colima_profile
 
 
 def run(command, **kwargs):
@@ -20,9 +21,10 @@ def run(command, **kwargs):
 def host_prefix(remote):
     if platform.system() == "Linux" and remote == "local":
         return []
-    if platform.system() == "Darwin" and remote == "colima-collab-ai":
-        return ["colima", "-p", "collab-ai", "ssh", "--", "sudo"]
-    raise ValueError("Proof supports Linux local or macOS colima-collab-ai only")
+    profile = colima_profile(remote) if platform.system() == "Darwin" else None
+    if profile is not None:
+        return ["colima", "-p", profile, "ssh", "--", "sudo"]
+    raise ValueError(f"Proof supports Linux local or macOS {REMOTE} only")
 
 
 class BoundaryHost:

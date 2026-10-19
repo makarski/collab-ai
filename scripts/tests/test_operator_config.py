@@ -28,26 +28,26 @@ class ConfigTests(unittest.TestCase):
         return directory
 
     def test_unique_existing_worktree_state_is_discovered_without_moving_it(self):
-        directory = self.state(self.root / "operator-checkout", "collab-ai")
+        directory = self.state(self.root / "operator-checkout", "pairtask")
         listing = subprocess.CompletedProcess([], 0, stdout=f"worktree {directory.parent.parent}\n")
         with patch("sandbox_operator_config.subprocess.run", return_value=listing):
-            found = deployment_directory(None, "collab-ai", root=self.root, location=self.root / "locations.json")
+            found = deployment_directory(None, "pairtask", root=self.root, location=self.root / "locations.json")
         self.assertEqual(found, directory.resolve())
 
     def test_symlinked_deployment_directory_is_rejected(self):
-        directory = self.state(self.root / "real", "collab-ai")
+        directory = self.state(self.root / "real", "pairtask")
         alias = self.root / "alias"
         alias.symlink_to(directory, target_is_directory=True)
         with self.assertRaisesRegex(ValueError, "non-symlinked"):
-            deployment_directory(alias, "collab-ai")
+            deployment_directory(alias, "pairtask")
 
     def test_ambiguous_or_wrong_project_state_is_rejected(self):
-        first = self.state(self.root / "one", "collab-ai")
-        second = self.state(self.root / "two", "collab-ai")
+        first = self.state(self.root / "one", "pairtask")
+        second = self.state(self.root / "two", "pairtask")
         listing = subprocess.CompletedProcess([], 0, stdout=f"worktree {first.parent.parent}\nworktree {second.parent.parent}\n")
         with patch("sandbox_operator_config.subprocess.run", return_value=listing):
             with self.assertRaisesRegex(ValueError, "Multiple"):
-                deployment_directory(None, "collab-ai", root=self.root, location=self.root / "locations.json")
+                deployment_directory(None, "pairtask", root=self.root, location=self.root / "locations.json")
         with self.assertRaisesRegex(ValueError, "belongs to"):
             deployment_directory(first, "collab-other")
 
@@ -89,9 +89,9 @@ class ConfigTests(unittest.TestCase):
             prepare(argparse.Namespace(), self.root, {})
 
     def test_recovery_refuses_another_server_or_deployment(self):
-        args = argparse.Namespace(remote="local", project="collab-ai", storage_pool="default", network="incusbr0")
-        pending = {"remote": "local", "server": "original", "deployment_project": "collab-ai",
-                   "project": "collab-operator-" + "a" * 16}
+        args = argparse.Namespace(remote="local", project="pairtask", storage_pool="default", network="incusbr0")
+        pending = {"remote": "local", "server": "original", "deployment_project": "pairtask",
+                   "project": "pairtask-operator-" + "a" * 16}
         with self.assertRaisesRegex(ValueError, "another Incus"):
             retained_operator(args, {"certificate_fingerprint": "other"}, pending)
         pending["deployment_project"] = "collab-other"

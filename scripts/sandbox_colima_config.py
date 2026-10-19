@@ -7,7 +7,7 @@ import subprocess
 # Colima writes these defaults when saving a minimal configuration. Accept only
 # known inert values, rather than ignoring extra settings such as provision.
 DEFAULTS = {
-    "modelRunner": "", "hostname": "colima-collab-ai",
+    "modelRunner": "", "hostname": "colima-pairtask",
     "docker": {}, "portForwarder": "ssh", "rosetta": False, "binfmt": True,
     "nestedVirtualization": False, "mountInotify": False, "cpuType": "",
     "provision": None, "sshPort": 0, "diskImage": "", "forceDiskImage": False,

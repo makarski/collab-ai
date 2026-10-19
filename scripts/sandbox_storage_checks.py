@@ -112,7 +112,7 @@ def check_ssh_replacement(args, directory, project):
 
 
 def allow_test_teardown(directory, project):
-    if not project.startswith("collab-smoke-"):
+    if not project.startswith(("pairtask-smoke-", "collab-smoke-")):
         raise ValueError("Refusing to remove data protection outside a disposable smoke project")
     # Every guarded volume (dev data, the tool stores) lives in a recipe file here.
     for recipe in directory.glob("*.tf"):

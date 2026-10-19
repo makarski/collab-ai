@@ -22,7 +22,7 @@ class RecoveryTests(unittest.TestCase):
         class FakeOperator:
             remote = "local:"
             target = "local:operator"
-            project = "collab-operator-" + "a" * 16
+            project = "pairtask-operator-" + "a" * 16
 
             def run(self, *args):
                 Path(args[-1]).write_text(json.dumps(emergency))

@@ -8,26 +8,29 @@ import tempfile
 import time
 import uuid
 
+from sandbox_remote import REMOTE, colima_profile
+
 
 @contextmanager
 def state_connection(port, remote):
     if platform.system() == "Linux" and remote == "local":
         yield f"tcp:127.0.0.1:{port}"
         return
-    if platform.system() != "Darwin" or remote != "colima-collab-ai":
-        raise ValueError("Provisioning supports Linux local or macOS colima-collab-ai")
-    with tempfile.TemporaryDirectory(prefix="collab-operator-ssh-") as directory:
+    profile = colima_profile(remote)
+    if platform.system() != "Darwin" or profile is None:
+        raise ValueError(f"Provisioning supports Linux local or macOS {REMOTE}")
+    with tempfile.TemporaryDirectory(prefix="pairtask-operator-ssh-") as directory:
         config = Path(directory) / "config"
-        config.write_bytes(subprocess.check_output(["colima", "ssh-config", "collab-ai"]))
+        config.write_bytes(subprocess.check_output(["colima", "ssh-config", profile]))
         config.chmod(0o600)
-        socket = f"/tmp/collab-operator-{uuid.uuid4().hex}.sock"
+        socket = f"/tmp/pairtask-operator-{uuid.uuid4().hex}.sock"
         command = ["ssh", "-F", str(config), "-N", "-T", "-o", "BatchMode=yes",
                    "-o", "ForwardAgent=no", "-o", "ControlMaster=no", "-o", "ControlPath=none",
                    "-o", "ExitOnForwardFailure=yes", "-o", "StreamLocalBindMask=0177",
-                   "-R", f"{socket}:127.0.0.1:{port}", "colima-collab-ai"]
+                   "-R", f"{socket}:127.0.0.1:{port}", remote]
         proc = subprocess.Popen(command, stdin=subprocess.DEVNULL)
         try:
-            wait_for_socket(proc, socket)
+            wait_for_socket(proc, socket, profile)
             yield f"unix:{socket}"
         finally:
             proc.terminate()
@@ -36,15 +39,15 @@ def state_connection(port, remote):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-            subprocess.run(["colima", "-p", "collab-ai", "ssh", "--", "rm", "-f", "--", socket],
+            subprocess.run(["colima", "-p", profile, "ssh", "--", "rm", "-f", "--", socket],
                            stdout=subprocess.DEVNULL, timeout=15, check=False)
 
 
-def wait_for_socket(proc, socket):
+def wait_for_socket(proc, socket, profile):
     for _ in range(20):
         if proc.poll() is not None:
             raise ValueError("Could not establish the private operator state tunnel")
-        ready = subprocess.run(["colima", "-p", "collab-ai", "ssh", "--", "test", "-S", socket],
+        ready = subprocess.run(["colima", "-p", profile, "ssh", "--", "test", "-S", socket],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
         if ready.returncode == 0:
             return

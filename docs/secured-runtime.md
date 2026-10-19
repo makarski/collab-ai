@@ -53,14 +53,14 @@ The human operator sends to agents from `secured`, never from the workspace. On
 the host (Linux: `local:`):
 
 ```sh
-incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --to codex-1 "Please pause after this task."
-incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --group claude-1,codex-1 "Review starts now."
-incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --all --json "Stand-up in 5 minutes."
+incus --project pairtask exec colima-pairtask:secured -- pairtask operator send --to codex-1 "Please pause after this task."
+incus --project pairtask exec colima-pairtask:secured -- pairtask operator send --group claude-1,codex-1 "Review starts now."
+incus --project pairtask exec colima-pairtask:secured -- pairtask operator send --all --json "Stand-up in 5 minutes."
 
 # Read the operator inbox, acknowledge a message, and answer it
-incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator receive
-incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator ack MESSAGE_ID
-incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --to codex-1 --in-reply-to MESSAGE_ID "Yes, go ahead."
+incus --project pairtask exec colima-pairtask:secured -- pairtask operator receive
+incus --project pairtask exec colima-pairtask:secured -- pairtask operator ack MESSAGE_ID
+incus --project pairtask exec colima-pairtask:secured -- pairtask operator send --to codex-1 --in-reply-to MESSAGE_ID "Yes, go ahead."
 ```
 
 `receive` prints a page, then confirms receipt. Continue a scan with the
@@ -86,7 +86,7 @@ message; it is not approval.
 ### Interactive chat
 
 ```sh
-incus --project collab-ai exec -t colima-collab-ai:secured -- pairtask operator chat
+incus --project pairtask exec -t colima-pairtask:secured -- pairtask operator chat
 ```
 
 The chat needs an interactive terminal (`-t`). It runs full screen: the
@@ -122,9 +122,9 @@ bottom. A hint line above the input always shows who your message will reach.
 On the host (Linux: `local:`):
 
 ```sh
-incus --project collab-ai list colima-collab-ai:
-incus --project collab-ai stop colima-collab-ai:workspace colima-collab-ai:secured
-incus --project collab-ai start colima-collab-ai:secured colima-collab-ai:workspace
+incus --project pairtask list colima-pairtask:
+incus --project pairtask stop colima-pairtask:workspace colima-pairtask:secured
+incus --project pairtask start colima-pairtask:secured colima-pairtask:workspace
 ```
 
 Set `running = false` to keep both stopped across applies; boot autostart is disabled.
@@ -141,14 +141,14 @@ Subscription login, protected terminal/resume support and Claude/shared accounti
 remain under [#34](https://github.com/pairtask/pairtask/issues/34). Its managed
 provider points to an unused loopback fixture port (`18080`).
 
-Run on your host. On Linux replace `colima-collab-ai:` with `local:`:
+Run on your host. On Linux replace `colima-pairtask:` with `local:`:
 
 ```sh
-incus --project collab-ai exec colima-collab-ai:secured -- \
+incus --project pairtask exec colima-pairtask:secured -- \
   env PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
   pairtask budget create my-task --tokens 100000
 
-incus --project collab-ai exec colima-collab-ai:secured -- \
+incus --project pairtask exec colima-pairtask:secured -- \
   env PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
   pairtask budget status my-task --json
 ```
@@ -156,7 +156,7 @@ incus --project collab-ai exec colima-collab-ai:secured -- \
 Launch from the host, connecting stdin/stdout to a restricted App Server client:
 
 ```sh
-incus --project collab-ai exec colima-collab-ai:secured -T -- \
+incus --project pairtask exec colima-pairtask:secured -T -- \
   pairtask-supervised-codex my-task
 ```
 
@@ -166,7 +166,7 @@ The budget is fixed by the administrator; operator messages cannot select anothe
 To stop it from another host terminal:
 
 ```sh
-incus --project collab-ai exec colima-collab-ai:secured -- \
+incus --project pairtask exec colima-pairtask:secured -- \
   systemctl stop pairtask-codex-my-task.service
 ```
 

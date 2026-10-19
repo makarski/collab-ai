@@ -116,7 +116,7 @@ Mounts do **not** prevent execution. Review host changes before running them.
 For **macOS read-only VirtioFS mounts**, stop the dedicated VM before changing mounts:
 
 ```sh
-colima stop collab-ai
+colima stop pairtask
 python3 scripts/sandbox-host.py mounts-apply --mounts-file /path/to/mounts.json
 python3 scripts/sandbox-host.py apply
 ```
@@ -145,15 +145,15 @@ the mount-variable destination for advanced setups. Restart dev after UID mappin
 Stop dev and detach the changed mount first (Linux: use `local:`):
 
 ```sh
-incus --project collab-ai stop colima-collab-ai:workspace
-incus --project collab-ai profile device remove colima-collab-ai:offline host-project
+incus --project pairtask stop colima-pairtask:workspace
+incus --project pairtask profile device remove colima-pairtask:offline host-project
 ```
 
 When removing the last mount, also clear its identity mapping. For an identity
 change, detach all host mounts before clearing it:
 
 ```sh
-incus --project collab-ai profile unset colima-collab-ai:offline raw.idmap
+incus --project pairtask profile unset colima-pairtask:offline raw.idmap
 ```
 
 Edit the list and repeat **Apply**. Use `[]` to remove all mounts; keep the empty

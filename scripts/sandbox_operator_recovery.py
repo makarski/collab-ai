@@ -16,7 +16,7 @@ def retained_operator(args, server, pending):
         raise ValueError("Retained operator belongs to another Incus server")
     if pending["deployment_project"] != args.project:
         raise ValueError("Retained operator belongs to another deployment")
-    if not re.fullmatch(r"collab-operator-[0-9a-f]{16}", pending["project"]):
+    if not re.fullmatch(r"pairtask-operator-[0-9a-f]{16}", pending["project"]):
         raise ValueError("Invalid retained operator name")
     operator = Operator(args.remote, server, args.storage_pool, args.network)
     operator.project = pending["project"]

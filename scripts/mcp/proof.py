@@ -56,7 +56,7 @@ class Client:
 
     def initialize(self):
         self.call("initialize", {"protocolVersion": "2024-11-05", "capabilities": {"roots": {}},
-                                "clientInfo": {"name": "collab-smoke", "version": "1"}})
+                                "clientInfo": {"name": "pairtask-smoke", "version": "1"}})
         self.send({"method": "notifications/initialized"})
         return {tool["name"] for tool in self.call("tools/list", {})["tools"]}
 

@@ -140,7 +140,7 @@ def setup(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", required=True, type=identifier)
-    parser.add_argument("--project", default="collab-ai", type=identifier)
+    parser.add_argument("--project", default="pairtask", type=identifier)
     parser.add_argument("--instance", default="workspace", type=identifier)
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE)
     args = parser.parse_args()
