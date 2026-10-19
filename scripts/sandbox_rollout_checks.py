@@ -54,7 +54,7 @@ def require_imported_image(directory, fingerprint):
 
 
 def verify(args, directory, project):
-    if not project.startswith("pairtask-smoke-"):
+    if not project.startswith(("pairtask-smoke-", "collab-smoke-")):
         raise ValueError("Rollout proof requires a disposable smoke project")
     ssh = directory / "ssh"
     identity = (ssh / "id_ed25519").read_bytes()
