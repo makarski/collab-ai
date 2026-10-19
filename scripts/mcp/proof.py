@@ -106,7 +106,7 @@ def verify_configuration():
     for name in ("codescene", "playwright"):
         if claude[name] != codex[name]:
             raise ValueError(f"MCP configuration differs between agents: {name}")
-    if "collab" not in claude:
+    if "pairtask" not in claude:
         raise ValueError("Bundled MCPs displaced Claude's collaboration channel")
     return claude
 

@@ -46,7 +46,7 @@ the absolute path to the binary built in step 1:
 ```json
 {
   "mcpServers": {
-    "collab": {
+    "pairtask": {
       "command": "/absolute/path/to/collab-ai/collab-mcp",
       "args": [
         "--agent-id", "claude-1",
@@ -63,7 +63,7 @@ Terminal 3:
 ```sh
 cd /absolute/path/to/your/project
 claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.json \
-  --dangerously-load-development-channels server:collab
+  --dangerously-load-development-channels server:pairtask
 ```
 
 Accept channel consent. Keep this session open; another session needs a different

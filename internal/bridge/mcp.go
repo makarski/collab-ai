@@ -36,7 +36,7 @@ func NewMCP(c messagingClient) *mcp.Server {
 }
 
 func newMCP(c messagingClient, options *mcp.ServerOptions) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "collab-ai", Version: "0.5.0"}, options)
+	s := mcp.NewServer(&mcp.Implementation{Name: "pairtask", Version: "0.5.0"}, options)
 	addReplyTool(s, c)
 	additive := false
 	mcp.AddTool(s, &mcp.Tool{Name: "send", Description: "Send a text message with a stable ID and optional in_reply_to. Returns written status; correlated acceptance, receipt, and routing errors arrive through receive/wait.", Annotations: &mcp.ToolAnnotations{DestructiveHint: &additive}},

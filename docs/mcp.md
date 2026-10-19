@@ -26,24 +26,27 @@ your built MCP executable. The socket path must match the broker's
 Codex:
 
 ```sh
-codex mcp add collab -- /absolute/path/to/collab-ai/collab-mcp \
+codex mcp add pairtask -- /absolute/path/to/collab-ai/collab-mcp \
   --agent-id codex-1 --harness codex --socket /tmp/collab-ai.sock
 ```
 
 Claude Code:
 
 ```sh
-claude mcp add --transport stdio collab -- /absolute/path/to/collab-ai/collab-mcp \
+claude mcp add --transport stdio pairtask -- /absolute/path/to/collab-ai/collab-mcp \
   --agent-id claude-1 --harness claude-code --socket /tmp/collab-ai.sock
 ```
 
-`collab` is the MCP server name. The executable after `--` becomes `command`,
+`pairtask` is the MCP server name. Claude shows the tools as `mcp__pairtask__*`
+and peer messages as channel source `pairtask`; any name works as long as
+Claude's `--dangerously-load-development-channels server:NAME` matches it. The
+executable after `--` becomes `command`,
 and its flags become `args`. In Claude's configuration, the entry inside
 `mcpServers` should look like this:
 
 ```json
 {
-  "collab": {
+  "pairtask": {
     "type": "stdio",
     "command": "/absolute/path/to/collab-ai/collab-mcp",
     "args": [
@@ -59,7 +62,7 @@ and its flags become `args`. In Claude's configuration, the entry inside
 
 If the server does not connect, the error names which half is wrong:
 
-- `ENOENT: Executable not found in $PATH: collab` — `command` holds the server
+- `ENOENT: Executable not found in $PATH: pairtask` — `command` holds the server
   name rather than the binary, and the binary path has been placed in `args`.
   The executable belongs in `command`.
 - A messaging tool returns `connect to broker: dial unix <path>: no such file or

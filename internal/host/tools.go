@@ -24,7 +24,7 @@ func OpenTools(ctx context.Context, listener *bridge.Listener) (*ToolSession, er
 	if err != nil {
 		return nil, err
 	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "collab-codex"}, nil).Connect(ctx, ct, nil)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "pairtask-codex"}, nil).Connect(ctx, ct, nil)
 	if err != nil {
 		ss.Close()
 		return nil, err

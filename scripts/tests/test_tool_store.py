@@ -189,7 +189,7 @@ class DebsAndConfigurationTests(StoreHarness):
         (self.store.share / "mcp-servers.json").write_text(json.dumps({
             "codescene": {"command": "/usr/local/bin/cs-mcp", "args": []},
             "playwright": {"command": "/usr/local/bin/collab-playwright", "args": []}}))
-        (self.store.share / "claude-mcp.base.json").write_text(json.dumps({"mcpServers": {"collab": {"command": "/usr/local/bin/collab-mcp"}}}))
+        (self.store.share / "claude-mcp.base.json").write_text(json.dumps({"mcpServers": {"pairtask": {"command": "/usr/local/bin/collab-mcp"}}}))
         (self.store.share / "codex-config.base.toml").write_text("[sandbox_workspace_write]\nwritable_roots = []\n")
         self.calls = []
 
@@ -234,7 +234,7 @@ class DebsAndConfigurationTests(StoreHarness):
         selection = {"go": True, "cs-mcp": True, "playwright": False, "docker": True}
         self.store.activate(self.manifest(tools, selection), self.incoming)
         claude = json.loads((self.store.etc / "collab-ai/claude-mcp.json").read_text())
-        self.assertEqual(set(claude["mcpServers"]), {"collab", "codescene"})
+        self.assertEqual(set(claude["mcpServers"]), {"pairtask", "codescene"})
         codex = (self.store.etc / "codex/config.toml").read_text()
         self.assertIn("[mcp_servers.codescene]", codex)
         self.assertNotIn("playwright", codex)
