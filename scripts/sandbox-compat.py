@@ -102,10 +102,32 @@ def new_host_on_old_image(args, directory, project, image):
     print("PASS: new host provisioned, activated and admitted the previous release (layout 1).", flush=True)
 
 
-def provision_command(checkout, action, args, directory, project):
-    return [sys.executable, str(checkout / "scripts/sandbox-provision.py"), action,
-            "--remote", args.remote, "--project", project, "--state-dir", str(directory),
+def provision_options(args, directory, project):
+    """The deployment both hosts drive, as sandbox-provision.py options."""
+    return ["--remote", args.remote, "--project", project, "--state-dir", str(directory),
             "--image-dir", str(args.image_dir.resolve()), "--ssh-state-dir", str(directory / "ssh")]
+
+
+def provision(checkout, action, options):
+    return [sys.executable, str(checkout / "scripts/sandbox-provision.py"), action] + options
+
+
+def require_login_key(directory, identity, actor):
+    if (directory / "ssh/id_ed25519").read_bytes() != identity:
+        raise ValueError(f"{actor} changed the login key")
+
+
+def require_seeds(ssh):
+    for path in SEEDS:
+        content = run(ssh + [f"cat {path}"], capture_output=True, text=True).stdout
+        if content != PROOF + "\n":
+            raise ValueError(f"{path} did not survive the replacement")
+
+
+def require_legacy_cli(ssh):
+    legacy = run(ssh + ["collab status --json"], capture_output=True, text=True)
+    if json.loads(legacy.stdout)["health"] != "ready" or "deprecated" not in legacy.stderr:
+        raise ValueError("the deprecated collab command no longer works on the new image")
 
 
 def agent_key_present(args, project):
@@ -118,7 +140,7 @@ def old_host_rolls_out_new_image(args, directory, project, checkout):
     then fails closed: it doesn't know layout 2, so it neither activates tools
     nor admits SSH, and leaves the deployment for a newer host to finish."""
     identity = (directory / "ssh/id_ed25519").read_bytes()
-    command = provision_command(checkout, "rollout", args, directory, project)
+    command = provision(checkout, "rollout", provision_options(args, directory, project))
     print("+", " ".join(command), flush=True)
     attempt = subprocess.run(command, env=operator_env(directory), stderr=subprocess.PIPE, text=True)
     print(attempt.stderr, end="", file=sys.stderr, flush=True)
@@ -127,8 +149,7 @@ def old_host_rolls_out_new_image(args, directory, project, checkout):
     if UNKNOWN_LAYOUT not in attempt.stderr:
         raise ValueError("the old host's rollout failed for another reason than the unknown layout")
     require_layout(args, project, PAIRTASK)
-    if (directory / "ssh/id_ed25519").read_bytes() != identity:
-        raise ValueError("the old host's rollout changed the login key")
+    require_login_key(directory, identity, "the old host's rollout")
     if agent_key_present(args, project):
         raise ValueError("the old host admitted SSH to a root whose tools it could not activate")
     print("PASS: the old host replaced the root with layout 2, then failed closed without admitting agents.", flush=True)
@@ -138,19 +159,13 @@ def new_host_finishes_rollout(args, directory, project):
     """Phase 2, continued: this host completes the interrupted rollout the
     documented way. Data and the login key survive; the legacy CLI still works."""
     identity = (directory / "ssh/id_ed25519").read_bytes()
-    run(provision_command(ROOT, "tools-retry", args, directory, project), env=operator_env(directory))
+    run(provision(ROOT, "tools-retry", provision_options(args, directory, project)), env=operator_env(directory))
     require_layout(args, project, PAIRTASK)
-    if (directory / "ssh/id_ed25519").read_bytes() != identity:
-        raise ValueError("finishing the rollout changed the login key")
+    require_login_key(directory, identity, "finishing the rollout")
     ssh = ssh_command(directory / "ssh")
     wait_for_broker(ssh, cli="pairtask")
-    for path in SEEDS:
-        content = run(ssh + [f"cat {path}"], capture_output=True, text=True).stdout
-        if content != PROOF + "\n":
-            raise ValueError(f"{path} did not survive the replacement")
-    legacy = run(ssh + ["collab status --json"], capture_output=True, text=True)
-    if json.loads(legacy.stdout)["health"] != "ready" or "deprecated" not in legacy.stderr:
-        raise ValueError("the deprecated collab command no longer works on the new image")
+    require_seeds(ssh)
+    require_legacy_cli(ssh)
     print("PASS: the new host finished the rollout with tools-retry; data and login key kept.", flush=True)
 
 
