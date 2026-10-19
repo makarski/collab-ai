@@ -3,7 +3,7 @@
 import sys
 import time
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from sandbox_https import urlopen
 
 
 def download_archive(url):

@@ -7,9 +7,9 @@ from pathlib import Path
 import re
 import shutil
 import urllib.error
-import urllib.request
 import zipfile
 
+from sandbox_https import urlopen
 from sandbox_versions import fingerprint
 
 
@@ -48,7 +48,7 @@ def release_assets(directory, manifest):
 
 
 def fetch(url, destination):
-    with urllib.request.urlopen(url, timeout=120) as response, destination.open("xb") as output:
+    with urlopen(url, timeout=120) as response, destination.open("xb") as output:
         shutil.copyfileobj(response, output, length=1024 * 1024)
 
 

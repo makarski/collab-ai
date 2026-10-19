@@ -8,6 +8,8 @@ import re
 import sys
 import urllib.request
 
+from sandbox_https import urlopen
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "infra/image"))
 from tool_lock import artifact  # noqa: E402
@@ -27,7 +29,7 @@ def fingerprint(value):
 
 def publisher_json(url):
     request = urllib.request.Request(url, headers={"User-Agent": "collab-ai-image-builder"})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urlopen(request, timeout=60) as response:
         return json.load(response)
 
 
