@@ -11,6 +11,8 @@ from sandbox_installed_checks import denied, run
 IPC = "/mnt/collab-ipc"
 SOCKET = IPC + "/broker.sock"
 DATABASE = "/var/lib/collab-ai-secured/broker/broker.db"
+# The process name of the broker binary: pairtask-broker in layout 2, broker in a legacy image.
+BROKER_PROCESS = "(pairtask-)?broker"
 
 
 def agent(deployment, role, *command):
@@ -48,8 +50,8 @@ def check_permissions(deployment):
     for options in ("remount,rw", "remount,bind,rw"):
         denied(deployment.execute("workspace", "mount", "-o", options, IPC))
     denied(deployment.execute("workspace", "systemctl", "is-active", "--quiet", "collab-broker"))
-    denied(deployment.execute("workspace", "pgrep", "-x", "broker"))
-    pids = run(deployment.execute("secured", "pgrep", "-x", "broker")).splitlines()
+    denied(deployment.execute("workspace", "pgrep", "-x", BROKER_PROCESS))
+    pids = run(deployment.execute("secured", "pgrep", "-x", BROKER_PROCESS)).splitlines()
     if len(pids) != 1:
         raise ValueError("Control must run exactly one broker")
     run(deployment.execute("secured", "test", "-f", DATABASE))
@@ -74,7 +76,7 @@ def verify(deployment):
     run(deployment.execute("secured", "systemctl", "stop", "collab-secured-broker"))
     try:
         denied(agent(deployment, "workspace", "pairtask", "status", "--json"))
-        denied(deployment.execute("workspace", "pgrep", "-x", "broker"))
+        denied(deployment.execute("workspace", "pgrep", "-x", BROKER_PROCESS))
     finally:
         run(deployment.execute("secured", "systemctl", "start", "collab-secured-broker"))
     await_broker(deployment)
