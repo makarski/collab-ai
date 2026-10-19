@@ -7,9 +7,12 @@ rolls out, so both directions must work:
 1. This (new) host provisions the pinned previous release (layout 1), activates
    its tools and admits SSH through layout discovery.
 2. The previous release's own, unchanged host checkout rolls this run's image
-   (layout 2) over the same deployment, reaching it only through the legacy
-   names layout 2 keeps as forwarders. Projects, home and the login key survive.
-3. That old host refuses SSH admission while the new root's tools aren't ready.
+   (layout 2) over the same deployment. Its layout table predates layout 2, so
+   it must fail closed after replacing the root: no tool activation, no SSH
+   admission, and the deployment left recoverable. This host then finishes the
+   rollout with tools-retry. Projects, home and the login key survive, and the
+   deprecated collab command still works.
+3. That old host refuses SSH admission on the new root, ready or not.
 
 The deployment is disposable and removed afterwards.
 """
@@ -37,6 +40,7 @@ PROOF = "compat proof"
 SEEDS = ("/workspace/compat-proof", "/home/agent/compat-proof")
 READY_STATE = "/var/lib/collab-ai/tools-state.json"
 AGENT_KEY = "/etc/ssh/authorized_keys/agent"
+UNKNOWN_LAYOUT = "needs a newer host checkout"
 
 
 def smoke_module():
@@ -98,16 +102,46 @@ def new_host_on_old_image(args, directory, project, image):
     print("PASS: new host provisioned, activated and admitted the previous release (layout 1).", flush=True)
 
 
+def provision_command(checkout, action, args, directory, project):
+    return [sys.executable, str(checkout / "scripts/sandbox-provision.py"), action,
+            "--remote", args.remote, "--project", project, "--state-dir", str(directory),
+            "--image-dir", str(args.image_dir.resolve()), "--ssh-state-dir", str(directory / "ssh")]
+
+
+def agent_key_present(args, project):
+    workspace = Container(args.remote, project, "workspace")
+    return workspace.output("sh", "-c", f'test -e {AGENT_KEY} && echo present || echo absent').strip() == "present"
+
+
 def old_host_rolls_out_new_image(args, directory, project, checkout):
-    """Phase 2: the unchanged old host replaces the root with this run's image."""
+    """Phase 2: the unchanged old host replaces the root with this run's image,
+    then fails closed: it doesn't know layout 2, so it neither activates tools
+    nor admits SSH, and leaves the deployment for a newer host to finish."""
     identity = (directory / "ssh/id_ed25519").read_bytes()
-    run([sys.executable, str(checkout / "scripts/sandbox-provision.py"), "rollout",
-         "--remote", args.remote, "--project", project, "--state-dir", str(directory),
-         "--image-dir", str(args.image_dir.resolve()), "--ssh-state-dir", str(directory / "ssh")],
-        env=operator_env(directory))
+    command = provision_command(checkout, "rollout", args, directory, project)
+    print("+", " ".join(command), flush=True)
+    attempt = subprocess.run(command, env=operator_env(directory), stderr=subprocess.PIPE, text=True)
+    print(attempt.stderr, end="", file=sys.stderr, flush=True)
+    if attempt.returncode == 0:
+        raise ValueError("the old host activated an image layout it does not know")
+    if UNKNOWN_LAYOUT not in attempt.stderr:
+        raise ValueError("the old host's rollout failed for another reason than the unknown layout")
     require_layout(args, project, PAIRTASK)
     if (directory / "ssh/id_ed25519").read_bytes() != identity:
         raise ValueError("the old host's rollout changed the login key")
+    if agent_key_present(args, project):
+        raise ValueError("the old host admitted SSH to a root whose tools it could not activate")
+    print("PASS: the old host replaced the root with layout 2, then failed closed without admitting agents.", flush=True)
+
+
+def new_host_finishes_rollout(args, directory, project):
+    """Phase 2, continued: this host completes the interrupted rollout the
+    documented way. Data and the login key survive; the legacy CLI still works."""
+    identity = (directory / "ssh/id_ed25519").read_bytes()
+    run(provision_command(ROOT, "tools-retry", args, directory, project), env=operator_env(directory))
+    require_layout(args, project, PAIRTASK)
+    if (directory / "ssh/id_ed25519").read_bytes() != identity:
+        raise ValueError("finishing the rollout changed the login key")
     ssh = ssh_command(directory / "ssh")
     wait_for_broker(ssh, cli="pairtask")
     for path in SEEDS:
@@ -117,11 +151,12 @@ def old_host_rolls_out_new_image(args, directory, project, checkout):
     legacy = run(ssh + ["collab status --json"], capture_output=True, text=True)
     if json.loads(legacy.stdout)["health"] != "ready" or "deprecated" not in legacy.stderr:
         raise ValueError("the deprecated collab command no longer works on the new image")
-    print("PASS: the old host rolled out layout 2 through the legacy names; data and login key kept.", flush=True)
+    print("PASS: the new host finished the rollout with tools-retry; data and login key kept.", flush=True)
 
 
 def old_host_refuses_unready_root(args, directory, project, checkout):
-    """Phase 3: the old host's readiness gate still holds on the new image."""
+    """Phase 3: the old host refuses SSH admission on the new root; the tools
+    state is moved away so the refusal holds in the hardest case too."""
     workspace = Container(args.remote, project, "workspace")
     workspace.execute("rm", "-f", AGENT_KEY)
     workspace.execute("mv", READY_STATE, READY_STATE + ".proof")
@@ -131,8 +166,7 @@ def old_host_refuses_unready_root(args, directory, project, checkout):
                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         if refused.returncode == 0:
             raise ValueError("the old host admitted SSH while the new root's tools were not ready")
-        present = workspace.output("sh", "-c", f'test -e {AGENT_KEY} && echo present || echo absent').strip()
-        if present != "absent":
+        if agent_key_present(args, project):
             raise ValueError("an agent key was installed although readiness failed")
     finally:
         workspace.execute("mv", READY_STATE + ".proof", READY_STATE)
@@ -165,11 +199,12 @@ def main():
         run(tofu + ["apply", "-auto-approve", "-input=false"])
         new_host_on_old_image(args, directory, project, image)
         old_host_rolls_out_new_image(args, directory, project, checkout)
+        new_host_finishes_rollout(args, directory, project)
         old_host_refuses_unready_root(args, directory, project, checkout)
     finally:
         smoke.destroy_deployment(tofu, directory, project)
         run(git() + ["worktree", "prune"])
-    print("PASS: host and image layouts are compatible in both directions.", flush=True)
+    print("PASS: the new host drives both layouts; the old host fails closed on the new one.", flush=True)
 
 
 if __name__ == "__main__":
