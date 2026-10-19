@@ -40,7 +40,7 @@ class MCPBundleTests(unittest.TestCase):
             claude = json.loads((etc / "collab-ai/claude-mcp.json").read_text())["mcpServers"]
             codex = tomllib.loads((etc / "codex/config.toml").read_text())
             self.assertEqual(set(codex["mcp_servers"]), {"codescene", "playwright"})
-            self.assertIn("collab", claude)
+            self.assertIn("pairtask", claude)
             for name, config in codex["mcp_servers"].items():
                 self.assertEqual(claude[name], config)
             self.assertIn("/home/agent/.local/share/rtk", codex["sandbox_workspace_write"]["writable_roots"])

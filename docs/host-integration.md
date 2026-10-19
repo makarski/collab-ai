@@ -88,6 +88,13 @@ caller-supplied `config["mcp_servers.collab_runtime"]` is rejected. An independe
 manual adapter must not claim the same inbox. Legacy `collab_*` dynamic tools use
 the same listener. Resume/fork retain developer instructions unless explicitly replaced.
 
+These Codex names (`collab_runtime`, `collab_receive` and the `collab_*` tools)
+keep their names in pairtask on purpose. Saved threads record them in their
+instructions and history, and the proxy can't tell which naming a resumed or
+forked thread was started with. Renaming them is deferred for session
+compatibility; it isn't technically impossible. Claude's server, by contrast, is
+named `pairtask` and takes effect at the next launch.
+
 Cancellation sends SIGTERM to Codex so npm launchers can forward it to their native
 child, with a two-second fallback timeout. Codex owns session selection, history
 loading and argument parsing; forwarding flags does not guarantee every workflow.
