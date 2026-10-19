@@ -7,7 +7,7 @@ a Codex agent as a duo that shares tasks, messages and a workspace.
 - An isolated Incus workspace with persistent projects and agent memory.
 - Token usage visibility and soft caps for managed Codex; shared caps are not yet available.
 
-[MIT licensed](LICENSE) · [First install](docs/sandbox.md) · [Troubleshooting](docs/troubleshooting.md) · [Renamed from collab](docs/renamed.md)
+[MIT](LICENSE) or [Apache 2.0](LICENSE-APACHE) licensed · [First install](docs/sandbox.md) · [Troubleshooting](docs/troubleshooting.md) · [Renamed from collab](docs/renamed.md)
 
 ## Set up a sandbox
 
