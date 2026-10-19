@@ -156,7 +156,7 @@ resource "incus_instance" "secured" {
   running   = var.running
   config = {
     "user.pairtask.managed" = "infra/incus"
-    "user.pairtask.role"     = "secured"
+    "user.pairtask.role"    = "secured"
   }
 }
 
