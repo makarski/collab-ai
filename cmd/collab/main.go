@@ -75,7 +75,10 @@ func parseOptions(args []string, stderr io.Writer) (options, int) {
 		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]\n       collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--socket PATH] [--json]\n       collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID")
 		return cfg, 2
 	}
-	socketDefault := defaultSocket()
+	socketDefault, ok := defaultSocket(stderr)
+	if !ok {
+		return cfg, 2
+	}
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.StringVar(&cfg.socket, "socket", socketDefault, "broker Unix socket path")

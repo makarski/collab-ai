@@ -11,13 +11,13 @@ Group=collab-clients
 SupplementaryGroups=broker
 ExecStartPre=/usr/local/bin/collab-broker-setup clean
 ExecStart=/usr/local/bin/broker
-Environment=COLLAB_SOCKET_PATH=/mnt/collab-ipc/broker.sock
-Environment=COLLAB_DB_PATH=/var/lib/collab-ai-secured/broker/broker.db
+Environment=PAIRTASK_SOCKET_PATH=/mnt/collab-ipc/broker.sock
+Environment=PAIRTASK_DB_PATH=/var/lib/collab-ai-secured/broker/broker.db
 # Operator endpoint: private to secured, served only to root (incus exec from the host).
 RuntimeDirectory=collab-ai-operator
 RuntimeDirectoryMode=0700
-Environment=COLLAB_OPERATOR_SOCKET_PATH=/run/collab-ai-operator/operator.sock
-Environment=COLLAB_OPERATOR_UID=0
+Environment=PAIRTASK_OPERATOR_SOCKET_PATH=/run/collab-ai-operator/operator.sock
+Environment=PAIRTASK_OPERATOR_UID=0
 UMask=0117
 TasksMax=32
 NoNewPrivileges=yes

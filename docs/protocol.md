@@ -105,7 +105,7 @@ none.
   return `unknown_recipient`; replies to the operator aren't supported yet.
 
 **Operator endpoint:** a separate socket, enabled with
-`COLLAB_OPERATOR_SOCKET_PATH` plus `COLLAB_OPERATOR_UID`.
+`PAIRTASK_OPERATOR_SOCKET_PATH` plus `PAIRTASK_OPERATOR_UID`.
 - The broker checks the peer UID with `SO_PEERCRED` before reading anything; a
   mismatch gets `forbidden`. Other platforms fail closed.
 - Each connection carries one `operator_send` request and one response:

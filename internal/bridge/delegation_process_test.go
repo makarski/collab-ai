@@ -14,7 +14,7 @@ import (
 
 // Re-exec the test binary as the real stdio adapter used by separate hosts.
 func TestDelegatedAdapterProcess(t *testing.T) {
-	socket := os.Getenv("COLLAB_DELEGATED_TEST_BROKER")
+	socket := os.Getenv("PAIRTASK_DELEGATED_TEST_BROKER")
 	if socket == "" {
 		return
 	}
@@ -32,7 +32,7 @@ func startDelegatedAdapter(t *testing.T, socket string) *mcp.ClientSession {
 	exe, err := os.Executable()
 	requireNoError(t, err)
 	cmd := exec.Command(exe, "-test.run=^TestDelegatedAdapterProcess$")
-	cmd.Env = append(os.Environ(), "COLLAB_DELEGATED_TEST_BROKER="+socket)
+	cmd.Env = append(os.Environ(), "PAIRTASK_DELEGATED_TEST_BROKER="+socket)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "delegation-test"}, nil).Connect(ctx,

@@ -23,7 +23,7 @@ import (
 // A real child broker is killed without cleanup, exercising SQLite crash
 // recovery rather than substituting a graceful hub shutdown for a crash.
 func TestDurableBrokerProcess(t *testing.T) {
-	socket := os.Getenv("COLLAB_DURABLE_TEST_SOCKET")
+	socket := os.Getenv("PAIRTASK_DURABLE_TEST_SOCKET")
 	if socket == "" {
 		return
 	}
@@ -42,7 +42,7 @@ func startCrashBroker(t *testing.T, socket string) func() {
 	exe, err := os.Executable()
 	requireNoError(t, err)
 	cmd := exec.Command(exe, "-test.run=^TestDurableBrokerProcess$")
-	cmd.Env = append(os.Environ(), "COLLAB_DURABLE_TEST_SOCKET="+socket)
+	cmd.Env = append(os.Environ(), "PAIRTASK_DURABLE_TEST_SOCKET="+socket)
 	requireNoError(t, cmd.Start())
 	var once sync.Once
 	stop := func() { once.Do(func() { cmd.Process.Kill(); cmd.Wait(); os.Remove(socket) }) }

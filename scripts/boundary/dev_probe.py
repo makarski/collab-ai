@@ -30,7 +30,7 @@ def request(method, path):
 
 def check_mutations():
     # Creating a high-cap decoy in dev cannot replace the secured launcher's file.
-    subprocess.run(["env", "COLLAB_BUDGET_DIR=/tmp/proof-decoy", "/usr/local/bin/collab",
+    subprocess.run(["env", "PAIRTASK_BUDGET_DIR=/tmp/proof-decoy", "/usr/local/bin/collab",
                     "budget", "create", "task", "--tokens", "9999"], check=True, capture_output=True)
     for method, route in [("POST", "/v1/status"), ("DELETE", "/v1/status"), ("PUT", "/v1/status"),
                           ("POST", "/v1/create"), ("POST", "/v1/observe"), ("GET", "/v1/status?cap=9999")]:

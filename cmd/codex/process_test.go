@@ -16,7 +16,7 @@ func TestCodexCancellationReachesWrappedChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := codexCommand(ctx, os.Args[0], "-test.run=^TestCodexProcessHelper$")
-	cmd.Env = append(os.Environ(), "COLLAB_PROCESS_TEST=wrapper")
+	cmd.Env = append(os.Environ(), "PAIRTASK_PROCESS_TEST=wrapper")
 	output, err := cmd.StdoutPipe()
 	terminalCheck(t, err)
 	terminalCheck(t, cmd.Start())
@@ -51,7 +51,7 @@ func assertProcessLine(t *testing.T, lines <-chan string, want string) {
 
 // Exercise a launcher that forwards signals, like Codex's npm entrypoint.
 func TestCodexProcessHelper(t *testing.T) {
-	role := os.Getenv("COLLAB_PROCESS_TEST")
+	role := os.Getenv("PAIRTASK_PROCESS_TEST")
 	if role == "" {
 		return
 	}
@@ -69,7 +69,7 @@ func TestCodexProcessHelper(t *testing.T) {
 		os.Exit(0)
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestCodexProcessHelper$")
-	child.Env = append(os.Environ(), "COLLAB_PROCESS_TEST=child")
+	child.Env = append(os.Environ(), "PAIRTASK_PROCESS_TEST=child")
 	child.Stdout = os.Stdout
 	terminalCheck(t, child.Start())
 	<-ctx.Done()

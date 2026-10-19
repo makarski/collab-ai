@@ -9,7 +9,7 @@ import (
 )
 
 func TestDashboardOptionsAndNonTTY(t *testing.T) {
-	t.Setenv("COLLAB_SOCKET_PATH", "/custom.sock")
+	t.Setenv("PAIRTASK_SOCKET_PATH", "/custom.sock")
 	var stdout, stderr bytes.Buffer
 	cfg, code := dashboardOptions([]string{"--interval", "4s", "--timeout", "1s"}, &stderr)
 	assertStatusEqual(t, "parse code", code, -1)

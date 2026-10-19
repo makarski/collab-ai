@@ -117,7 +117,7 @@ can overshoot without a proven maximum. Unreported subagent/auxiliary usage is n
 covered. An agent with write access can modify budget files or bypass the launcher.
 Subscription login and native approvals are unchanged.
 
-Budgets live in `~/.local/state/collab-ai/budgets`; `COLLAB_BUDGET_DIR` overrides it
+Budgets live in `~/.local/state/collab-ai/budgets`; `PAIRTASK_BUDGET_DIR` overrides it
 for both launcher and commands. Keep the same budget/files outside repositories.
 `create` never resets an existing budget, and exhausted budgets cannot relaunch.
 Root-disk-only budgets are lost when that disk is replaced.

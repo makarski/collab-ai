@@ -21,7 +21,7 @@ func budgetCLI(t *testing.T, args ...string) (int, string, string) {
 }
 
 func TestBudgetCreateAndStatusThroughCLI(t *testing.T) {
-	t.Setenv("COLLAB_BUDGET_DIR", t.TempDir())
+	t.Setenv("PAIRTASK_BUDGET_DIR", t.TempDir())
 	code, out, diagnostic := budgetCLI(t, "create", "task", "--tokens", "100", "--json")
 	assertStatusEqual(t, "create", code, 0)
 	assertStatusEqual(t, "stderr", diagnostic, "")
@@ -41,7 +41,7 @@ func TestBudgetCreateAndStatusThroughCLI(t *testing.T) {
 }
 
 func TestBudgetCLIRejectsInvalidRequests(t *testing.T) {
-	t.Setenv("COLLAB_BUDGET_DIR", t.TempDir())
+	t.Setenv("PAIRTASK_BUDGET_DIR", t.TempDir())
 	for _, args := range [][]string{{}, {"delete", "task"}, {"create", "task"},
 		{"create", "../task", "--tokens", "100"}, {"status", "missing"}, {"status", "task", "--tokens", "1"}} {
 		code, out, diagnostic := budgetCLI(t, args...)
@@ -56,7 +56,7 @@ func TestBudgetCLIRejectsInvalidRequests(t *testing.T) {
 }
 
 func TestBudgetHelpDoesNotRequireAStore(t *testing.T) {
-	t.Setenv("COLLAB_BUDGET_DIR", "invalid-relative-path")
+	t.Setenv("PAIRTASK_BUDGET_DIR", "invalid-relative-path")
 	code, out, diagnostic := budgetCLI(t, "--help")
 	assertStatusEqual(t, "help", code, 0)
 	assertStatusEqual(t, "stdout", out, "")
@@ -93,13 +93,13 @@ func budgetCLISocket(t *testing.T) (string, *http.Server) {
 func TestRemoteBudgetStatusNeverFallsBackToLocalBudget(t *testing.T) {
 	path, server := budgetCLISocket(t)
 	// A hostile local setting cannot redirect a remote status query.
-	t.Setenv("COLLAB_BUDGET_DIR", "invalid-local-directory")
+	t.Setenv("PAIRTASK_BUDGET_DIR", "invalid-local-directory")
 	code, out, diagnostic := budgetCLI(t, "status", "task", "--socket", path, "--json")
 	if code != 0 || !strings.Contains(out, `"cap":100`) {
 		t.Fatal(code, out, diagnostic)
 	}
 	server.Close()
-	t.Setenv("COLLAB_BUDGET_DIR", filepath.Dir(path))
+	t.Setenv("PAIRTASK_BUDGET_DIR", filepath.Dir(path))
 	code, out, _ = budgetCLI(t, "status", "task", "--socket", path)
 	if code == 0 || out != "" {
 		t.Fatal("fell back to local budget", code, out)

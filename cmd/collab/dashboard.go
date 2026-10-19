@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/term"
+	"github.com/pairtask/pairtask/internal/config"
 	"github.com/pairtask/pairtask/internal/dashboard"
 )
 
@@ -34,7 +35,11 @@ func dashboardOptions(args []string, stderr io.Writer) (dashboard.Config, int) {
 	cfg := dashboard.Config{NoColor: os.Getenv("NO_COLOR") != ""}
 	flags := flag.NewFlagSet("dashboard", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	flags.StringVar(&cfg.Socket, "socket", defaultSocket(), "broker Unix socket path")
+	socket, ok := defaultSocket(stderr)
+	if !ok {
+		return cfg, 2
+	}
+	flags.StringVar(&cfg.Socket, "socket", socket, "broker Unix socket path")
 	flags.DurationVar(&cfg.Interval, "interval", 2*time.Second, "delay between requests, from 1s to 1m")
 	flags.DurationVar(&cfg.Timeout, "timeout", 3*time.Second, "request timeout, greater than zero and at most 30s")
 	if err := flags.Parse(args); err != nil {
@@ -63,11 +68,15 @@ func validateDashboard(cfg dashboard.Config, positional int) error {
 	return nil
 }
 
-func defaultSocket() string {
-	if path := os.Getenv("COLLAB_SOCKET_PATH"); path != "" {
-		return path
+// defaultSocket is the broker socket from the environment, or false after
+// reporting an invalid setting.
+func defaultSocket(stderr io.Writer) (string, bool) {
+	path, err := config.Required(os.LookupEnv, "SOCKET_PATH", "/tmp/collab-ai.sock")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return "", false
 	}
-	return "/tmp/collab-ai.sock"
+	return path, true
 }
 
 func dashboardTerminal(stdout io.Writer) *os.File {

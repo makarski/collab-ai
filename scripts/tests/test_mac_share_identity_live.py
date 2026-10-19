@@ -19,7 +19,7 @@ from sandbox_sftp_policy import server_command
 from sandbox_share_install import HELPER
 
 
-@unittest.skipUnless(platform.system() == "Darwin" and os.environ.get("COLLAB_MAC_IDENTITY_PROOF") == "1",
+@unittest.skipUnless(platform.system() == "Darwin" and os.environ.get("PAIRTASK_MAC_IDENTITY_PROOF") == "1",
                      "explicit disposable macOS runner only")
 class MacIdentityLiveTests(unittest.TestCase):
     def test_real_sharing_identity_and_operator_access(self):

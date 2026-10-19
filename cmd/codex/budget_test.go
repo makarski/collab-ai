@@ -20,7 +20,7 @@ func TestBudgetedOperatorStopsUnresponsiveAppServer(t *testing.T) {
 	terminalCheck(t, err)
 	defer b.Close()
 	logPath := filepath.Join(dir, "interrupt.jsonl")
-	t.Setenv("COLLAB_BUDGET_TEST_LOG", logPath)
+	t.Setenv("PAIRTASK_BUDGET_TEST_LOG", logPath)
 	binary := filepath.Join(dir, "fake-codex")
 	// No credentials or model requests. This host reports an overshoot, records
 	// the interrupt, and deliberately never replies to it.
@@ -28,7 +28,7 @@ func TestBudgetedOperatorStopsUnresponsiveAppServer(t *testing.T) {
 trap '' TERM
 printf '%s\n' '{"method":"thread/tokenUsage/updated","params":{"threadId":"fake-thread","turnId":"fake-turn","tokenUsage":{"total":{"totalTokens":107}}}}'
 while IFS= read -r line; do
-  printf '%s\n' "$line" >> "$COLLAB_BUDGET_TEST_LOG"
+  printf '%s\n' "$line" >> "$PAIRTASK_BUDGET_TEST_LOG"
 done
 `), 0700))
 	input, writer := io.Pipe()
@@ -121,7 +121,7 @@ func TestOptionalBudgetRequiresACompleteLauncherConfiguration(t *testing.T) {
 }
 
 func TestNamedSelectionUsesSavedCapAndRejectsOverrides(t *testing.T) {
-	t.Setenv("COLLAB_BUDGET_DIR", t.TempDir())
+	t.Setenv("PAIRTASK_BUDGET_DIR", t.TempDir())
 	store, err := budget.DefaultStore()
 	terminalCheck(t, err)
 	_, err = store.Create("task", 100)

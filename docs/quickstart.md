@@ -19,7 +19,7 @@ go build -o collab-codex ./cmd/codex
 go build -o collab-mcp ./cmd/mcp
 go build -o collab ./cmd/collab
 pwd  # use this absolute directory in the configuration below
-COLLAB_SOCKET_PATH=/tmp/collab-ai.sock COLLAB_DB_PATH="$PWD/collab-ai.db" ./broker
+PAIRTASK_SOCKET_PATH=/tmp/collab-ai.sock PAIRTASK_DB_PATH="$PWD/collab-ai.db" ./broker
 ```
 
 Leave it running. If you already have a broker, reuse it or choose another socket

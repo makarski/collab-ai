@@ -18,7 +18,8 @@ func TestOperatorAcceptanceConfig(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := map[string]string{"COLLAB_OPERATOR_SOCKET_PATH": tc.path, "COLLAB_OPERATOR_UID": tc.uid, "COLLAB_SOCKET_PATH": tc.agent}
-			cfg, e := loadConfig(func(key string) string { return env[key] })
+			// An empty value in this table means the variable is unset.
+			cfg, e := loadConfig(func(key string) (string, bool) { return env[key], env[key] != "" })
 			if (e != nil) != tc.bad {
 				t.Fatalf("config error %v want rejected=%v", e, tc.bad)
 			}

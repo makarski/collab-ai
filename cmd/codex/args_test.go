@@ -32,8 +32,8 @@ func TestTerminalForwardsExactArgumentsToCodex(t *testing.T) {
 	dir := t.TempDir()
 	binary := filepath.Join(dir, "codex-fixture")
 	record := filepath.Join(dir, "argv")
-	t.Setenv("COLLAB_ARGV_TEST_PATH", record)
-	terminalCheck(t, os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\0' \"$@\" > \"$COLLAB_ARGV_TEST_PATH\"\n"), 0700))
+	t.Setenv("PAIRTASK_ARGV_TEST_PATH", record)
+	terminalCheck(t, os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\0' \"$@\" > \"$PAIRTASK_ARGV_TEST_PATH\"\n"), 0700))
 	args := []string{"resume", "saved-id", "-C", "/path with spaces", "-c", `model_reasoning_effort="high"`, "--", "--remote=literal prompt"}
 	cfg := bridge.ClientConfig{AgentID: "args-test", SocketPath: endpoint.ln.Addr().String()}
 	terminalCheck(t, runTerminal(context.Background(), cfg, binary, args))

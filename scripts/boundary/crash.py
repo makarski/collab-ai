@@ -33,7 +33,7 @@ class HeldProvider(http.server.BaseHTTPRequestHandler):
 
 
 def status():
-    return json.loads(run("env", "COLLAB_BUDGET_DIR=" + str(ROOT / "budgets"),
+    return json.loads(run("env", "PAIRTASK_BUDGET_DIR=" + str(ROOT / "budgets"),
                           "collab", "budget", "status", "crash-proof", "--json"))
 
 
@@ -98,7 +98,7 @@ def main():
     server.called, server.release = threading.Event(), threading.Event()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     codex_command(ROOT / "codex", server.server_port)
-    run("env", "COLLAB_BUDGET_DIR=" + str(ROOT / "budgets"),
+    run("env", "PAIRTASK_BUDGET_DIR=" + str(ROOT / "budgets"),
         "collab", "budget", "create", "crash-proof", "--tokens", "100")
     broker = start_broker()
     try:
@@ -118,7 +118,7 @@ def start_broker():
     directory = Path("/run/collab-ai")
     directory.mkdir(mode=0o700, exist_ok=True)
     process = subprocess.Popen(["broker"], env={"PATH": "/usr/local/bin:/usr/bin:/bin",
-        "COLLAB_SOCKET_PATH": str(directory / "broker.sock"), "COLLAB_DB_PATH": str(ROOT / "broker.db")},
+        "PAIRTASK_SOCKET_PATH": str(directory / "broker.sock"), "PAIRTASK_DB_PATH": str(ROOT / "broker.db")},
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(50):
         if (directory / "broker.sock").is_socket():

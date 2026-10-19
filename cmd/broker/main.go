@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"syscall"
 
+	settings "github.com/pairtask/pairtask/internal/config"
 	"github.com/pairtask/pairtask/internal/hub"
 	"github.com/pairtask/pairtask/internal/server"
 	"github.com/pairtask/pairtask/internal/store"
@@ -20,7 +21,7 @@ import (
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	cfg, err := loadConfig(os.Getenv)
+	cfg, err := loadConfig(os.LookupEnv)
 	if err == nil {
 		err = run(cfg, log)
 	}
@@ -38,22 +39,28 @@ type config struct {
 	OperatorUID        int
 }
 
-func loadConfig(getenv func(string) string) (config, error) {
-	cfg := config{
-		SocketPath:         envOr(getenv, "COLLAB_SOCKET_PATH", "/tmp/collab-ai.sock"),
-		DBPath:             envOr(getenv, "COLLAB_DB_PATH", "./collab-ai.db"),
-		OperatorSocketPath: getenv("COLLAB_OPERATOR_SOCKET_PATH"),
+func loadConfig(lookup settings.LookupFunc) (config, error) {
+	var cfg config
+	var err error
+	if cfg.SocketPath, err = settings.Required(lookup, "SOCKET_PATH", "/tmp/collab-ai.sock"); err != nil {
+		return cfg, err
 	}
-	uid := getenv("COLLAB_OPERATOR_UID")
+	if cfg.DBPath, err = settings.Required(lookup, "DB_PATH", "./collab-ai.db"); err != nil {
+		return cfg, err
+	}
+	// The operator endpoint is optional: unset or empty disables it.
+	cfg.OperatorSocketPath, _, _ = settings.LookupIn(lookup, "OPERATOR_SOCKET_PATH")
+	uid, _, _ := settings.LookupIn(lookup, "OPERATOR_UID")
 	if cfg.OperatorSocketPath == "" {
 		if uid != "" {
-			return cfg, errors.New("COLLAB_OPERATOR_UID requires COLLAB_OPERATOR_SOCKET_PATH")
+			return cfg, errors.New(settings.Name("OPERATOR_UID") + " requires " + settings.Name("OPERATOR_SOCKET_PATH"))
 		}
 		return cfg, nil
 	}
 	parsed, err := strconv.Atoi(uid)
 	if err != nil || parsed < 0 {
-		return cfg, errors.New("COLLAB_OPERATOR_SOCKET_PATH requires COLLAB_OPERATOR_UID, a non-negative numeric UID")
+		return cfg, errors.New(settings.Name("OPERATOR_SOCKET_PATH") + " requires " + settings.Name("OPERATOR_UID") +
+			", a non-negative numeric UID")
 	}
 	cfg.OperatorUID = parsed
 	if filepath.Clean(cfg.OperatorSocketPath) == filepath.Clean(cfg.SocketPath) {
@@ -110,11 +117,4 @@ func run(cfg config, log *slog.Logger) error {
 	<-h.Done()
 	log.Info("shutdown complete")
 	return err
-}
-
-func envOr(getenv func(string) string, key, fallback string) string {
-	if v := getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }
