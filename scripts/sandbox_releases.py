@@ -5,9 +5,10 @@ import os
 import re
 from urllib.error import HTTPError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from sandbox_artifacts import BundleSource, fetch
+from sandbox_https import urlopen
 from sandbox_image_cache import prepare_image, record_bundles
 
 

@@ -13,7 +13,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from sandbox_https import urlopen
 
 from sandbox_artifacts import ARCHITECTURES
 from sandbox_base_image import (ASSETS, IntegrityError, Unavailable, cached_pair, combined_digest, fetch,

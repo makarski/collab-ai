@@ -9,6 +9,7 @@
 | Claude tools work but no automatic messages | Check channel opt-in, authentication, and organization policy. Use the [interactive channel launch](host-integration.md#claude-code). |
 | Codex resume rejects permission flags | Resume with saved permissions; remove `--sandbox` / `--ask-for-approval` overrides. |
 | Delivery stops after a disconnect | Restart the affected adapter or launcher with the same agent ID. Accepted, unacknowledged durable messages replay; use `resume` to also restore Codex conversation history. |
+| `CERTIFICATE_VERIFY_FAILED` from a host script | That Python trusts no certificate authority. On macOS with a python.org build, run `/Applications/Python 3.X/Install Certificates.command` once; otherwise use `/usr/bin/python3`, or install `certifi`, which the host scripts pick up automatically. |
 
 The broker refuses an existing socket path. After a crash, verify the broker is
 no longer running before removing a stale socket. Normal shutdown cleans up its

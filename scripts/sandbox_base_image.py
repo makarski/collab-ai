@@ -17,8 +17,9 @@ import subprocess
 import tempfile
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+from sandbox_https import urlopen
 from sandbox_releases import api_headers, repository
 
 
