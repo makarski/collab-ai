@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 type StatusRecords struct {

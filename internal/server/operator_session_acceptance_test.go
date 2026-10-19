@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Session requests deliberately use the public wire format rather than new

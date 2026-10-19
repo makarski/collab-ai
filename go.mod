@@ -1,4 +1,4 @@
-module collab-ai
+module github.com/pairtask/pairtask
 
 go 1.25.0
 

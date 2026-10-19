@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // LazyClient registers with the broker on the first messaging call, not during

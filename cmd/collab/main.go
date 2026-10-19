@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"collab-ai/internal/status"
+	"github.com/pairtask/pairtask/internal/status"
 )
 
 func main() {

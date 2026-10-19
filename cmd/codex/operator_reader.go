@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"collab-ai/internal/host"
+	"github.com/pairtask/pairtask/internal/host"
 )
 
 // Some inherited stdin descriptors cannot interrupt a blocking Read on Close.

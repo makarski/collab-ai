@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 type sessionStagePage struct {

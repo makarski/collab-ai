@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Keep the real writer and ownership lifecycle, but shorten only its write

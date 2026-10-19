@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 const operatorHistoryUsage = "usage: collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json] [--timeout 5s]"

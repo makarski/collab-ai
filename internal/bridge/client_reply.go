@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // WaitReply consumes one reply from the expected peer, or one correlated broker

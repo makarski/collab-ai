@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // ParseRecipients turns the recipient field into an operator_send scope: To

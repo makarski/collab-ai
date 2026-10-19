@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/bridge"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/bridge"
 )
 
 func runtimeFixture(t *testing.T) (*runtimeMCP, *bridge.Listener) {

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func statusSocket(t *testing.T, handle func(net.Conn)) string {

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"collab-ai/internal/host"
 	"context"
 	"errors"
+	"github.com/pairtask/pairtask/internal/host"
 	"io"
 )
 

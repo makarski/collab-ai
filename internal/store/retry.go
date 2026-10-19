@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 type RetrySnapshot struct {

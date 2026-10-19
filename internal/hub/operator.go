@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 type operatorRequestKind int

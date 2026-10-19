@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // OperatorInboxSession is internal bookkeeping for operator-inbox rows. It is

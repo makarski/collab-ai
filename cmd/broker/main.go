@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"syscall"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/server"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/server"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 func main() {

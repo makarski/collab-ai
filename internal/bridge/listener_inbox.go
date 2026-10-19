@@ -1,6 +1,6 @@
 package bridge
 
-import "collab-ai/internal/protocol"
+import "github.com/pairtask/pairtask/internal/protocol"
 
 func (l *Listener) statusLocked() ListenerStatus {
 	out := l.status

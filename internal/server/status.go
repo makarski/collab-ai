@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Status uses the existing socket's access boundary and a single response.

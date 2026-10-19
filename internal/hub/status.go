@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 type statusRequest struct {

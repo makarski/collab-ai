@@ -8,8 +8,8 @@ import (
 	"net"
 	"time"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // operatorSessionPeer is an authenticated operator connection and its frame reader.

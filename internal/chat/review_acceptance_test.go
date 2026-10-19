@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"collab-ai/internal/chat"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/chat"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func TestChatOfflineSubmitKeepsDraftUntilConnected(t *testing.T) {

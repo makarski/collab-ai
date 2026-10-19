@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"collab-ai/internal/bridge"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 func runTerminal(ctx context.Context, cfg bridge.ClientConfig, binary string, args []string) error {

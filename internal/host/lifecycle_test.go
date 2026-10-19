@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/bridge"
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // This fixture observes the real adapter connection while controlling broker

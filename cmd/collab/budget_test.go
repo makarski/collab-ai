@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/budget"
+	"github.com/pairtask/pairtask/internal/budget"
 )
 
 func budgetCLI(t *testing.T, args ...string) (int, string, string) {

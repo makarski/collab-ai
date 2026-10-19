@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 type historyEntry struct {

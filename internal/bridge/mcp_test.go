@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/hub"
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/server"
-	"collab-ai/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pairtask/pairtask/internal/hub"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/server"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 func startBroker(t *testing.T) (string, context.CancelFunc) {

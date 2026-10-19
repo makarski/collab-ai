@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/bridge"
-	"collab-ai/internal/budget"
+	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/budget"
 )
 
 func TestBudgetedOperatorStopsUnresponsiveAppServer(t *testing.T) {

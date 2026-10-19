@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"collab-ai/internal/dashboard"
 	"github.com/charmbracelet/x/term"
+	"github.com/pairtask/pairtask/internal/dashboard"
 )
 
 func runDashboard(ctx context.Context, args []string, stdout, stderr io.Writer) int {

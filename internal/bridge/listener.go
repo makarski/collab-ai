@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Publisher submits peer data to a host. Success is never an agent acknowledgment.

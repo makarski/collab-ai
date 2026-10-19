@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 func (h *Hub) connect(clients map[string]*Client, c *Client) {

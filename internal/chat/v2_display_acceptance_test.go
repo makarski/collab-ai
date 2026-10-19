@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"collab-ai/internal/chat"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/pairtask/pairtask/internal/chat"
 )
 
 func v2FrameFits(t *testing.T, h *chatHarness, width, height int) {

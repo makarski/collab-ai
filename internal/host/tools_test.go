@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/bridge"
+	"github.com/pairtask/pairtask/internal/bridge"
 )
 
 func toolProxy(t *testing.T) (*Proxy, <-chan Frame) {

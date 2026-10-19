@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/store"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/store"
 )
 
 func TestOperatorInboxSenderCountQuotaAndRetry(t *testing.T) {

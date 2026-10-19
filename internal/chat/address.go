@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Audience sources, shown in the hint line and the state view.

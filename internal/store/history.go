@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"collab-ai/internal/protocol"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // HistoryQuery is a history page request plus the bytes available for

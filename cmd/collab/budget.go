@@ -9,7 +9,7 @@ import (
 	"io"
 	"time"
 
-	"collab-ai/internal/budget"
+	"github.com/pairtask/pairtask/internal/budget"
 )
 
 const budgetUsage = "usage: collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--socket PATH] [--json]"

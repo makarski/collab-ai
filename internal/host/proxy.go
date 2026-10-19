@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"collab-ai/internal/bridge"
-	"collab-ai/internal/budget"
-	"collab-ai/internal/protocol"
 	"github.com/google/uuid"
+	"github.com/pairtask/pairtask/internal/bridge"
+	"github.com/pairtask/pairtask/internal/budget"
+	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // Proxy speaks App Server stdio to an operator-owned client. It adds collab tools

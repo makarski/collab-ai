@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"collab-ai/internal/protocol"
-	"collab-ai/internal/status"
+	"github.com/pairtask/pairtask/internal/protocol"
+	"github.com/pairtask/pairtask/internal/status"
 )
 
 func brokerStatus(t *testing.T, socket string) protocol.StatusSnapshot {

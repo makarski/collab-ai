@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"collab-ai/internal/host"
 	"github.com/coder/websocket"
+	"github.com/pairtask/pairtask/internal/host"
 )
 
 type terminalEndpoint struct {
