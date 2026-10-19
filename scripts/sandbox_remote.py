@@ -1,6 +1,7 @@
 """The Incus remote a host script drives: Linux `local`, macOS the dedicated
 Colima VM. The VM's profile is `pairtask` and its remote `colima-pairtask`;
-the previous names keep working for one release with one warning per process.
+the previous remote is still recognized, with one warning per process; old
+deployments are not migrated.
 """
 
 import platform
@@ -31,10 +32,3 @@ def warn_legacy():
         _warned = True
         print(f"pairtask: remote {LEGACY_REMOTE} (Colima profile {LEGACY_PROFILE}) is deprecated; "
               f"provision again as {REMOTE}", file=sys.stderr)
-
-
-def supported(remote):
-    """True for Linux local or a macOS Colima remote this checkout knows."""
-    if platform.system() == "Linux":
-        return remote == "local"
-    return platform.system() == "Darwin" and colima_profile(remote) is not None

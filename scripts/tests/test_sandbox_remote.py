@@ -31,16 +31,11 @@ class RemoteTests(unittest.TestCase):
         self.assertIsNone(remote.colima_profile("local"))
         self.assertIsNone(remote.colima_profile("other"))
 
-    def test_defaults_and_support_follow_the_platform(self):
+    def test_default_remote_follows_the_platform(self):
         with patch.object(remote.platform, "system", return_value="Darwin"):
             self.assertEqual(remote.default_remote(), "colima-pairtask")
-            self.assertTrue(remote.supported("colima-pairtask"))
-            self.assertTrue(remote.supported("colima-collab-ai"))
-            self.assertFalse(remote.supported("local"))
         with patch.object(remote.platform, "system", return_value="Linux"):
             self.assertEqual(remote.default_remote(), "local")
-            self.assertTrue(remote.supported("local"))
-            self.assertFalse(remote.supported("colima-pairtask"))
 
 
 if __name__ == "__main__":

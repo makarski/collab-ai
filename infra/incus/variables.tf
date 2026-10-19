@@ -33,8 +33,8 @@ variable "project_name" {
   default     = "pairtask"
   description = "Dedicated project owned by this state. Existing projects must not be adopted automatically."
   validation {
-    condition     = can(regex("^(pairtask|collab)[a-z0-9-]*$", var.project_name)) && length(var.project_name) <= 40
-    error_message = "Use a dedicated name beginning collab-, with lowercase letters, digits and hyphens (40 characters maximum)."
+    condition     = can(regex("^(pairtask(-[a-z0-9-]+)?|collab-[a-z0-9-]+)$", var.project_name)) && length(var.project_name) <= 40
+    error_message = "Use pairtask or a dedicated name beginning pairtask- (collab- for older deployments), with lowercase letters, digits and hyphens (40 characters maximum)."
   }
 }
 

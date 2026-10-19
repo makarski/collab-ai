@@ -37,17 +37,17 @@ release. The full list is `infra/image/layout-v2.json`.
 | Old | New | Old name |
 | --- | --- | --- |
 | Colima profile `collab-ai` (`colima stop collab-ai`) | `pairtask` (`colima stop pairtask`) | Not migrated; see below |
-| Incus remote `colima-collab-ai:` | `colima-pairtask:` | `--remote colima-collab-ai` works for one more release and prints a deprecation line |
-| Incus project `collab-ai` (`--project collab-ai`) | `pairtask` | Pass `--project collab-ai` to keep driving an old deployment |
+| Incus remote `colima-collab-ai:` | `colima-pairtask:` | Not migrated; `--remote colima-collab-ai` is still recognized and prints a deprecation line |
+| Incus project `collab-ai` (`--project collab-ai`) | `pairtask` | Not migrated |
 | Host state `~/.local/state/collab-ai/operator/` and `…/shares/` | `~/.local/state/pairtask/…` | Not migrated |
 | Instance marker `user.collab-ai.managed` | `user.pairtask.managed` | Written by the next apply; the host finds managed instances by name and project, never by this key |
 | Disposable CI projects `collab-smoke-*`, `collab-operator-*` | `pairtask-smoke-*`, `pairtask-operator-*` | Test deployments only |
 
-Existing deployments are not migrated. Either stop and delete the old VM and
-provision again (`colima stop collab-ai`, `colima delete collab-ai`, then the
-[first install](sandbox.md)), or keep driving the old deployment for one more
-release with `--remote colima-collab-ai --project collab-ai` on every host
-command.
+Existing deployments are not migrated, and this host does not drive them.
+Deleting the VM deletes its projects and agent home, so
+[back up](sandbox-storage.md#back-up-and-restore) anything you need first. Then
+stop and delete the old VM (`colima stop collab-ai`, `colima delete collab-ai`)
+and follow the [first install](sandbox.md).
 
 ## Kept on purpose
 
