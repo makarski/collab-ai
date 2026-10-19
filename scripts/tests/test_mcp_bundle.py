@@ -24,7 +24,7 @@ def module(name, filename):
 
 import tool_store  # noqa: E402
 
-login = module("codescene_login", "collab-codescene-login")
+login = module("codescene_login", "pairtask-codescene-login")
 
 
 class MCPBundleTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class MCPBundleTests(unittest.TestCase):
                                  ("mcp/servers.json", "mcp-servers.json")):
                 (share / name).write_bytes((ROOT / "infra/image" / source).read_bytes())
             tool_store.write_configuration({"cs-mcp": True, "playwright": True, "docker": True}, share, etc)
-            claude = json.loads((etc / "collab-ai/claude-mcp.json").read_text())["mcpServers"]
+            claude = json.loads((etc / "pairtask/claude-mcp.json").read_text())["mcpServers"]
             codex = tomllib.loads((etc / "codex/config.toml").read_text())
             self.assertEqual(set(codex["mcp_servers"]), {"codescene", "playwright"})
             self.assertIn("pairtask", claude)

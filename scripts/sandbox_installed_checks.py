@@ -22,7 +22,7 @@ def denied(command):
 
 def await_services(deployment):
     for role, unit in (("workspace", "collab-tools-ready"), ("secured", "collab-tools-ready"),
-                       ("workspace", "collab-dev-executor.socket"), ("secured", "collab-secured-broker")):
+                       ("workspace", "pairtask-dev-executor.socket"), ("secured", "collab-secured-broker")):
         for _ in range(40):
             result = subprocess.run(deployment.execute(role, "systemctl", "is-active", "--quiet", unit),
                                     capture_output=True, timeout=5)
@@ -74,9 +74,9 @@ def verify(deployment):
     await_services(deployment)
     check_endpoint(deployment)
     fixture(deployment, "installed-restart")
-    run(deployment.execute("workspace", "systemctl", "stop", "collab-dev-executor.socket"))
+    run(deployment.execute("workspace", "systemctl", "stop", "pairtask-dev-executor.socket"))
     try:
         fixture(deployment, "installed-missing", missing=True)
     finally:
-        run(deployment.execute("workspace", "systemctl", "start", "collab-dev-executor.socket"))
+        run(deployment.execute("workspace", "systemctl", "start", "pairtask-dev-executor.socket"))
     print("PASS: provisioned configuration/broker/executor, restart, endpoint denials and missing-executor refusal.", flush=True)

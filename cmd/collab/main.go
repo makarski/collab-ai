@@ -1,4 +1,5 @@
-// Command collab provides local operator tools for collaboration and budgets.
+// Command pairtask (also pk, and the deprecated collab) provides local operator
+// tools for collaboration and budgets.
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -17,6 +19,9 @@ import (
 )
 
 func main() {
+	if filepath.Base(os.Args[0]) == "collab" {
+		fmt.Fprintln(os.Stderr, "collab is deprecated; use pairtask (or pk) instead")
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
 	stop()
@@ -72,7 +77,7 @@ type options struct {
 func parseOptions(args []string, stderr io.Writer) (options, int) {
 	var cfg options
 	if len(args) == 0 || args[0] != "status" {
-		fmt.Fprintln(stderr, "usage: collab status [--socket PATH] [--json] [--timeout 3s]\n       collab dashboard [--socket PATH] [--interval 2s] [--timeout 3s]\n       collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--socket PATH] [--json]\n       collab operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] TEXT\n       collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       collab operator ack [--socket PATH] [--json] MESSAGE_ID")
+		fmt.Fprintln(stderr, "usage: pairtask status [--socket PATH] [--json] [--timeout 3s]\n       pairtask dashboard [--socket PATH] [--interval 2s] [--timeout 3s]\n       pairtask budget create NAME --tokens N [--json]\n       pairtask budget status NAME [--socket PATH] [--json]\n       pairtask operator send [--socket PATH] (--to ID | --group ID,ID | --all) [--message-id ID] [--in-reply-to ID] [--json] TEXT\n       pairtask operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json]\n       pairtask operator ack [--socket PATH] [--json] MESSAGE_ID")
 		return cfg, 2
 	}
 	socketDefault, ok := defaultSocket(stderr)

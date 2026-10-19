@@ -2,7 +2,7 @@
 Description=Initialize permissions on the collab-ai tool store volume
 DefaultDependencies=no
 After=local-fs.target
-Before=collab-tools-ready.service multi-user.target
+Before=pairtask-tools-ready.service multi-user.target
 ConditionPathIsMountPoint=/var/lib/collab-ai-tools
 
 [Service]

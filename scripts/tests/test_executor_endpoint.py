@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONNECT = runpy.run_path(str(ROOT / "infra/image/collab-executor-connect"))
-LAUNCH = runpy.run_path(str(ROOT / "infra/image/collab-supervised-codex"))
+CONNECT = runpy.run_path(str(ROOT / "infra/image/pairtask-executor-connect"))
+LAUNCH = runpy.run_path(str(ROOT / "infra/image/pairtask-supervised-codex"))
 DIRECTORY = Path("/mnt/collab-executor")
 
 

@@ -66,7 +66,7 @@ class StoreReviewTests(StoreHarness):
         self.assertEqual(self.store.resolve("tool").read_bytes(), b"tool contents")
 
     def test_go_environment_points_to_toolchain_root(self):
-        launcher = runpy.run_path(str(ROOT / "infra/image/collab-tool"))
+        launcher = runpy.run_path(str(ROOT / "infra/image/pairtask-tool"))
         base = self.store.artifacts / ("a" * 64)
         entry = base / "go/bin/go"
         env = launcher["environment"]("go", entry, base)

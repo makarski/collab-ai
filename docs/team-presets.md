@@ -143,7 +143,7 @@ workspace.
 - Once a team has started, the control plane decides who may join. Any
   unauthorized process is refused at the broker, even if it keeps running.
 - Not preventable today: agents run as one user with shell access. The
-  `broker` binary in the workspace can be run by anyone, model credentials
+  `pairtask-broker` binary in the workspace can be run by anyone, model credentials
   (`~/.claude/.credentials.json`, `~/.codex/auth.json`) are readable by
   `agent`, and rootless Docker is available. So an agent can start its own
   model sessions, or a separate group on a new socket.
@@ -155,7 +155,7 @@ workspace.
     and review gates apply regardless.
   - **Visibility:** `collab team status` and the control plane warn, best
     effort, about agent processes not mapped to a seat, Unix sockets that aren't
-    the official broker's, and a second `broker` process. These are warnings,
+    the official broker's, and a second `pairtask-broker` process. These are warnings,
     not proof; process names can be disguised.
   - **Policy:** the charter and skill forbid starting brokers, agents or teams.
     A violation is a visible breach of the rules.
@@ -183,7 +183,7 @@ workspace.
 limits and merge policy.
 - Inject an immutable, versioned charter once, when the seat's thread is first
   started: Claude via `--append-system-prompt`, Codex via developer
-  instructions through `collab-codex`.
+  instructions through `pairtask-codex`.
 - Keep an operator-owned mapping: team instance, seat, project, thread ID and
   charter version/hash. Resume exactly that thread with that charter.
 - Don't append a new charter on every resume or replace saved instructions.

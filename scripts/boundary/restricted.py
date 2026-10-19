@@ -80,7 +80,7 @@ def exercise(operator):
 
 
 def run_client(directory, environment, name, exhaust):
-    command = ["collab-codex", "--restricted-operator", "--budget", name, "--agent-id", name]
+    command = ["/usr/local/lib/pairtask/pairtask-codex", "--restricted-operator", "--budget", name, "--agent-id", name]
     with (directory / "stderr.log").open("w+") as diagnostic:
         process = subprocess.Popen(command, cwd="/workspace", env=environment, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=diagnostic, text=True)
@@ -124,7 +124,7 @@ def stop_client(process):
 
 
 def check_accounting(environment, command, name, exhaust):
-    result = subprocess.run(["collab", "budget", "status", name, "--json"], env=environment,
+    result = subprocess.run(["pairtask", "budget", "status", name, "--json"], env=environment,
                             capture_output=True, text=True, check=True, timeout=5)
     saved = json.loads(result.stdout)
     if saved["reported_tokens"] < (40 if exhaust else 60):
@@ -145,7 +145,7 @@ def scenario(name, cap):
     environment.update({"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(directory),
                         "PAIRTASK_BUDGET_DIR": str(directory / "budgets")})
     try:
-        subprocess.run(["collab", "budget", "create", name, "--tokens", str(cap)],
+        subprocess.run(["pairtask", "budget", "create", name, "--tokens", str(cap)],
                        env=environment, check=True, capture_output=True, timeout=5)
         command = run_client(directory, environment, name, cap == 30)
         check_accounting(environment, command, name, cap == 30)

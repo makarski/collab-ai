@@ -1,9 +1,9 @@
 [Unit]
 Description=Start the workspace agent user manager for rootless Docker
-Requires=collab-workspace-setup.service collab-tools-ready.service
-After=collab-workspace-setup.service apparmor.service collab-tools-ready.service
+Requires=pairtask-workspace-setup.service pairtask-tools-ready.service
+After=pairtask-workspace-setup.service apparmor.service pairtask-tools-ready.service
 ConditionPathIsMountPoint=/var/lib/collab-ai-docker
-ConditionPathExists=/etc/collab-ai/tools/docker.enabled
+ConditionPathExists=/etc/pairtask/tools/docker.enabled
 
 [Service]
 Type=oneshot

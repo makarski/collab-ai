@@ -12,7 +12,7 @@ import (
 	"github.com/pairtask/pairtask/internal/chat"
 )
 
-const operatorChatUsage = "usage: collab operator chat [--socket PATH] [--timeout 5s]"
+const operatorChatUsage = "usage: pairtask operator chat [--socket PATH] [--timeout 5s]"
 
 func runOperatorChat(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	socket, timeout, code := parseChat(args, stderr)
@@ -21,7 +21,7 @@ func runOperatorChat(ctx context.Context, args []string, stdout, stderr io.Write
 	}
 	output := dashboardTerminal(stdout)
 	if output == nil {
-		fmt.Fprintln(stderr, "collab operator chat requires an interactive terminal; use collab operator send, receive, ack or history instead")
+		fmt.Fprintln(stderr, "pairtask operator chat requires an interactive terminal; use pairtask operator send, receive, ack or history instead")
 		return 2
 	}
 	m, err := chat.Run(ctx, chat.Options{Dial: chat.SocketDialer(socket, timeout)}, os.Stdin, output)
@@ -38,7 +38,7 @@ func reportChatExit(state chat.StateView, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "operator chat:", state.Fatal)
 	}
 	if in := state.Intent; unresolved(in) {
-		fmt.Fprintf(stderr, "send %q: outcome unknown; this chat can't resolve it after exit. collab operator history shows it if the broker accepted it.\n", in.MessageID)
+		fmt.Fprintf(stderr, "send %q: outcome unknown; this chat can't resolve it after exit. pairtask operator history shows it if the broker accepted it.\n", in.MessageID)
 	}
 	return state.ExitCode
 }

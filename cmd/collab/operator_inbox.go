@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	operatorReceiveUsage = "usage: collab operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json] [--timeout 5s]"
-	operatorAckUsage     = "usage: collab operator ack [--socket PATH] [--json] [--timeout 5s] MESSAGE_ID"
+	operatorReceiveUsage = "usage: pairtask operator receive [--socket PATH] [--after SEQ] [--upper SEQ] [--limit N] [--json] [--timeout 5s]"
+	operatorAckUsage     = "usage: pairtask operator ack [--socket PATH] [--json] [--timeout 5s] MESSAGE_ID"
 	legacyHint           = "if the broker predates protocol_version 5, upgrade the sandbox"
 )
 

@@ -101,7 +101,7 @@ def client(stack, command, home):
 
 
 def verify_configuration():
-    claude = json.loads(Path("/etc/collab-ai/claude-mcp.json").read_text())["mcpServers"]
+    claude = json.loads(Path("/etc/pairtask/claude-mcp.json").read_text())["mcpServers"]
     codex = tomllib.loads(Path("/etc/codex/config.toml").read_text())["mcp_servers"]
     for name in ("codescene", "playwright"):
         if claude[name] != codex[name]:

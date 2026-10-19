@@ -16,8 +16,8 @@ what? Or does the group need a router?
 | --- | --- | --- | --- |
 | `claude-opus-exp` | Claude Code | Opus | architecture, review |
 | `claude-sonnet-exp` | Claude Code | Sonnet | implementation, research |
-| `codex-2-exp` | Codex (`collab-codex --terminal`) | default | implementation |
-| `codex-3-exp` | Codex (`collab-codex --terminal`) | gpt-6-astra, low effort (frontier model; low effort only) | quick checks |
+| `codex-2-exp` | Codex (`pairtask-codex --terminal`) | default | implementation |
+| `codex-3-exp` | Codex (`pairtask-codex --terminal`) | gpt-6-astra, low effort (frontier model; low effort only) | quick checks |
 
 - Each agent runs its own adapter with a distinct `--agent-id`.
   - Claude: the model comes from `claude --model`. The MCP adapter's `--model`
@@ -25,7 +25,7 @@ what? Or does the group need a router?
   - Codex: pass `-m` and `model_reasoning_effort` after `--`; they are
     forwarded unchanged. The launcher registers with `Model` empty
     (`cmd/codex/main.go`).
-- Two `collab-codex` launchers have independent sockets and App Server
+- Two `pairtask-codex` launchers have independent sockets and App Server
   processes. Sharing one `CODEX_HOME` concurrently is unverified on 0.159.3, so
   use fresh threads, avoid `resume --last`, and never resume one thread twice.
   A named budget's launcher lock is exclusive: don't share one, and don't work
@@ -38,7 +38,7 @@ what? Or does the group need a router?
 1. Confirm both Codex sessions run side by side (only when the operator
    authorizes the run).
 2. Start all four agents and confirm all four inboxes are registered in
-   `collab status --json` before anyone introduces themselves. A started
+   `pairtask status --json` before anyone introduces themselves. A started
    terminal isn't enough: managed Codex registration follows thread creation.
 3. Tell every session explicitly that peer delegation is authorized for this
    run, with the run ID and its end time.

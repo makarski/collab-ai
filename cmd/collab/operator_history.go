@@ -11,7 +11,7 @@ import (
 	"github.com/pairtask/pairtask/internal/protocol"
 )
 
-const operatorHistoryUsage = "usage: collab operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json] [--timeout 5s]"
+const operatorHistoryUsage = "usage: pairtask operator history [--socket PATH] [--before SEQ] [--upper SEQ] [--limit N] [--json] [--timeout 5s]"
 
 func runOperatorHistory(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	call, page, code := parseHistory(args, stderr)

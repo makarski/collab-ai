@@ -38,7 +38,7 @@ class RuntimeNameAcceptance(unittest.TestCase):
             (share / "codex-config.base.toml").write_text("")
             (share / "mcp-servers.json").write_text("{}")
             tool_store.write_configuration({}, share=share, etc=etc)
-            generated = json.loads((etc / "collab-ai/claude-mcp.json").read_text())["mcpServers"]
+            generated = json.loads((etc / "pairtask/claude-mcp.json").read_text())["mcpServers"]
             self.assertEqual(set(generated), {"pairtask"})
             self.assertEqual(generated, json.loads((share / "claude-mcp.base.json").read_text())["mcpServers"])
 

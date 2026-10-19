@@ -66,13 +66,13 @@ them optional.**
   package from the distribution archive is part of the OS and may stay; a
   download from a vendor is a third-party tool and goes to the store. `gh` is
   the one borderline case and stays because it comes from apt and is 14 MiB.
-- The collab binaries (`collab`, `broker`, `collab-mcp`, `collab-codex`),
+- The pairtask binaries (`pairtask`, `pairtask-broker`, `pairtask-mcp`, `pairtask-codex`),
   built inside the builder as today. The Go toolchain is removed again before
   publishing.
 - The systemd units, the `secured` runtime, the skill, configs, sshd config,
-  `tools.lock.json` and `build-source.json` under `/usr/local/share/collab-ai/`
+  `tools.lock.json` and `build-source.json` under `/usr/local/share/pairtask/`
   so the pins travel with the release.
-- The in-container activator `collab-tools-activate` and the tool launchers.
+- The in-container activator `pairtask-tools-activate` and the tool launchers.
 - Housekeeping: `vim-tiny` instead of vim; `/usr/share/{doc,man}` and
   non-English locales removed; `incus publish --compression xz`.
 
@@ -203,10 +203,10 @@ and before any agent entry point is enabled:
 2. Missing artifacts are downloaded into the host cache
    `dist/tools/<sha256>` and verified; a cached artifact is verified again
    before use. The cache is reused across rollouts and releases.
-3. For each container, the host asks `collab-tools-activate status` which
+3. For each container, the host asks `pairtask-tools-activate status` which
    artifacts are already complete, pushes only the missing ones with
    `incus file push` into `/var/lib/collab-ai-tools/incoming/`, and runs
-   `collab-tools-activate <manifest>` as the container's root.
+   `pairtask-tools-activate <manifest>` as the container's root.
 4. The activator takes the flock, verifies every incoming archive's sha256
    against the manifest, extracts with Python's `tarfile` data filter (no
    absolute paths, no traversal, no links escaping the artifact, no device
@@ -241,9 +241,9 @@ host releases it, after the durable ready commit. Concretely:
   stay up throughout;
 - `user@1001.service` (the agent's user manager, which would autostart the
   rootless Docker daemon and any lingering user service),
-  `collab-dev-executor@`, `collab-supervised-codex` and the Docker units all
-  carry `Requires=collab-tools-ready.service` and `After=`, and
-  `collab-tools-ready` fails while the state is not `ready`;
+  `pairtask-dev-executor@`, `pairtask-supervised-codex` and the Docker units all
+  carry `Requires=pairtask-tools-ready.service` and `After=`, and
+  `pairtask-tools-ready` fails while the state is not `ready`;
 - `collab start` and every other host path that opens an agent session checks
   the instance state and refuses while it isn't released.
 
@@ -290,21 +290,21 @@ and the tool-dependent entry points stay in maintenance with that message.
 ## Readiness
 
 - **Only tool-dependent entry points are gated.** The broker, the operator
-  endpoint, `collab operator chat`, the dashboard and SSH itself are collab
+  endpoint, `pairtask operator chat`, the dashboard and SSH itself are collab
   code in the image and never wait for third-party tools; that includes
   `collab-client-setup`, which only creates the brokers' socket aliases.
-  `collab-dev-executor@`, `collab-supervised-codex` and the Docker units carry `Requires=collab-tools-ready.service` and
-  `After=collab-tools-ready.service`, so a failure propagates instead of
+  `pairtask-dev-executor@`, `pairtask-supervised-codex` and the Docker units carry `Requires=pairtask-tools-ready.service` and
+  `After=pairtask-tools-ready.service`, so a failure propagates instead of
   merely ordering.
-- `collab-tools-ready.service` is a oneshot that fails unless
+- `pairtask-tools-ready.service` is a oneshot that fails unless
   `tools-state.json` says `ready` for the generation that `current` points
-  at, `current/manifest.json` matches `/usr/local/share/collab-ai/tools.lock.json`
+  at, `current/manifest.json` matches `/usr/local/share/pairtask/tools.lock.json`
   and `build-source.json` of the running root, and `root-deps.json` covers
   every deb bundle the selection needs. A root replaced by rollout therefore
   refuses tool entry points until the host has activated a matching
   generation; the host does that in the same rollout.
 - Launchers are real programs, not dangling symlinks: `/usr/local/bin/claude`,
-  `codex`, `go`, … are symlinks to one `collab-tool` launcher that dispatches
+  `codex`, `go`, … are symlinks to one `pairtask-tool` launcher that dispatches
   on `argv[0]`, resolves `current` once, and `exec`s the tool **with fixed
   generation paths in its environment** (`PATH` prefixed with that
   generation's `bin`, `GOROOT`, `PLAYWRIGHT_BROWSERS_PATH`, Node's path), so
@@ -359,7 +359,7 @@ archive.
 
 ## Optional tools
 
-The selection is written by the provisioner to `/etc/collab-ai/tools.json`
+The selection is written by the provisioner to `/etc/pairtask/tools.json`
 in both containers and recorded in each generation's manifest:
 
 ```json
@@ -391,9 +391,9 @@ in both containers and recorded in each generation's manifest:
 - `sandbox_workspace_checks.py` and `sandbox_storage_checks.py` always probe
   Docker and rtk; the checks read the selection and probe only enabled tools,
   and assert that a disabled tool is absent.
-- `collab-dev-executor@` and `collab-supervised-codex` call
+- `pairtask-dev-executor@` and `pairtask-supervised-codex` call
   `/usr/local/bin/codex`; that path stays and is the launcher.
-- `collab-playwright` hardcodes `/opt/collab-mcp`; it resolves the store path
+- `pairtask-playwright` hardcodes `/opt/collab-mcp`; it resolves the store path
   through `current` instead.
 - **Launch modes require tools.** Each mode or preset (#73) declares the tools
   it needs (duo: go, codex, claude, rtk; a review preset may add codescene).
@@ -429,7 +429,7 @@ happens only when every artifact exists. PRs in order:
      the SSH key install; `--tools` selects optional vendor tools (bundles
      follow in PR 4); plan identity covers the selection, the release lock and
      the activator; `sandbox-ssh.py` refuses the agent key while
-     `collab-tools-ready` fails; `tools-retry` reruns a crashed activation on
+     `pairtask-tools-ready` fails; `tools-retry` reruns a crashed activation on
      never-released roots only.
 4. **Bundle delivery (4b).** `sandbox-download` records next to each image
    where its bundles come from (`bundle-source.json`: the bundle release the

@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 """Launch a tool from the active store generation.
 
-Invoked as `collab-tool NAME ARGS…`, or through a symlink named after the tool.
+Invoked as `pairtask-tool NAME ARGS…` (or the legacy `collab-tool NAME ARGS…`),
+or through a symlink named after the tool.
 The generation is resolved once and fixed in the child's environment, so a
 later activation on another root never changes what a running tool sees.
 """
@@ -10,7 +11,7 @@ import os
 from pathlib import Path
 import sys
 
-sys.path.insert(0, "/usr/local/lib/collab-ai")
+sys.path.insert(0, "/usr/local/lib/pairtask")
 import tool_store  # noqa: E402
 
 EXIT_MAINTENANCE, EXIT_MISSING = 75, 127
@@ -28,9 +29,9 @@ def environment(name, entry, base=None):
 
 def main(argv):
     program = Path(argv[0]).name
-    if program == "collab-tool":
+    if program in ("pairtask-tool", "collab-tool"):
         if len(argv) < 2:
-            sys.exit("usage: collab-tool NAME [ARGS…]")
+            sys.exit(f"usage: {program} NAME [ARGS…]")
         name, args = argv[1], argv[2:]
     else:
         name, args = program, argv[1:]
@@ -49,5 +50,5 @@ if __name__ == "__main__":
     try:
         main(sys.argv)
     except (tool_store.StoreError, OSError) as error:
-        print(f"collab-tool: {error}", file=sys.stderr)
+        print(f"pairtask-tool: {error}", file=sys.stderr)
         sys.exit(1)

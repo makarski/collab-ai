@@ -19,9 +19,10 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
 
 
-def wait_for_broker(ssh):
+def wait_for_broker(ssh, cli="pairtask"):
+    """cli is the status command of the image under test (collab before layout 2)."""
     for _ in range(30):
-        result = subprocess.run(ssh + ["collab status --json"], capture_output=True, text=True)
+        result = subprocess.run(ssh + [cli + " status --json"], capture_output=True, text=True)
         if result.returncode == 0:
             if json.loads(result.stdout)["health"] == "ready":
                 return

@@ -26,8 +26,8 @@ On macOS, with the dedicated Colima host already running:
 python3 scripts/sandbox-boundary.py --remote colima-collab-ai --image-dir dist/installed
 ```
 
-For local Go changes, `--bin-dir /absolute/path/to/bins` overlays Linux `collab`
-and `collab-codex` binaries matching the server architecture. The script creates
+For local Go changes, `--bin-dir /absolute/path/to/bins` overlays Linux `pairtask`
+and `pairtask-codex` binaries matching the server architecture. The script creates
 a unique project and temporary IPC directories, then removes them on exit. It
 does not restart Colima or alter its mount configuration. CI runs this proof on
 both native Linux architectures.
@@ -43,7 +43,7 @@ both native Linux architectures.
   error rather than a local or unlimited allowance.
 - Native Codex uses `environments.toml` with `include_local = false` and a stdio
   executor in dev. A requested `local` execution environment is rejected.
-- Native Codex also runs through `collab-codex --restricted-operator` with a
+- Native Codex also runs through `pairtask-codex --restricted-operator` with a
   named budget. The proof exercises denied operator requests, native tool
   routing, persisted usage, and exhaustion with operator stdin still open.
 - Killing the systemd service's supervisor with `SIGKILL` while native Codex
@@ -115,8 +115,8 @@ budget to hide uncertain spend. Restricted budgets use file version 2 so older
 launchers reject them. Ordinary version-1 budgets continue to work.
 
 The image includes the experimental administrator-only wrapper
-`collab-supervised-codex BUDGET`. It launches the restricted stdio proxy as
-`collab-codex-BUDGET.service` with systemd `KillMode=control-group`, a three-second
+`pairtask-supervised-codex BUDGET`. It launches the restricted stdio proxy as
+`pairtask-codex-BUDGET.service` with systemd `KillMode=control-group`, a three-second
 stop timeout, final SIGKILL and no automatic restart. The service fixes its budget
 directory and Codex home under `/var/lib/collab-ai-secured`, uses `/workspace` as
 its working directory and `/run/collab-ai/broker.sock` for the broker. It accepts no
@@ -126,7 +126,7 @@ executor and broker. It also publishes read-only status at `/mnt/collab-status/B
 Authenticated access is not enabled.
 
 Unlike process-group cleanup inside the proxy, systemd remains available when
-the proxy itself is killed. Direct `collab-codex --restricted-operator` still
+the proxy itself is killed. Direct `pairtask-codex --restricted-operator` still
 requires an external process-lifetime boundary for crash containment. Neither
 local process termination nor the marker proves cancellation of provider work
 already in flight. The shipped offline test makes no real provider requests.

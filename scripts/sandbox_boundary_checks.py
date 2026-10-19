@@ -9,8 +9,8 @@ from sandbox_boundary_host import run
 
 
 ENV = ["env", "PAIRTASK_BUDGET_DIR=/var/lib/collab-proof/budgets"]
-CLI = "/usr/local/bin/collab"
-LAUNCHER = "/usr/local/bin/collab-codex"
+CLI = "/usr/local/bin/pairtask"
+LAUNCHER = "/usr/local/lib/pairtask/pairtask-codex"
 STATUS = "/mnt/proof-status/public/status.sock"
 
 
@@ -31,12 +31,12 @@ def prepare_files(host):
 def install_overlay(host, role):
     if host.args.bin_dir is None:
         return
-    for name in ("collab", "collab-codex"):
-        host.push(role, host.args.bin_dir / name, "/usr/local/bin/" + name)
-        host.exe(role, "chmod", "755", "/usr/local/bin/" + name)
-    wrapper = Path(__file__).resolve().parents[1] / "infra/image/collab-supervised-codex"
-    host.push(role, wrapper, "/usr/local/bin/collab-supervised-codex")
-    host.exe(role, "chmod", "755", "/usr/local/bin/collab-supervised-codex")
+    overlay = (("pairtask", CLI), ("pairtask-codex", LAUNCHER),
+               (Path(__file__).resolve().parents[1] / "infra/image/pairtask-supervised-codex",
+                "/usr/local/bin/pairtask-supervised-codex"))
+    for source, target in overlay:
+        host.push(role, host.args.bin_dir / source if isinstance(source, str) else source, target)
+        host.exe(role, "chmod", "755", target)
 
 
 def dev_command(host, *command):

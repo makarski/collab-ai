@@ -1,10 +1,10 @@
 [Unit]
 Description=collab-ai local message broker
 After=local-fs.target
-Requires=collab-client-setup.service
-After=collab-client-setup.service
-Requires=collab-workspace-setup.service
-After=collab-workspace-setup.service
+Requires=pairtask-client-setup.service
+After=pairtask-client-setup.service
+Requires=pairtask-workspace-setup.service
+After=pairtask-workspace-setup.service
 # The secured runtime reserves its state for host-administered services.
 ConditionPathIsMountPoint=!/var/lib/collab-ai-secured
 ConditionPathIsMountPoint=!/mnt/collab-ipc
@@ -15,7 +15,7 @@ Group=agent
 WorkingDirectory=/workspace
 Environment=PAIRTASK_SOCKET_PATH=/tmp/collab-ai.sock
 Environment=PAIRTASK_DB_PATH=/var/lib/collab-ai/inboxes.db
-ExecStart=/usr/local/bin/broker
+ExecStart=/usr/local/lib/pairtask/pairtask-broker
 Restart=on-failure
 UMask=0077
 NoNewPrivileges=true

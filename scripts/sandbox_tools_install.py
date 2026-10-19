@@ -158,7 +158,10 @@ def agent_key_installed(container):
 def has_tool_store(container):
     """Whether this root's image carries the activator: the evidence that the
     release supports the tool store. Older releases keep their baked tools."""
-    return probe(container, "-x", container.layout.tools_activate)
+    present = probe(container, "-x", container.layout.tools_activate)
+    if not present and container.layout.version >= 2:
+        raise ValueError(f"{container.name}: this image's layout requires {container.layout.tools_activate}")
+    return present
 
 
 def never_released(container, state):
@@ -206,6 +209,8 @@ def store_mode(container):
     verdict = container.output("sh", "-c", MODE_SCRIPT.format(mode_file)).strip()
     if verdict not in MODES:
         raise ValueError(f"{container.name}: unknown tools mode ({verdict!r})")
+    if verdict == "mode:absent" and container.layout.version >= 2:
+        raise ValueError(f"{container.name}: this image's layout requires a tools mode file")
     return MODES[verdict]
 
 

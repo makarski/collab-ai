@@ -32,7 +32,7 @@ def save_token(directory, token):
 
 if __name__ == "__main__":
     if not sys.stdin.isatty():
-        sys.exit("Run collab-codescene-login in your interactive sandbox terminal.")
+        sys.exit("Run pairtask-codescene-login in your interactive sandbox terminal.")
     config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "codehealth-mcp"
     config = Path(os.environ.get("CS_CONFIG_DIR", config))
     try:

@@ -2,4 +2,4 @@ default = "dev"
 include_local = false
 [[environments]]
 id = "dev"
-program = "/usr/local/bin/collab-executor-connect"
+program = "/usr/local/lib/pairtask/pairtask-executor-connect"

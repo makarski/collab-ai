@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sys
 
-sys.path.insert(0, "/usr/local/lib/collab-ai")
+sys.path.insert(0, "/usr/local/lib/pairtask")
 import tool_store  # noqa: E402
 
 
@@ -34,5 +34,5 @@ if __name__ == "__main__":
     try:
         main()
     except (tool_store.StoreError, OSError, KeyError, ValueError) as error:
-        print(f"collab-tools-activate: {error}", file=sys.stderr)
+        print(f"pairtask-tools-activate: {error}", file=sys.stderr)
         sys.exit(1)

@@ -136,7 +136,7 @@ none.
   payload: the intent before routing, and the result committed together with
   the message. If the audit can't be written, nothing is routed.
 
-The `collab operator send` CLI wraps this endpoint (see
+The `pairtask operator send` CLI wraps this endpoint (see
 [secured runtime](secured-runtime.md)).
 
 ## Operator inbox (v5)
@@ -167,7 +167,7 @@ The operator endpoint gains three one-shot requests:
 
 Without a live session, these one-shot requests have no exclusive owner, so
 two concurrent receives can return the same messages. A live operator session
-(below) owns the inbox exclusively. `collab status` and the dashboard show the
+(below) owns the inbox exclusively. `pairtask status` and the dashboard show the
 inbox's pending count; older brokers show it as unknown.
 
 ## Live operator session
@@ -202,7 +202,7 @@ The operator socket also accepts a long-lived session, which the operator chat
   within the write deadline is closed and releases ownership. An idle session
   never expires.
 
-`collab operator chat` is the interactive client of this session; see
+`pairtask operator chat` is the interactive client of this session; see
 [secured runtime](secured-runtime.md#interactive-chat).
 
 ## Operator history
@@ -229,7 +229,7 @@ acknowledgment.
 - **Audit:** every history read is audited without payloads; if the audit
   fails, nothing is returned.
 
-`collab operator history [--before SEQ] [--upper SEQ] [--limit N] [--json]`
+`pairtask operator history [--before SEQ] [--upper SEQ] [--limit N] [--json]`
 prints one page and the continuation flags.
 
 Test interactively with `nc -U /tmp/collab-ai.sock`.

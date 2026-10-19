@@ -16,8 +16,8 @@ in force. An independent collaborating agent still needs its own logical ID.
 Build the updated adapter and configure the normal stdio MCP server:
 
 ```sh
-go build -o collab-mcp ./cmd/mcp
-codex mcp add collab -- /absolute/path/to/collab-mcp \
+go build -o pairtask-mcp ./cmd/mcp
+codex mcp add pairtask -- /absolute/path/to/pairtask-mcp \
   --agent-id codex-etl --harness codex --socket /tmp/collab-ai.sock
 ```
 

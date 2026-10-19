@@ -3,6 +3,6 @@ include <tunables/global>
 
 # Allow Chromium's own user-namespace sandbox inside the Incus workspace, for the
 # browser baked into the image and for one installed in the tool store.
-profile collab-chromium /{opt/collab-mcp,var/lib/collab-ai-tools/artifacts/*}/browsers/chromium-*/chrome-linux*/chrome flags=(unconfined) {
+profile pairtask-chromium /{opt/collab-mcp,var/lib/collab-ai-tools/artifacts/*}/browsers/chromium-*/chrome-linux*/chrome flags=(unconfined) {
   userns,
 }

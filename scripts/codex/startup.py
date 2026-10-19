@@ -49,7 +49,7 @@ def stop(process):
 def verify():
     with tempfile.TemporaryDirectory(prefix="collab-terminal-proof-") as temporary:
         home = Path(temporary)
-        aliases = Path("/etc/profile.d/collab-agent-aliases.sh").read_text()
+        aliases = Path("/etc/profile.d/pairtask-agent-aliases.sh").read_text()
         # Keep the installed alias's arguments; isolate only the logical inbox.
         source = home / "aliases.sh"
         source.write_text(aliases.replace("--agent-id codex-1", "--agent-id proof-" + uuid.uuid4().hex[:8]))

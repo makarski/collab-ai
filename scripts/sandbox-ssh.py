@@ -107,8 +107,11 @@ def setup(args):
     # Incus start may return before first-boot volume initialization finishes.
     run(execute + ["systemctl", "start", layout.units["workspace_setup"]])
     # Admission: no agent key before this root's tools are released (docs/sandbox-tools.md).
-    # Only images from before the tool store lack the readiness helper.
-    run(execute + ["sh", "-c", 'test ! -x "$1" || exec "$1"', "ready", layout.tools_ready])
+    if layout.version >= 2:
+        run(execute + [layout.tools_ready])  # this layout always has the helper; missing fails closed
+    else:
+        # Only legacy images from before the tool store lack the readiness helper.
+        run(execute + ["sh", "-c", 'test ! -x "$1" || exec "$1"', "ready", layout.tools_ready])
     run(execute + ["ssh-keygen", "-A"], stdout=subprocess.DEVNULL)
     host_key = run(execute + ["cat", "/etc/ssh/ssh_host_ed25519_key.pub"],
                    capture_output=True, text=True).stdout

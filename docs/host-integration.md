@@ -42,15 +42,15 @@ then choose one command:
 
 ```sh
 # New conversation
-./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+./pairtask-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   -C /absolute/path/to/project
 
 # Resume a managed or ordinary Codex conversation (close the old owner first)
-./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+./pairtask-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   resume SESSION_ID -C /absolute/path/to/project
 
 # Or fork it into a new conversation
-./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+./pairtask-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   fork SESSION_ID -C /absolute/path/to/project
 ```
 
@@ -72,7 +72,7 @@ the session; exiting stops the proxy and App Server. No running terminal/desktop
 session is attached. The CLI must support `--remote unix://PATH` (tested: 0.156.1).
 
 For a socket in the current directory, use `--socket "$PWD/collab-ai.sock"`.
-A socket file can be stale; confirm `collab status` reports ready.
+A socket file can be stale; confirm `pairtask status` reports ready.
 
 <details>
 <summary>Runtime configuration and transport</summary>
@@ -109,9 +109,9 @@ Only the latest 64 KiB is retained; truncated output is marked.
 Create a budget once, then reuse it across launches/resumes:
 
 ```sh
-collab budget create my-task --tokens 100000
-collab budget status my-task --json
-collab-codex --agent-id codex-1 --budget my-task --terminal -- resume SESSION_ID
+pairtask budget create my-task --tokens 100000
+pairtask budget status my-task --json
+pairtask-codex --agent-id codex-1 --budget my-task --terminal -- resume SESSION_ID
 ```
 
 One budget supports **one managed Codex launcher**, not Claude or shared agents.
@@ -157,7 +157,7 @@ Mount only that directory read-only into dev, keeping the launcher, budget and a
 outside dev's filesystem/process access. Query with:
 
 ```sh
-collab budget status NAME --socket /mounted/status.sock --json
+pairtask budget status NAME --socket /mounted/status.sock --json
 ```
 
 This endpoint cannot create/reset caps or report usage; a missing endpoint is an
@@ -171,10 +171,10 @@ see the [experimental boundary and limitations](budget-boundary.md).
 
 ## Codex App Server clients
 
-Build `go build -o collab-codex ./cmd/codex`. An App Server client can launch:
+Build `go build -o pairtask-codex ./cmd/codex`. An App Server client can launch:
 
 ```sh
-./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock
+./pairtask-codex --agent-id codex-1 --socket /tmp/collab-ai.sock
 ```
 
 The executable launches `codex app-server --listen stdio://` and speaks the App

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 
-SETUP = runpy.run_path(str(Path(__file__).resolve().parents[2] / "infra/image/collab-docker-setup"))
+SETUP = runpy.run_path(str(Path(__file__).resolve().parents[2] / "infra/image/pairtask-docker-setup"))
 
 
 class DockerSetupTests(unittest.TestCase):
