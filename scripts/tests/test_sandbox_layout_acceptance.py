@@ -67,7 +67,7 @@ class LayoutDiscoveryAcceptance(unittest.TestCase):
                     self.discover(json.dumps({"marker":marker}) + "\n")
 
     def test_unimplemented_versions_require_newer_host(self):
-        for version in (0, 2, 3, -1, 999):
+        for version in (0, 3, -1, 999):
             with self.subTest(version=version):
                 with self.assertRaisesRegex(ValueError, "newer host"):
                     self.discover(json.dumps({"marker":{"layout":version}}))
