@@ -16,13 +16,17 @@ type Store struct{ Directory string }
 var budgetName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func DefaultStore() (Store, error) {
-	home, err := os.UserHomeDir()
+	directory, given, err := config.Explicit(os.LookupEnv, "BUDGET_DIR")
 	if err != nil {
 		return Store{}, err
 	}
-	directory, err := config.Required(os.LookupEnv, "BUDGET_DIR", filepath.Join(home, ".local", "state", "collab-ai", "budgets"))
-	if err != nil {
-		return Store{}, err
+	if !given {
+		// The home directory is needed only for the default.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return Store{}, err
+		}
+		directory = filepath.Join(home, ".local", "state", "collab-ai", "budgets")
 	}
 	if !filepath.IsAbs(directory) {
 		return Store{}, errors.New(config.Name("BUDGET_DIR") + " must be an absolute path")

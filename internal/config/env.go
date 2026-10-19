@@ -43,18 +43,27 @@ func LookupIn(lookup LookupFunc, name string) (value string, present, legacyUsed
 	return "", false, false
 }
 
-// Required is a setting that has a default: absent, or an empty legacy
-// variable (its old meaning), gives fallback; an empty canonical variable is
-// an error rather than a silent default.
-func Required(lookup LookupFunc, name, fallback string) (string, error) {
+// Explicit is the value of a setting that has a default, and whether one was
+// given. Absent, or an empty legacy variable (its old meaning), is not given;
+// an empty canonical variable is an error rather than a silent default.
+func Explicit(lookup LookupFunc, name string) (value string, given bool, err error) {
 	value, present, legacyUsed := LookupIn(lookup, name)
 	switch {
 	case !present, legacyUsed && value == "":
-		return fallback, nil
+		return "", false, nil
 	case value == "":
-		return "", errors.New(Name(name) + " is set but empty; unset it to use the default")
+		return "", false, errors.New(Name(name) + " is set but empty; unset it to use the default")
 	}
-	return value, nil
+	return value, true, nil
+}
+
+// Required is Explicit with its default filled in.
+func Required(lookup LookupFunc, name, fallback string) (string, error) {
+	value, given, err := Explicit(lookup, name)
+	if err != nil || given {
+		return value, err
+	}
+	return fallback, nil
 }
 
 // Name is the canonical variable name of a setting, for messages.
