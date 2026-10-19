@@ -11,17 +11,17 @@ the broker in `secured` through the shared socket. From a sandbox shell, run
 `dashboard`. Or from your host checkout:
 
 ```sh
-ssh -t -F infra/incus/ssh/config workspace collab dashboard
+ssh -t -F infra/incus/ssh/config workspace pairtask dashboard
 ```
 
 For a host broker (after the [host setup](quickstart.md)):
 
 ```sh
-./collab dashboard --socket /tmp/collab-ai.sock
+./pairtask dashboard --socket /tmp/collab-ai.sock
 ```
 
 `q` closes only the dashboard. It needs an interactive terminal; scripts should
-use `collab status --json`. `NO_COLOR=1` disables color.
+use `pairtask status --json`. `NO_COLOR=1` disables color.
 
 ## Controls
 

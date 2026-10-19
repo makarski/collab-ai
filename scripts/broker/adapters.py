@@ -87,7 +87,7 @@ class Peer:
 def await_registration(identity):
     for _ in range(30):
         try:
-            result = subprocess.run(["collab", "status", "--json"], capture_output=True, text=True, timeout=1)
+            result = subprocess.run(["pairtask", "status", "--json"], capture_output=True, text=True, timeout=1)
         except subprocess.TimeoutExpired:
             continue
         if result.returncode == 0 and any(
@@ -109,7 +109,7 @@ def verify():
         claude.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         if not claude.tool("receive", {})["connected"]:
             raise ValueError("MCP adapter did not connect")
-        codex = Peer(["collab-codex", "--agent-id", codex_id, "--codex", str(Path(__file__).resolve())])
+        codex = Peer(["/usr/local/lib/pairtask/pairtask-codex", "--agent-id", codex_id, "--codex", str(Path(__file__).resolve())])
         cleanup.callback(codex.close)
         codex.call("initialize", {})
         codex.send({"method": "initialized"})

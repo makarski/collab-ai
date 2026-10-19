@@ -1,7 +1,7 @@
 [Unit]
 Description=Root-owned socket for the isolated dev executor
-Requires=collab-dev-setup.service
-After=collab-dev-setup.service
+Requires=pairtask-dev-setup.service
+After=pairtask-dev-setup.service
 ConditionPathIsMountPoint=/mnt/collab-executor
 ConditionPathIsMountPoint=!/var/lib/collab-ai-secured
 

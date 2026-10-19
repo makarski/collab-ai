@@ -3,17 +3,17 @@
 ## Current sandbox
 
 Codex and Claude run as the shared unprivileged `agent` account in `workspace`.
-Interactive `codex` selects `collab-codex`; `claude` selects the preconfigured
+Interactive `codex` selects `pairtask-codex`; `claude` selects the preconfigured
 channel adapter. They use IDs `codex-1` and `claude-1` respectively. Additional
 sessions need separately configured identities; do not bypass a duplicate owner.
 `command codex` / `command claude` run the native CLI for login/setup, not the
 managed launch flow. `dashboard` is an interactive alias; in non-interactive
-shells use `collab dashboard` (with a TTY) or `collab status --json`.
+shells use `pairtask dashboard` (with a TTY) or `pairtask status --json`.
 `gh` is preinstalled but needs its own login; connector access does not imply
 CLI authentication. Use `gh auth status` to check; never import host credentials.
 
 CodeScene and Playwright MCPs are preconfigured for both agents. CodeScene needs
-the user's own token via `collab-codescene-login`; never request tokens in chat.
+the user's own token via `pairtask-codescene-login`; never request tokens in chat.
 Report missing authentication instead of claiming an analysis passed. Playwright
 uses sandboxed headless Chromium and separate temporary browser sessions; local
 app URLs refer to workspace. Do not disable its browser sandbox to hide a failure.
@@ -74,14 +74,14 @@ the blocker; do not bypass it by changing mounts or host permissions.
 
 ## Soft budgets: report what is actually configured
 
-The normal sandbox aliases do **not** select a cap. Named `collab budget` budgets
+The normal sandbox aliases do **not** select a cap. Named `pairtask budget` budgets
 currently support one managed Codex launcher each; simultaneous Codex/Claude
 accounting and adjustable shared allocations are not implemented. A status
 command or this skill alone cannot enforce a ceiling.
 
-For an existing authorized budget, `collab budget status NAME --json` reads local
+For an existing authorized budget, `pairtask budget status NAME --json` reads local
 state. If the operator supplied a protected status socket, use that exact endpoint:
-`collab budget status NAME --socket /mnt/collab-status/NAME.sock --json`.
+`pairtask budget status NAME --socket /mnt/collab-status/NAME.sock --json`.
 Dev cannot administer the protected store; an unavailable protected endpoint
 must not fall back to a new local budget. The protected launcher is experimental
 and lacks subscription login, interactive/resume support, and Claude accounting.

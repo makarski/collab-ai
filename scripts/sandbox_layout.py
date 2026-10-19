@@ -9,7 +9,13 @@ confirmed missing marker means legacy; any other failure stops the operation.
 
 from collections import namedtuple
 import json
+from pathlib import Path
+import sys
 from types import MappingProxyType
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "infra/image"))
+from layout_schema import load  # noqa: E402
 
 MARKER = "/usr/local/share/pairtask/layout.json"
 
@@ -57,8 +63,20 @@ LEGACY = Layout(
     }),
 )
 
-# Layout version → layout. Newer layouts are added with the image that installs them.
-LAYOUTS = {1: LEGACY}
+
+
+def from_table(path):
+    """A Layout from a checked-in layout table. The image marker only selects
+    the version; every path the host uses comes from its own checkout."""
+    table = load(path)
+    layout = dict(table["layout"], units=MappingProxyType(dict(table["layout"]["units"])))
+    return Layout(version=table["version"], **layout)
+
+
+PAIRTASK = from_table(ROOT / "infra/image/layout-v2.json")
+
+# Layout version → layout. Released versions are immutable; a new layout gets a new version.
+LAYOUTS = {1: LEGACY, PAIRTASK.version: PAIRTASK}
 
 
 def discover(container):

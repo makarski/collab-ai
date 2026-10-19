@@ -1,0 +1,13 @@
+[Unit]
+Description=Release tool-dependent entry points only on an activated tool generation
+Requires=pairtask-tools-setup.service
+After=local-fs.target pairtask-tools-setup.service pairtask-workspace-setup.service pairtask-secured-setup.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/pairtask/pairtask-tools-ready
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

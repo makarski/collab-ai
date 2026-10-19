@@ -20,7 +20,7 @@ def installed_events(number, name):
     if number == 1:
         item = events[1]["item"]
         args = json.loads(item["arguments"])
-        args["cmd"] += "; collab budget status " + shlex.quote(name) + " --socket " + \
+        args["cmd"] += "; pairtask budget status " + shlex.quote(name) + " --socket " + \
                        shlex.quote("/mnt/collab-status/" + name + ".sock") + " --json"
         check = 'import json,sys; assert json.load(sys.stdin)["cap"] == 100; print("protected-cap-100")'
         args["cmd"] += " | python3 -c " + shlex.quote(check)
@@ -29,7 +29,7 @@ def installed_events(number, name):
 
 
 def budget(*args):
-    return subprocess.run(["collab", "budget", *args], env={"PATH": "/usr/local/bin:/usr/bin:/bin",
+    return subprocess.run(["pairtask", "budget", *args], env={"PATH": "/usr/local/bin:/usr/bin:/bin",
                           "PAIRTASK_BUDGET_DIR": str(ROOT / "budgets")},
                           capture_output=True, text=True, check=True, timeout=10).stdout
 

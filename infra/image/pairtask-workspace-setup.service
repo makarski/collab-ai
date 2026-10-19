@@ -8,7 +8,7 @@ ConditionPathIsMountPoint=/home/agent
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/collab-workspace-setup
+ExecStart=/usr/local/lib/pairtask/pairtask-workspace-setup
 RemainAfterExit=yes
 
 [Install]

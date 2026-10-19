@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--remote", required=True, type=identifier)
     parser.add_argument("--image-dir", required=True, type=Path)
     parser.add_argument("--storage-pool", default="default", type=identifier)
-    parser.add_argument("--bin-dir", type=Path, help="optional Linux collab/collab-codex binaries for testing local edits")
+    parser.add_argument("--bin-dir", type=Path, help="optional Linux pairtask/pairtask-codex binaries for testing local edits")
     args = parser.parse_args()
     host = BoundaryHost(args)
     print(f"Offline boundary proof: disposable project {host.project}", flush=True)

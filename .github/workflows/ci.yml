@@ -140,6 +140,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: sudo --preserve-env=PATH,GH_TOKEN python3 scripts/sandbox-operator-smoke.py --remote local --repo "$GITHUB_REPOSITORY"
+      - name: Prove the previous release and its host checkout work across the layout change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: sudo --preserve-env=PATH,GH_TOKEN python3 scripts/sandbox-compat.py --remote local --image-dir dist/installed --repo "$GITHUB_REPOSITORY"
       - name: Upload tested release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

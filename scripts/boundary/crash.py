@@ -15,7 +15,7 @@ from restricted import Operator, exercise, stop_client
 
 
 ROOT = Path("/var/lib/collab-ai-secured")
-UNIT = "collab-codex-crash-proof.service"
+UNIT = "pairtask-codex-crash-proof.service"
 
 
 def run(*args):
@@ -34,7 +34,7 @@ class HeldProvider(http.server.BaseHTTPRequestHandler):
 
 def status():
     return json.loads(run("env", "PAIRTASK_BUDGET_DIR=" + str(ROOT / "budgets"),
-                          "collab", "budget", "status", "crash-proof", "--json"))
+                          "pairtask", "budget", "status", "crash-proof", "--json"))
 
 
 def await_empty(group):
@@ -48,7 +48,7 @@ def await_empty(group):
 
 def kill_supervisor(process, unit=UNIT):
     group = run("systemctl", "show", unit, "--property=ControlGroup", "--value")
-    if not group.startswith("/system.slice/collab-codex-"):
+    if not group.startswith("/system.slice/pairtask-codex-"):
         raise ValueError(f"Unexpected supervision cgroup: {group}")
     members = (Path("/sys/fs/cgroup" + group) / "cgroup.procs").read_text().split()
     if len(members) < 2:
@@ -99,7 +99,7 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     codex_command(ROOT / "codex", server.server_port)
     run("env", "PAIRTASK_BUDGET_DIR=" + str(ROOT / "budgets"),
-        "collab", "budget", "create", "crash-proof", "--tokens", "100")
+        "pairtask", "budget", "create", "crash-proof", "--tokens", "100")
     broker = start_broker()
     try:
         crash_session(server)
@@ -131,8 +131,8 @@ def start_broker():
 
 def prove_orphan_cleanup():
     args = service_command("orphan-proof")
-    args = args[:args.index("/usr/local/bin/collab-codex")]
-    unit = "collab-codex-orphan-proof.service"
+    args = args[:args.index("/usr/local/lib/pairtask/pairtask-codex")]
+    unit = "pairtask-codex-orphan-proof.service"
     with open(os.devnull, "w") as log:
         process = subprocess.Popen(args + ["/usr/bin/python3", "/opt/proof/orphan.py", "parent"],
                                    stdin=subprocess.PIPE, stdout=log, stderr=log)
@@ -160,7 +160,7 @@ def await_orphan():
 def service_command(name):
     # This standalone cgroup proof uses its own executor/configuration fixtures.
     # Installed launcher preflight is exercised separately by the provisioning test.
-    return runpy.run_path("/usr/local/bin/collab-supervised-codex")["command"](name)
+    return runpy.run_path("/usr/local/bin/pairtask-supervised-codex")["command"](name)
 
 
 if __name__ == "__main__":

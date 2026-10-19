@@ -19,12 +19,12 @@ def agent(deployment, role, *command):
 
 
 def snapshot(deployment, role):
-    return json.loads(run(agent(deployment, role, "collab", "status", "--json")))
+    return json.loads(run(agent(deployment, role, "pairtask", "status", "--json")))
 
 
 def await_broker(deployment):
     for _ in range(40):
-        result = subprocess.run(agent(deployment, "workspace", "collab", "status", "--json"),
+        result = subprocess.run(agent(deployment, "workspace", "pairtask", "status", "--json"),
                                 capture_output=True, text=True, timeout=5)
         if result.returncode == 0 and json.loads(result.stdout)["health"] == "ready":
             return
@@ -42,7 +42,7 @@ def check_permissions(deployment):
         denied(agent(deployment, role, "rm", SOCKET))
         denied(agent(deployment, role, "ln", "-sf", "/tmp/evil.sock", SOCKET))
         denied(agent(deployment, role, "cat", DATABASE))
-        denied(deployment.execute(role, "collab", "status", "--socket", SOCKET, uid=65534))
+        denied(deployment.execute(role, "pairtask", "status", "--socket", SOCKET, uid=65534))
     denied(deployment.execute("workspace", "cat", DATABASE))
     denied(deployment.execute("workspace", "touch", IPC + "/forbidden"))
     for options in ("remount,rw", "remount,bind,rw"):
@@ -73,7 +73,7 @@ def verify(deployment):
     pending = exercise(deployment)
     run(deployment.execute("secured", "systemctl", "stop", "collab-secured-broker"))
     try:
-        denied(agent(deployment, "workspace", "collab", "status", "--json"))
+        denied(agent(deployment, "workspace", "pairtask", "status", "--json"))
         denied(deployment.execute("workspace", "pgrep", "-x", "broker"))
     finally:
         run(deployment.execute("secured", "systemctl", "start", "collab-secured-broker"))

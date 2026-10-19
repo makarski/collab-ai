@@ -7,7 +7,7 @@ a Codex agent as a duo that shares tasks, messages and a workspace.
 - An isolated Incus workspace with persistent projects and agent memory.
 - Token usage visibility and soft caps for managed Codex; shared caps are not yet available.
 
-[MIT licensed](LICENSE) · [First install](docs/sandbox.md) · [Troubleshooting](docs/troubleshooting.md)
+[MIT licensed](LICENSE) · [First install](docs/sandbox.md) · [Troubleshooting](docs/troubleshooting.md) · [Renamed from collab](docs/renamed.md)
 
 ## Set up a sandbox
 
@@ -46,7 +46,7 @@ incus --project collab-ai list colima-collab-ai:
 
 # Configure SSH once, check the broker, then enter dev
 python3 scripts/sandbox-ssh.py --remote colima-collab-ai
-ssh -F infra/incus/ssh/config workspace collab status
+ssh -F infra/incus/ssh/config workspace pairtask status
 ssh -F infra/incus/ssh/config workspace
 
 # CONTAINER: all commands below until exit run inside your SSH session
@@ -55,7 +55,7 @@ ssh -F infra/incus/ssh/config workspace
 # command codex login --device-auth
 # command claude auth login
 # gh auth login --web --git-protocol https  # optional GitHub CLI login
-# collab-codescene-login                  # optional CodeScene token; hidden prompt
+# pairtask-codescene-login                  # optional CodeScene token; hidden prompt
 
 # First use only: clone if you have not already done so
 # git clone https://github.com/pairtask/pairtask.git /workspace/collab-ai
@@ -85,7 +85,7 @@ exit
 
 Expect `Broker: ready`. Run one Codex and one Claude session; additional sessions
 need distinct agent IDs. [Login help](docs/sandbox.md#sign-in-and-network-access).
-Both agents should read `/usr/local/share/collab-ai/SKILL.md`.
+Both agents should read `/usr/local/share/pairtask/SKILL.md`.
 
 [Mount directories](docs/sandbox-mounts.md) ·
 [Mac writable sharing](docs/sandbox-mounts.md#mac-writable-sharing) ·
@@ -101,7 +101,7 @@ Run on your host:
 
 ```sh
 # Agent connections and pending messages (terminal UI)
-ssh -t -F infra/incus/ssh/config workspace collab dashboard
+ssh -t -F infra/incus/ssh/config workspace pairtask dashboard
 
 # Containers, resources and logs (browser UI)
 incus webui colima-collab-ai:  # Linux: incus webui local:

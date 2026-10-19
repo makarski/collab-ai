@@ -12,7 +12,7 @@ import (
 	"github.com/pairtask/pairtask/internal/budget"
 )
 
-const budgetUsage = "usage: collab budget create NAME --tokens N [--json]\n       collab budget status NAME [--socket PATH] [--json]"
+const budgetUsage = "usage: pairtask budget create NAME --tokens N [--json]\n       pairtask budget status NAME [--socket PATH] [--json]"
 
 type budgetOptions struct {
 	action string

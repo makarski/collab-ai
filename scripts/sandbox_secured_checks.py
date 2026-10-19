@@ -46,11 +46,11 @@ class Deployment:
                             "--group", str(uid), "--", *command]
 
     def status(self):
-        return self.execute("workspace", "env", "PAIRTASK_BUDGET_DIR=/tmp/decoy", "collab", "budget", "status",
+        return self.execute("workspace", "env", "PAIRTASK_BUDGET_DIR=/tmp/decoy", "pairtask", "budget", "status",
                             "smoke", "--socket", STATUS, "--json", uid=1001)
 
     def snapshot(self):
-        return json.loads(run(self.execute("secured", *ENV, "collab", "budget", "status", "smoke", "--json")))
+        return json.loads(run(self.execute("secured", *ENV, "pairtask", "budget", "status", "smoke", "--json")))
 
 
 def check_configuration(deployment):
@@ -97,12 +97,12 @@ def check_offline(deployment, role):
 
 
 def prepare_budget(deployment):
-    run(deployment.execute("secured", *ENV, "collab", "budget", "create", "smoke", "--tokens", "100"))
+    run(deployment.execute("secured", *ENV, "pairtask", "budget", "create", "smoke", "--tokens", "100"))
     source = Path(__file__).parent / "boundary/relay.py"
     run(deployment.base + ["file", "push", str(source), deployment.remote + "secured/opt/smoke-relay.py"])
     run(deployment.execute("secured", "sh", "-c",
         "printf '#!/bin/sh\nexec python3 /opt/smoke-relay.py fake-codex\n' >/opt/smoke-codex; chmod 755 /opt/smoke-codex"))
-    return deployment.execute("secured", *ENV, "collab-codex", "--agent-id", "smoke", "--budget", "smoke",
+    return deployment.execute("secured", *ENV, "/usr/local/lib/pairtask/pairtask-codex", "--agent-id", "smoke", "--budget", "smoke",
                               "--budget-status-socket", STATUS, "--codex", "/opt/smoke-codex")
 
 
@@ -128,7 +128,7 @@ def check_denials(deployment):
     denied(deployment.execute("secured", "cat", f"{STATE}/budgets/smoke.json", uid=1001))
     denied(deployment.execute("secured", "touch", "/mnt/collab-status/forbidden", uid=1001))
     # Creating a same-name budget in dev must not change the mounted authority.
-    run(deployment.execute("workspace", "env", "PAIRTASK_BUDGET_DIR=/tmp/decoy", "collab", "budget", "create",
+    run(deployment.execute("workspace", "env", "PAIRTASK_BUDGET_DIR=/tmp/decoy", "pairtask", "budget", "create",
                            "smoke", "--tokens", "9999", uid=1001))
     snapshot = json.loads(run(deployment.status()))
     if (snapshot["cap"], snapshot["reported_tokens"]) != (100, 60):
@@ -160,7 +160,7 @@ def check_saved_budget(deployment):
     snapshot = deployment.snapshot()
     if (snapshot["cap"], snapshot["reported_tokens"]) != (100, 60):
         raise ValueError("Lifecycle operation changed persisted accounting")
-    denied(deployment.execute("secured", *ENV, "collab", "budget", "create", "smoke", "--tokens", "9999"))
+    denied(deployment.execute("secured", *ENV, "pairtask", "budget", "create", "smoke", "--tokens", "9999"))
     denied(deployment.status())
 
 

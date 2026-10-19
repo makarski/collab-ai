@@ -25,7 +25,7 @@ def wait_for_setup():
         if marker.exists():
             return
         time.sleep(0.25)
-    raise ValueError("RTK setup did not finish; inspect collab-rtk-setup.service")
+    raise ValueError("RTK setup did not finish; inspect pairtask-rtk-setup.service")
 
 
 def hook_command(path, agent):

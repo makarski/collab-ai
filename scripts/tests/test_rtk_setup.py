@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SETUP = runpy.run_path(str(ROOT / "infra/image/collab-rtk-setup"))
+SETUP = runpy.run_path(str(ROOT / "infra/image/pairtask-rtk-setup"))
 
 
 class RTKSetupTests(unittest.TestCase):

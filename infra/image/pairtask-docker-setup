@@ -28,6 +28,6 @@ def initialize(home):
 
 if __name__ == "__main__":
     if os.getuid() != 1001:
-        sys.exit("collab-docker-setup must run as the sandbox agent (uid 1001)")
+        sys.exit("pairtask-docker-setup must run as the sandbox agent (uid 1001)")
     os.umask(0o077)
     initialize(Path.home())

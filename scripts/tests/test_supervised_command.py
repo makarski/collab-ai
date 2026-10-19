@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 
-COMMAND = runpy.run_path(str(Path(__file__).resolve().parents[2] / "infra/image/collab-supervised-codex"))["command"]
+COMMAND = runpy.run_path(str(Path(__file__).resolve().parents[2] / "infra/image/pairtask-supervised-codex"))["command"]
 
 
 class SupervisedCommandTests(unittest.TestCase):

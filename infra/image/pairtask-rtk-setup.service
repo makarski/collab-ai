@@ -1,7 +1,7 @@
 [Unit]
 Description=Initialize RTK hooks in the persistent agent home
-Requires=collab-workspace-setup.service collab-tools-ready.service
-After=collab-workspace-setup.service collab-tools-ready.service
+Requires=pairtask-workspace-setup.service pairtask-tools-ready.service
+After=pairtask-workspace-setup.service pairtask-tools-ready.service
 Before=multi-user.target
 ConditionPathIsMountPoint=/home/agent
 
@@ -12,7 +12,7 @@ Group=agent
 Environment=HOME=/home/agent
 WorkingDirectory=/home/agent
 UMask=0077
-ExecStart=/usr/local/bin/collab-rtk-setup
+ExecStart=/usr/local/lib/pairtask/pairtask-rtk-setup
 RemainAfterExit=yes
 
 [Install]

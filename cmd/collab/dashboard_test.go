@@ -19,7 +19,7 @@ func TestDashboardOptionsAndNonTTY(t *testing.T) {
 	code = run(context.Background(), []string{"dashboard"}, &stdout, &stderr)
 	assertStatusEqual(t, "non-TTY code", code, 2)
 	assertStatusEqual(t, "non-TTY stdout", stdout.Len(), 0)
-	if !strings.Contains(stderr.String(), "collab status --json") {
+	if !strings.Contains(stderr.String(), "pairtask status --json") {
 		t.Fatal("non-TTY fallback missing")
 	}
 }

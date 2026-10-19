@@ -34,13 +34,13 @@ sign-in; public releases do not. `--output NEW_DIRECTORY` selects an explicit ca
 
 | Component | Installation |
 | --- | --- |
-| `broker`, `collab-codex`, `collab-mcp`, `collab` | Compiled from the selected app source inside the image; Go tests run first, the Go toolchain is removed afterwards |
+| `pairtask` (and `pk`), `pairtask-broker`, `pairtask-codex`, `pairtask-mcp` | Compiled from the selected app source inside the image; Go tests run first, the Go toolchain is removed afterwards |
 | Git, ripgrep, tmux, OpenSSH, Python, `gh`, AppArmor | Ubuntu 24.04 packages |
 | Tool store launchers | `go`, `gofmt`, `codex`, `claude`, `node`, `npm`, `npx`, `cs-mcp`, `rtk`, `starship` launch from the [tool store](sandbox-tools.md), which the rollout fills from `tools.lock.json` and the release bundles |
 | Codex, Claude Code, Go, RTK, Starship, Node, CodeScene MCP, Playwright + Chromium, Docker | **Not in the image.** Installed at rollout, checksum-verified; the optional ones follow the tool selection |
-| Claude collaboration config | `/etc/collab-ai/claude-mcp.json` |
+| Claude collaboration config | `/etc/pairtask/claude-mcp.json` |
 | Interactive shell aliases | `/etc/profile.d/collab-agent-aliases.sh`; `codex`, `claude` and `dashboard` |
-| Collaboration skill and build manifests | `/usr/local/share/collab-ai/` |
+| Collaboration skill and build manifests | `/usr/local/share/pairtask/` |
 
 No host files, credentials or private keys enter the image. SSH host keys are
 generated per workspace; Claude auto-updates are disabled. The broker starts at

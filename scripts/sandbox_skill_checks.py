@@ -10,7 +10,7 @@ def verify(ssh, manifest):
     prefix = "docs/skills/collab-ai/"
     documents = [name for name in RECIPE_PATHS if name.startswith(prefix)]
     for name in documents:
-        installed = "/usr/local/share/collab-ai/" + name.removeprefix(prefix)
+        installed = "/usr/local/share/pairtask/" + name.removeprefix(prefix)
         command = shlex.join(["sha256sum", installed])
         result = subprocess.run(ssh + [command], check=True, capture_output=True, text=True)
         if result.stdout.split()[0] != manifest["files_sha256"][name]:

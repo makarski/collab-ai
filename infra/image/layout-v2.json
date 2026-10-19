@@ -1,0 +1,154 @@
+{
+  "version": 2,
+  "marker": "/usr/local/share/pairtask/layout.json",
+  "layout": {
+    "cli": "/usr/local/bin/pairtask",
+    "tools_ready": "/usr/local/lib/pairtask/pairtask-tools-ready",
+    "tools_activate": "/usr/local/lib/pairtask/pairtask-tools-activate",
+    "supervised_codex": "/usr/local/bin/pairtask-supervised-codex",
+    "codex_wrapper": "/usr/local/lib/pairtask/pairtask-codex",
+    "share_dir": "/usr/local/share/pairtask",
+    "etc_dir": "/etc/pairtask",
+    "sshd_config": "/etc/ssh/sshd_config.collab-ai",
+    "units": {
+      "workspace_setup": "pairtask-workspace-setup.service",
+      "tools_ready": "pairtask-tools-ready.service",
+      "tools_setup": "pairtask-tools-setup.service",
+      "rtk_setup": "pairtask-rtk-setup.service",
+      "docker_setup": "pairtask-docker-setup.service",
+      "docker_session": "pairtask-docker-session.service",
+      "dev_setup": "pairtask-dev-setup.service",
+      "client_setup": "pairtask-client-setup.service",
+      "secured_setup": "pairtask-secured-setup.service",
+      "secured_broker": "pairtask-secured-broker.service",
+      "broker": "pairtask-broker.service",
+      "dev_executor_socket": "pairtask-dev-executor.socket"
+    }
+  },
+  "forwarders": [
+    {
+      "legacy": "/usr/local/bin/collab-tools-ready",
+      "target": "/usr/local/lib/pairtask/pairtask-tools-ready",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-tools-activate",
+      "target": "/usr/local/lib/pairtask/pairtask-tools-activate",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-supervised-codex",
+      "target": "/usr/local/bin/pairtask-supervised-codex",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-codex",
+      "target": "/usr/local/lib/pairtask/pairtask-codex",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/usr/local/share/collab-ai",
+      "target": "/usr/local/share/pairtask",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/etc/collab-ai",
+      "target": "/etc/pairtask",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/usr/local/lib/collab-ai",
+      "target": "/usr/local/lib/pairtask",
+      "lifetime": "permanent"
+    },
+    {
+      "legacy": "/usr/local/bin/collab",
+      "target": "/usr/local/bin/pairtask",
+      "lifetime": "release"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-mcp",
+      "target": "/usr/local/lib/pairtask/pairtask-mcp",
+      "lifetime": "release"
+    },
+    {
+      "legacy": "/usr/local/bin/broker",
+      "target": "/usr/local/lib/pairtask/pairtask-broker",
+      "lifetime": "release"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-tool",
+      "target": "/usr/local/lib/pairtask/pairtask-tool",
+      "lifetime": "release"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-playwright",
+      "target": "/usr/local/lib/pairtask/pairtask-playwright",
+      "lifetime": "release"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-codescene-login",
+      "target": "/usr/local/bin/pairtask-codescene-login",
+      "lifetime": "release"
+    },
+    {
+      "legacy": "/usr/local/bin/collab-executor-connect",
+      "target": "/usr/local/lib/pairtask/pairtask-executor-connect",
+      "lifetime": "release"
+    }
+  ],
+  "unit_aliases": [
+    {
+      "unit": "pairtask-workspace-setup.service",
+      "alias": "collab-workspace-setup.service"
+    },
+    {
+      "unit": "pairtask-tools-ready.service",
+      "alias": "collab-tools-ready.service"
+    },
+    {
+      "unit": "pairtask-tools-setup.service",
+      "alias": "collab-tools-setup.service"
+    },
+    {
+      "unit": "pairtask-rtk-setup.service",
+      "alias": "collab-rtk-setup.service"
+    },
+    {
+      "unit": "pairtask-docker-setup.service",
+      "alias": "collab-docker-setup.service"
+    },
+    {
+      "unit": "pairtask-docker-session.service",
+      "alias": "collab-docker-session.service"
+    },
+    {
+      "unit": "pairtask-dev-setup.service",
+      "alias": "collab-dev-setup.service"
+    },
+    {
+      "unit": "pairtask-client-setup.service",
+      "alias": "collab-client-setup.service"
+    },
+    {
+      "unit": "pairtask-secured-setup.service",
+      "alias": "collab-secured-setup.service"
+    },
+    {
+      "unit": "pairtask-secured-broker.service",
+      "alias": "collab-secured-broker.service"
+    },
+    {
+      "unit": "pairtask-broker.service",
+      "alias": "collab-broker.service"
+    },
+    {
+      "unit": "pairtask-dev-executor@.service",
+      "alias": "collab-dev-executor@.service"
+    },
+    {
+      "unit": "pairtask-dev-executor.socket",
+      "alias": "collab-dev-executor.socket"
+    }
+  ]
+}

@@ -8,11 +8,11 @@ ConditionPathIsMountPoint=/mnt/collab-status
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/chown root:root /mnt/collab-status
-ExecStart=/usr/local/bin/collab-broker-setup control
+ExecStart=/usr/local/lib/pairtask/pairtask-broker-setup control
 ExecStart=/usr/bin/chmod 0755 /mnt/collab-status
 ExecStart=/usr/bin/install -d -m 0700 /var/lib/collab-ai-secured/codex
-ExecStart=/usr/bin/install -m 0600 /etc/collab-ai/secured-codex.toml /var/lib/collab-ai-secured/codex/config.toml
-ExecStart=/usr/bin/install -m 0600 /etc/collab-ai/secured-environments.toml /var/lib/collab-ai-secured/codex/environments.toml
+ExecStart=/usr/bin/install -m 0600 /etc/pairtask/secured-codex.toml /var/lib/collab-ai-secured/codex/config.toml
+ExecStart=/usr/bin/install -m 0600 /etc/pairtask/secured-environments.toml /var/lib/collab-ai-secured/codex/environments.toml
 ExecStart=/usr/bin/chown root:root /workspace
 ExecStart=/usr/bin/chmod 0755 /workspace
 RemainAfterExit=yes

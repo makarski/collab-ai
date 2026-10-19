@@ -70,7 +70,7 @@ With Incus running, run from the repository root:
 
 ```sh
 python3 scripts/sandbox-provision.py rollout
-ssh -F infra/incus/ssh/config workspace collab status
+ssh -F infra/incus/ssh/config workspace pairtask status
 ssh -F infra/incus/ssh/config workspace
 ```
 

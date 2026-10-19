@@ -6,12 +6,12 @@ this replaces it with operator-started seats and a protected `attach`.
 
 ## Problems with today's runtime
 
-- **Control commands live where agents are.** The `collab` binary is installed
+- **Control commands live where agents are.** The `pairtask` binary is installed
   in the workspace. Agents run as the same user (`agent`), so "only the human
   runs this" can't be enforced there.
 - **Agents can read credentials.** `~/.claude/.credentials.json`,
   `~/.codex/auth.json` and the GitHub token (`~/.config/gh/hosts.yml`) are
-  readable by every agent. So is the `broker` binary. Any agent can start
+  readable by every agent. So is the `pairtask-broker` binary. Any agent can start
   unmanaged model sessions or a separate group.
 - **Outbound traffic is unfiltered.** The workspace has an ordinary connection
   on `incusbr0` with outbound NAT and no filtering (`infra/incus/main.tf`).
@@ -68,7 +68,7 @@ this replaces it with operator-started seats and a protected `attach`.
 ## 2. Credentials: split model client and tool execution
 
 **Today: an experimental offline proof only** (`docs/budget-boundary.md`,
-`collab-supervised-codex`, `infra/image/secured-codex.toml`):
+`pairtask-supervised-codex`, `infra/image/secured-codex.toml`):
 
 | Part | Runs in | Today |
 | --- | --- | --- |

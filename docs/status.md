@@ -1,15 +1,15 @@
 # Broker status
 
-For a live terminal view using this same read-only API, run `collab dashboard`.
+For a live terminal view using this same read-only API, run `pairtask dashboard`.
 See [dashboard setup and controls](dashboard.md).
 
 Build the operator CLI alongside the broker:
 
 ```sh
-go build -o collab ./cmd/collab
-./collab status
-./collab status --json
-./collab status --socket /path/to/broker.sock --timeout 5s
+go build -o pairtask ./cmd/collab
+./pairtask status
+./pairtask status --json
+./pairtask status --socket /path/to/broker.sock --timeout 5s
 ```
 
 The socket defaults to `PAIRTASK_SOCKET_PATH`, then `/tmp/collab-ai.sock`. The

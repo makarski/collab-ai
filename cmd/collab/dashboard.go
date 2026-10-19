@@ -21,7 +21,7 @@ func runDashboard(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	output := dashboardTerminal(stdout)
 	if output == nil {
-		fmt.Fprintln(stderr, "collab dashboard requires an interactive terminal; use collab status or collab status --json")
+		fmt.Fprintln(stderr, "pairtask dashboard requires an interactive terminal; use pairtask status or pairtask status --json")
 		return 2
 	}
 	if err := dashboard.Run(ctx, cfg, os.Stdin, output); err != nil {

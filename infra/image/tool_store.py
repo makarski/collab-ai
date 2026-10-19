@@ -23,7 +23,7 @@ import zipfile
 STORE = Path("/var/lib/collab-ai-tools")
 STATE = Path("/var/lib/collab-ai/tools-state.json")
 ROOT_DEPS = Path("/var/lib/collab-ai/root-deps.json")
-SHARE = Path("/usr/local/share/collab-ai")
+SHARE = Path("/usr/local/share/pairtask")
 ETC = Path("/etc")
 MODE_FILE = SHARE / "tools-mode"
 LOCK_FILE = SHARE / "tools.lock.json"
@@ -350,14 +350,14 @@ def write_configuration(selection, share=SHARE, etc=ETC):
     chosen = chosen_servers(selection, servers)
     claude = read_json(share / "claude-mcp.base.json", {"mcpServers": {}})
     claude["mcpServers"] = {**claude.get("mcpServers", {}), **chosen}
-    write_durable(etc / "collab-ai/claude-mcp.json", json.dumps(claude, indent=2) + "\n")
+    write_durable(etc / "pairtask/claude-mcp.json", json.dumps(claude, indent=2) + "\n")
     base = share / "codex-config.base.toml"
     codex = base.read_text() if base.exists() else ""
     for server, spec in chosen.items():
         codex += f"\n[mcp_servers.{server}]\n"
         codex += "\n".join(f"{key} = {json.dumps(value)}" for key, value in spec.items()) + "\n"
     write_durable(etc / "codex/config.toml", codex)
-    write_markers(selection, etc / "collab-ai/tools")
+    write_markers(selection, etc / "pairtask/tools")
 
 
 def write_markers(selection, directory):

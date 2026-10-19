@@ -9,7 +9,7 @@ discussion space: it doesn't enforce task ownership or approval workflows.
 ## Goal
 
 The human runs one interactive chat in `secured` instead of single
-`collab operator send` commands:
+`pairtask operator send` commands:
 
 - see connected agents (later duos and teams) and their status
 - write multi-line messages with normal editing, and choose recipients
@@ -104,7 +104,7 @@ The human runs one interactive chat in `secured` instead of single
 2. **Session and synchronization:** bounded #19 inspection reads, plus the
    operator session's stream semantics (paging, credit, watermark, gap and
    reset). Tests with a scripted client.
-3. **`collab operator chat`:** the Bubble Tea UI, plus a manual end-to-end
+3. **`pairtask operator chat`:** the Bubble Tea UI, plus a manual end-to-end
    demonstration.
 
 **Later:** read-only viewers, forum groups by team or duo (#73), and links to
@@ -242,14 +242,14 @@ page.
 - An operator `in_reply_to` is shown as a correlation claim, not as proof that
   one message caused another.
 - **CLI:**
-  - `collab operator receive [--socket P] [--after SEQ] [--upper SEQ] [--limit N] [--json] [--timeout D]`
+  - `pairtask operator receive [--socket P] [--after SEQ] [--upper SEQ] [--limit N] [--json] [--timeout D]`
     (`--upper` echoes the returned `upper_seq` to continue the same scan)
     validates the whole response, writes its output, and only then sends
     `operator_received`. If writing output fails, no receipt is sent. A failed
     receipt is reported as a distinct error, and the printed page stays
     usable and replayable. The CLI doesn't persist cursors.
-  - `collab operator ack [--socket P] [--json] [--timeout D] MESSAGE_ID`.
-  - `collab operator send` gains `--in-reply-to ID`.
+  - `pairtask operator ack [--socket P] [--json] [--timeout D] MESSAGE_ID`.
+  - `pairtask operator send` gains `--in-reply-to ID`.
 - **Status:** an additive `StatusSnapshot.OperatorPending *int`. `nil` means an
   older broker and is shown as "unknown", not 0. `DurablePending.Total`
   includes operator-inbox rows; `OperatorPending` is a separate view of those
@@ -701,7 +701,7 @@ nothing is returned, and the watermark is unchanged.
 
 ### CLI
 
-`collab operator history [--socket P] [--before SEQ] [--upper SEQ] [--limit N] [--json] [--timeout D]`:
+`pairtask operator history [--socket P] [--before SEQ] [--upper SEQ] [--limit N] [--json] [--timeout D]`:
 - one page per call
 - validates the whole page before printing: descending unique seqs, unique
   IDs, valid direction and scope fields, cursors and omission flags
@@ -710,11 +710,11 @@ nothing is returned, and the watermark is unchanged.
   body was omitted and isn't available
 - peer text is quoted, and a correlation is labeled as a claim
 
-## PR3 contract: `collab operator chat` (final, Claude/Codex and the operator, 2026-10-13)
+## PR3 contract: `pairtask operator chat` (final, Claude/Codex and the operator, 2026-10-13)
 
 **Goal:** the interactive interface on top of the inbox (PR1), the live
 session (PR2) and history (PR2b). It runs in `secured` (`incus exec … secured
--- collab operator chat`) and needs a TTY. Built with Bubble Tea v2, Lip Gloss
+-- pairtask operator chat`) and needs a TTY. Built with Bubble Tea v2, Lip Gloss
 v2 and the Bubbles v2 `textarea`, in the dashboard's style. All network work
 runs outside `Update`, as commands.
 
@@ -817,7 +817,7 @@ runs outside `Update`, as commands.
 
 - **Quitting with an unresolved send** says the outcome is unknown and shows
   its `message_id`. This chat can't resolve it automatically after exit, but
-  the broker keeps an accepted message, and `collab operator history` shows
+  the broker keeps an accepted message, and `pairtask operator history` shows
   it. Cancelling local work never claims to cancel a submitted mutation;
   draft and queued-acknowledgment warnings say the same.
 - No draft persistence (MVP).

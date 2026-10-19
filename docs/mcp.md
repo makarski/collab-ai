@@ -19,21 +19,21 @@ with its `references/` directory. [Acceptance cases](skill-validation.md).
 
 ## Register an adapter
 
-Replace `/absolute/path/to/collab-ai/collab-mcp` below with the absolute path to
+Replace `/absolute/path/to/pairtask/pairtask-mcp` below with the absolute path to
 your built MCP executable. The socket path must match the broker's
 `PAIRTASK_SOCKET_PATH`; these examples use `/tmp/collab-ai.sock` as in the [quick start](../README.md#run-on-your-host).
 
 Codex:
 
 ```sh
-codex mcp add pairtask -- /absolute/path/to/collab-ai/collab-mcp \
+codex mcp add pairtask -- /absolute/path/to/pairtask/pairtask-mcp \
   --agent-id codex-1 --harness codex --socket /tmp/collab-ai.sock
 ```
 
 Claude Code:
 
 ```sh
-claude mcp add --transport stdio pairtask -- /absolute/path/to/collab-ai/collab-mcp \
+claude mcp add --transport stdio pairtask -- /absolute/path/to/pairtask/pairtask-mcp \
   --agent-id claude-1 --harness claude-code --socket /tmp/collab-ai.sock
 ```
 
@@ -48,7 +48,7 @@ and its flags become `args`. In Claude's configuration, the entry inside
 {
   "pairtask": {
     "type": "stdio",
-    "command": "/absolute/path/to/collab-ai/collab-mcp",
+    "command": "/absolute/path/to/pairtask/pairtask-mcp",
     "args": [
       "--agent-id", "claude-1",
       "--harness", "claude-code",

@@ -11,20 +11,20 @@ import tarfile
 ROOT = Path(__file__).resolve().parents[1]
 APP_PATHS = ["go.mod", "go.sum", "cmd", "internal"]
 RECIPE_PATHS = ["infra/image/" + name for name in (
-    "install.sh", "install-build-go.py", "sshd_config", "collab-broker.service",
-    "collab-secured-setup.service", "collab-supervised-codex", "claude-mcp.json",
-    "collab-secured-broker.service", "collab-dev-setup.service", "collab-dev-executor.socket",
-    "collab-dev-executor@.service", "secured-codex.toml", "secured-environments.toml", "collab-executor-connect",
-    "collab-client-setup.service", "collab-broker-setup",
-    "collab-workspace-setup.service", "collab-workspace-setup",
-    "collab-agent-aliases.sh", "collab-starship.sh", "install-skill.sh",
-    "collab-rtk-setup", "collab-rtk-setup.service", "codex-config.toml",
-    "docker-packages.txt", "collab-docker-setup",
-    "collab-docker-session.service", "collab-docker-setup.service", "collab-user-workspace.conf",
+    "install.sh", "install-build-go.py", "install-layout.py", "layout_schema.py", "layout-v2.json", "sshd_config", "pairtask-broker.service",
+    "pairtask-secured-setup.service", "pairtask-supervised-codex", "claude-mcp.json",
+    "pairtask-secured-broker.service", "pairtask-dev-setup.service", "pairtask-dev-executor.socket",
+    "pairtask-dev-executor@.service", "secured-codex.toml", "secured-environments.toml", "pairtask-executor-connect",
+    "pairtask-client-setup.service", "pairtask-broker-setup",
+    "pairtask-workspace-setup.service", "pairtask-workspace-setup",
+    "pairtask-agent-aliases.sh", "pairtask-starship.sh", "install-skill.sh",
+    "pairtask-rtk-setup", "pairtask-rtk-setup.service", "codex-config.toml",
+    "docker-packages.txt", "pairtask-docker-setup",
+    "pairtask-docker-session.service", "pairtask-docker-setup.service", "pairtask-user-workspace.conf",
     "tool_download.py", "tool_lock.py", "tool_store.py", "build-playwright-bundle.py",
-    "collab-tools-activate", "collab-tools-ready", "collab-tool", "collab-tools-ready.service",
-    "collab-tools-setup.service", "collab-playwright", "collab-codescene-login",
-    "collab-chromium.apparmor", "mcp/package.json", "mcp/package-lock.json", "mcp/servers.json",
+    "pairtask-tools-activate", "pairtask-tools-ready", "pairtask-tool", "pairtask-tools-ready.service",
+    "pairtask-tools-setup.service", "pairtask-playwright", "pairtask-codescene-login",
+    "pairtask-chromium.apparmor", "mcp/package.json", "mcp/package-lock.json", "mcp/servers.json",
 )] + ["docs/skills/collab-ai/" + name for name in (
     "SKILL.md", "references/managed.md", "references/manual.md", "references/sandbox.md",
 )]

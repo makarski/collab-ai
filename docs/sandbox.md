@@ -67,7 +67,7 @@ SSH uses `incus exec`, works offline and opens no network SSH listener.
 | `command codex` / `command claude` | Native CLI for login/setup |
 
 Use one session per ID; extra sessions need separate identities. Scripts use native
-binaries, not these aliases. Ask both agents to read `/usr/local/share/collab-ai/SKILL.md`;
+binaries, not these aliases. Ask both agents to read `/usr/local/share/pairtask/SKILL.md`;
 it is not automatically discovered. Copy only `SKILL.md` and `references/` when
 installing that skill elsewhere.
 
@@ -113,7 +113,7 @@ Playwright includes headless Chromium with its browser sandbox enabled. Each
 connection has separate, temporary cookies; `localhost` means the workspace.
 
 For CodeScene, create a [personal access token](https://codescene.io/users/me/pat),
-then run `collab-codescene-login` inside workspace before starting agents. The
+then run `pairtask-codescene-login` inside workspace before starting agents. The
 hidden prompt saves it privately in persistent agent home. No host login is copied.
 Analysis requires a valid CodeScene account/license; installation does not provide one.
 

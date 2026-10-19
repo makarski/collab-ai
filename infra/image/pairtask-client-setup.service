@@ -5,7 +5,7 @@ Before=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/collab-broker-setup clients
+ExecStart=/usr/local/lib/pairtask/pairtask-broker-setup clients
 RemainAfterExit=yes
 
 [Install]

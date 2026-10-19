@@ -21,15 +21,15 @@ in dev. [Upgrade and retention](sandbox-storage.md#replace-dev-retain-data).
 After [SSH setup](sandbox.md#3-ssh-into-the-workspace), run from your host:
 
 ```sh
-ssh -F infra/incus/ssh/config workspace collab status
-ssh -t -F infra/incus/ssh/config workspace collab dashboard
+ssh -F infra/incus/ssh/config workspace pairtask status
+ssh -t -F infra/incus/ssh/config workspace pairtask dashboard
 ```
 
 Both clients run in dev and query the broker through the shared socket.
 The dashboard has no database access or cap/settings controls.
 
 The shared socket is `/mnt/collab-ipc/broker.sock`. Existing `/tmp/collab-ai.sock`
-defaults are root-owned aliases, so `collab-codex`, `collab-mcp`, and the installed
+defaults are root-owned aliases, so `pairtask-codex`, `pairtask-mcp`, and the installed
 Claude MCP configuration connect without overrides. `/run/collab-ai/broker.sock`
 also remains an alias in control for the experimental launcher.
 
@@ -53,14 +53,14 @@ The human operator sends to agents from `secured`, never from the workspace. On
 the host (Linux: `local:`):
 
 ```sh
-incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --to codex-1 "Please pause after this task."
-incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --group claude-1,codex-1 "Review starts now."
-incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --all --json "Stand-up in 5 minutes."
+incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --to codex-1 "Please pause after this task."
+incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --group claude-1,codex-1 "Review starts now."
+incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --all --json "Stand-up in 5 minutes."
 
 # Read the operator inbox, acknowledge a message, and answer it
-incus --project collab-ai exec colima-collab-ai:secured -- collab operator receive
-incus --project collab-ai exec colima-collab-ai:secured -- collab operator ack MESSAGE_ID
-incus --project collab-ai exec colima-collab-ai:secured -- collab operator send --to codex-1 --in-reply-to MESSAGE_ID "Yes, go ahead."
+incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator receive
+incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator ack MESSAGE_ID
+incus --project collab-ai exec colima-collab-ai:secured -- pairtask operator send --to codex-1 --in-reply-to MESSAGE_ID "Yes, go ahead."
 ```
 
 `receive` prints a page, then confirms receipt. Continue a scan with the
@@ -86,7 +86,7 @@ message; it is not approval.
 ### Interactive chat
 
 ```sh
-incus --project collab-ai exec -t colima-collab-ai:secured -- collab operator chat
+incus --project collab-ai exec -t colima-collab-ai:secured -- pairtask operator chat
 ```
 
 The chat needs an interactive terminal (`-t`). It runs full screen: the
@@ -110,11 +110,11 @@ bottom. A hint line above the input always shows who your message will reach.
   insert a new line. PgUp/PgDn scroll, Ctrl+End jumps to the newest message,
   Ctrl+R replies to the newest message to you, F1 shows help, Ctrl+Q quits.
 - **One chat at a time:** a second chat exits with `owner_busy`. While a chat
-  is open, one-shot `collab operator receive` and `ack` are refused; `send`
+  is open, one-shot `pairtask operator receive` and `ack` are refused; `send`
   and `history` still work.
 - **Reconnects** retry with backoff. A malformed broker frame stops retrying;
   press Ctrl+R to retry. If you quit while a send's outcome is unknown, the
-  chat says so; `collab operator history` shows whether the broker accepted
+  chat says so; `pairtask operator history` shows whether the broker accepted
   it. The design is in [operator chat](operator-chat.md), "Chat v2".
 
 ## Status, stop and restart
@@ -146,18 +146,18 @@ Run on your host. On Linux replace `colima-collab-ai:` with `local:`:
 ```sh
 incus --project collab-ai exec colima-collab-ai:secured -- \
   env PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
-  collab budget create my-task --tokens 100000
+  pairtask budget create my-task --tokens 100000
 
 incus --project collab-ai exec colima-collab-ai:secured -- \
   env PAIRTASK_BUDGET_DIR=/var/lib/collab-ai-secured/budgets \
-  collab budget status my-task --json
+  pairtask budget status my-task --json
 ```
 
 Launch from the host, connecting stdin/stdout to a restricted App Server client:
 
 ```sh
 incus --project collab-ai exec colima-collab-ai:secured -T -- \
-  collab-supervised-codex my-task
+  pairtask-supervised-codex my-task
 ```
 
 This takes [JSON-line protocol messages](budget-boundary.md#experimental-restricted-operator),
@@ -167,7 +167,7 @@ To stop it from another host terminal:
 
 ```sh
 incus --project collab-ai exec colima-collab-ai:secured -- \
-  systemctl stop collab-codex-my-task.service
+  systemctl stop pairtask-codex-my-task.service
 ```
 
 The budget directory remains root-only on the private volume mounted only in secured.
@@ -182,7 +182,7 @@ Only public status belongs here, never budget JSON, credentials or admin sockets
 While `my-task` is running, a dev terminal can read its published status:
 
 ```sh
-collab budget status my-task --socket /mnt/collab-status/my-task.sock --json
+pairtask budget status my-task --socket /mnt/collab-status/my-task.sock --json
 ```
 
 Provisioning alone leaves this directory empty. A missing socket is an error;
@@ -194,7 +194,7 @@ API rejects mutations. Polling this endpoint is visibility, not admission contro
 
 - `collab-secured-setup` installs managed configuration on every secured boot,
   preserving budgets and usage. `/workspace` there is root-owned and contains no dev repository.
-- `collab-secured-broker` runs as `broker` and owns the shared IPC socket and private
+- `pairtask-secured-broker` runs as `broker` and owns the shared IPC socket and private
   database directory. The broker group can traverse the private volume root; budget
   and native configuration directories stay root-only. Its startup helper removes
   only a stale socket it owns, and refuses live endpoints, files or symlinks.
@@ -202,7 +202,7 @@ API rejects mutations. Polling this endpoint is visibility, not admission contro
   broker is disabled by its mount condition; a missing control broker never causes
   fallback to a dev-local database. Without `secured_runtime`, the standalone
   workspace broker still runs as before.
-- `collab-dev-executor.socket` owns a root-only socket on `/mnt/collab-executor`.
+- `pairtask-dev-executor.socket` owns a root-only socket on `/mnt/collab-executor`.
   Each accepted connection starts a native executor as `agent`, with no added privileges.
   Secured mounts the endpoint read-only. Agent commands cannot connect, unlink it,
   substitute a symlink, or modify installed executables.

@@ -14,12 +14,12 @@ Terminal 1:
 ```sh
 git clone https://github.com/pairtask/pairtask.git
 cd pairtask
-go build -o broker ./cmd/broker
-go build -o collab-codex ./cmd/codex
-go build -o collab-mcp ./cmd/mcp
-go build -o collab ./cmd/collab
+go build -o pairtask-broker ./cmd/broker
+go build -o pairtask-codex ./cmd/codex
+go build -o pairtask-mcp ./cmd/mcp
+go build -o pairtask ./cmd/collab
 pwd  # use this absolute directory in the configuration below
-PAIRTASK_SOCKET_PATH=/tmp/collab-ai.sock PAIRTASK_DB_PATH="$PWD/collab-ai.db" ./broker
+PAIRTASK_SOCKET_PATH=/tmp/collab-ai.sock PAIRTASK_DB_PATH="$PWD/collab-ai.db" ./pairtask-broker
 ```
 
 Leave it running. If you already have a broker, reuse it or choose another socket
@@ -30,7 +30,7 @@ in **every** command/config. Keep its database for message recovery.
 Terminal 2, from the collab-ai checkout:
 
 ```sh
-./collab-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
+./pairtask-codex --agent-id codex-1 --socket /tmp/collab-ai.sock --terminal -- \
   -C /absolute/path/to/your/project
 ```
 
@@ -47,7 +47,7 @@ the absolute path to the binary built in step 1:
 {
   "mcpServers": {
     "pairtask": {
-      "command": "/absolute/path/to/collab-ai/collab-mcp",
+      "command": "/absolute/path/to/pairtask/pairtask-mcp",
       "args": [
         "--agent-id", "claude-1",
         "--socket", "/tmp/collab-ai.sock",
@@ -74,8 +74,8 @@ agent ID. [Channel troubleshooting](host-integration.md#claude-code).
 Terminal 4, from the collab-ai checkout:
 
 ```sh
-./collab status --socket /tmp/collab-ai.sock
-./collab dashboard --socket /tmp/collab-ai.sock
+./pairtask status --socket /tmp/collab-ai.sock
+./pairtask dashboard --socket /tmp/collab-ai.sock
 ```
 
 Expect `Broker: ready` and both IDs connected. Ask Claude:

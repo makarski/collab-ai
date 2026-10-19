@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SETUP = runpy.run_path(str(ROOT / "infra/image/collab-workspace-setup"))
+SETUP = runpy.run_path(str(ROOT / "infra/image/pairtask-workspace-setup"))
 
 
 class StorageTests(unittest.TestCase):

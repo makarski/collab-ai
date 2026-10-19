@@ -1,6 +1,6 @@
 # Managed delivery
 
-Use this path for a `collab-codex --terminal` conversation or a Claude adapter
+Use this path for a `pairtask-codex --terminal` conversation or a Claude adapter
 explicitly launched with `--claude-channel --auto-listen`. In the sandbox,
 interactive `codex` and `claude` aliases select those launchers. An ordinary
 Codex session with a manual MCP server is not the same delivery mode.
@@ -12,7 +12,7 @@ your host; managed Codex uses `collab_runtime`, and restored `collab_*` tool ali
 share that listener. Do not add a manual adapter under the same logical ID.
 
 Confirm one real correlated exchange before claiming end-to-end notification in
-a new host configuration. `collab status --json` can inspect the broker without
+a new host configuration. `pairtask status --json` can inspect the broker without
 registering an agent or consuming messages. `transport_connected` and adapter
 receipts do not prove that the peer model saw anything. Claude may have MCP tools
 but lack channel consent or organization permission; state that limitation instead
@@ -51,7 +51,7 @@ that peer messages were discarded. Unknown/null metrics are not zero.
   already completed actions and does not restore the model conversation by itself.
 - The Codex launcher can start, resume, or fork a saved conversation; it cannot
   attach to an already-running ordinary CLI. For example, use `codex resume ID`
-  in an aliased sandbox shell, or `collab-codex ... --terminal -- resume ID` outside
+  in an aliased sandbox shell, or `pairtask-codex ... --terminal -- resume ID` outside
   it. Keep the existing budget for the same task. A new process changes the broker
   session ID even when the logical inbox stays the same.
 

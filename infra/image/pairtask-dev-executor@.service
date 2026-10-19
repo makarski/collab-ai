@@ -1,7 +1,7 @@
 [Unit]
 Description=Unprivileged Codex executor connection
-Requires=collab-tools-ready.service
-After=collab-tools-ready.service
+Requires=pairtask-tools-ready.service
+After=pairtask-tools-ready.service
 
 [Service]
 User=agent

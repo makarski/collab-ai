@@ -8,7 +8,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SETUP = runpy.run_path(str(ROOT / "infra/image/collab-broker-setup"))
+SETUP = runpy.run_path(str(ROOT / "infra/image/pairtask-broker-setup"))
 
 
 class BrokerSetupTests(unittest.TestCase):

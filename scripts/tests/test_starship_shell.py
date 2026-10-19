@@ -4,7 +4,7 @@ import subprocess
 import unittest
 
 
-STARTUP = Path(__file__).resolve().parents[2] / "infra/image/collab-starship.sh"
+STARTUP = Path(__file__).resolve().parents[2] / "infra/image/pairtask-starship.sh"
 
 
 class StarshipShellTests(unittest.TestCase):
