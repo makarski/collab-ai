@@ -106,7 +106,9 @@ bottom. A hint line above the input always shows who your message will reach.
   (received, not approval), `/history`, `/stages #n`, `/to`, `/find`,
   `/copy #n`, `/clear`, `/help`, `/quit`. `#n` is the number shown on each
   message. Each received message shows one mark for its state: `○ needs ack`,
-  `◐ ack queued`, `● acknowledged`.
+  `◐ ack queued`, `● acknowledged`. A reply (`/reply`, Ctrl+R) acknowledges
+  the message it answers once the broker accepts the reply; `/ack` is for
+  "seen, no reply needed".
 - **Keys:** Enter sends. Shift+Enter, Alt+Enter, Ctrl+J, or `\` then Enter
   insert a new line; the input grows with your draft up to six rows. PgUp/PgDn
   scroll, PgUp at the top loads older messages, Ctrl+End jumps to the newest

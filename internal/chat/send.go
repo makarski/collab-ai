@@ -28,6 +28,16 @@ type intent struct {
 	Recipients []protocol.Recipient
 	Excluded   []string
 	Detail     string
+	Ack        *ackBinding // the reply's automatic acknowledgment, consumed once
+}
+
+// ackBinding ties a reply's automatic acknowledgment to the message it
+// answers as it was when the reply was sent: the same ID, content and epoch,
+// or no acknowledgment.
+type ackBinding struct {
+	id          string
+	seq         uint64
+	hash, epoch string
 }
 
 type sendState struct {
@@ -117,7 +127,7 @@ func encodeText(text string) (json.RawMessage, error) {
 // dispatch queues the frozen intent; only once it is queued does the composer
 // let go of the draft and its audience.
 func (m *Model) dispatch(scope protocol.Message, payload json.RawMessage, inReplyTo string) tea.Cmd {
-	m.send.intent = &intent{ID: uuid.NewString(), Scope: scope, Payload: payload, InReplyTo: inReplyTo, State: IntentSending}
+	m.send.intent = &intent{ID: uuid.NewString(), Scope: scope, Payload: payload, InReplyTo: inReplyTo, State: IntentSending, Ack: m.bindAck()}
 	cmd := m.sendIntent()
 	m.compose.resetDraft()
 	m.status = ""
@@ -148,7 +158,7 @@ func (m *Model) sendResult(req pendingRequest, resp protocol.Message) tea.Cmd {
 	m.quitArmed = false
 	if sendAccepted(resp, in.ID) {
 		in.State, in.Recipients, in.Excluded = IntentAccepted, resp.Recipients, resp.Excluded
-		return m.startCatchup()
+		return tea.Batch(m.startCatchup(), m.autoAck(in))
 	}
 	// Only an explicit broker error rejects; anything else leaves the outcome unknown.
 	if resp.Type != protocol.TypeError {

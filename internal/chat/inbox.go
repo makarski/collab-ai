@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -30,6 +31,7 @@ type inboxState struct {
 	drainAgain bool
 	resumeAt   *protocol.PageRequest // where a scan paused at capacity continues
 	queuedAcks map[string]*queuedAck
+	quiet      map[string]bool // acknowledgments a reply made: no status line on success
 }
 
 // queuedAck is an explicit acknowledgment waiting for confirmed receipt. It
@@ -283,6 +285,7 @@ func (m *Model) acknowledge(e *entry) tea.Cmd {
 		m.status = "already acknowledged"
 	case m.inbox.queuedAcks[id] != nil:
 		delete(m.inbox.queuedAcks, id)
+		delete(m.inbox.quiet, id)
 		m.status = "queued acknowledgment cancelled"
 	case m.requested(kindAck, id):
 		m.status = "acknowledgment already sent, waiting for the broker"
@@ -319,7 +322,74 @@ func (m *Model) acknowledged(req pendingRequest, resp protocol.Message) tea.Cmd 
 	if e := m.timeline.entries[id]; e != nil {
 		e.operatorStage = protocol.StageAgentAcknowledged
 	}
+	if m.inbox.quiet[id] {
+		delete(m.inbox.quiet, id)
+		return nil
+	}
 	m.status = "acknowledged by operator (received, not approval)"
+	return nil
+}
+
+// bindAck captures the reply target as it is now, so the acknowledgment the
+// reply makes later is for exactly this message and content.
+func (m *Model) bindAck() *ackBinding {
+	r := m.compose.reply
+	if r == nil {
+		return nil
+	}
+	b := &ackBinding{id: r.messageID, seq: r.seq}
+	if e := m.timeline.entries[r.messageID]; e != nil {
+		b.hash, b.epoch = e.hash, e.epoch
+	}
+	return b
+}
+
+// autoAck runs a reply's bound acknowledgment once, on the broker's
+// acceptance of the reply. It is an ensure-ack: an acknowledgment already
+// done, queued or on the wire is left alone, and a target that changed is
+// queued suspended with the reason on its row rather than acknowledged.
+func (m *Model) autoAck(in *intent) tea.Cmd {
+	b := in.Ack
+	if b == nil {
+		return nil
+	}
+	in.Ack = nil
+	e := m.timeline.entries[b.id]
+	if e == nil || b.hash == "" {
+		m.status = fmt.Sprintf("automatic acknowledgment of #%d could not be completed", b.seq)
+		return nil
+	}
+	if e.direction != "received" || m.ackState(e) != AckNeeded {
+		return nil
+	}
+	m.inbox.quiet[b.id] = true
+	if reason := b.mismatch(e, m.epoch); reason != "" {
+		m.inbox.queuedAcks[b.id] = &queuedAck{hash: b.hash, suspended: reason}
+		return nil
+	}
+	return m.ensureAck(e)
+}
+
+// mismatch is why the bound message can't be acknowledged as it stands: its
+// content changed, or the broker restarted since the reply was sent.
+func (b *ackBinding) mismatch(e *entry, epoch string) string {
+	switch {
+	case e.conflict || e.hash != b.hash:
+		return "content changed"
+	case b.epoch != epoch:
+		return "broker restarted"
+	}
+	return ""
+}
+
+// ensureAck sends the acknowledgment now, or queues it until the receipt is
+// confirmed, without touching the status line.
+func (m *Model) ensureAck(e *entry) tea.Cmd {
+	id := e.msg.MessageID
+	if e.receipt == ReceiptConfirmed {
+		return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, id)
+	}
+	m.inbox.queuedAcks[id] = &queuedAck{hash: e.hash}
 	return nil
 }
 
