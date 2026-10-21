@@ -22,6 +22,16 @@ func growthComposerRows(t *testing.T, h *chatHarness) []string {
 	return nil
 }
 
+func growthVisibleMarkers(t *testing.T, rows []string, markers ...string) {
+	t.Helper()
+	frame := strings.Join(rows, "\n")
+	for _, marker := range markers {
+		if !strings.Contains(frame, marker) {
+			t.Fatalf("draft marker %q hidden before the six-row cap: %q", marker, frame)
+		}
+	}
+}
+
 func TestChatComposerGrowthKeepsWrappedDraftAndNewlineVisible(t *testing.T) {
 	for _, newline := range []struct {
 		name string
@@ -39,17 +49,13 @@ func TestChatComposerGrowthKeepsWrappedDraftAndNewlineVisible(t *testing.T) {
 			first := "START first words of a long draft that wraps beyond forty columns END"
 			v2Type(h, first)
 			rows := growthComposerRows(t, h)
-			if len(rows) <= 1 || !strings.Contains(strings.Join(rows, "\n"), "START") || !strings.Contains(strings.Join(rows, "\n"), "END") {
-				t.Fatalf("wrapped draft must grow and show both ends: %q", rows)
+			if len(rows) <= 1 {
+				t.Fatalf("wrapped draft must grow beyond one row: %q", rows)
 			}
+			growthVisibleMarkers(t, rows, "START", "END")
 			h.input(newline.key)
 			v2Type(h, "NEXT")
-			frame := strings.Join(growthComposerRows(t, h), "\n")
-			for _, marker := range []string{"START", "END", "NEXT"} {
-				if !strings.Contains(frame, marker) {
-					t.Fatalf("newline hid %s before the six-row cap: %q", marker, frame)
-				}
-			}
+			growthVisibleMarkers(t, growthComposerRows(t, h), "START", "END", "NEXT")
 			chatEqual(t, "newline preserves draft", h.m.State().Draft, first+"\nNEXT")
 			chatEqual(t, "newline does not send", h.m.State().Intent, nil)
 			v2FrameFits(t, h, 40, 20)

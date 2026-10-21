@@ -14,6 +14,27 @@ import (
 // status notification cannot satisfy a per-message acknowledgment assertion.
 func ackDisplayRow(t *testing.T, h *chatHarness, id, want string) string {
 	t.Helper()
+	status := ackStatusBelowMessage(t, h, id)
+	marks := 0
+	for _, label := range []string{"needs ack", "ack queued", "acknowledged"} {
+		marks += strings.Count(status, label)
+	}
+	if marks != 1 {
+		t.Fatalf("message %s status = %q; want exactly one acknowledgment mark", id, status)
+	}
+	if !strings.Contains(status, want) {
+		t.Fatalf("message %s status = %q; want %q", id, status, want)
+	}
+	for _, legacy := range []string{"you:", "receipt:"} {
+		if strings.Contains(status, legacy) {
+			t.Fatalf("message %s status = %q; unexpected legacy label %q", id, status, legacy)
+		}
+	}
+	return status
+}
+
+func ackStatusBelowMessage(t *testing.T, h *chatHarness, id string) string {
+	t.Helper()
 	rows := strings.Split(ansi.Strip(h.m.View().Content), "\n")
 	for i, row := range rows {
 		if strings.TrimSpace(row) != "body "+id {
@@ -22,15 +43,7 @@ func ackDisplayRow(t *testing.T, h *chatHarness, id, want string) string {
 		if i+1 >= len(rows) {
 			t.Fatalf("missing status for %s", id)
 		}
-		status := rows[i+1]
-		marks := 0
-		for _, label := range []string{"needs ack", "ack queued", "acknowledged"} {
-			marks += strings.Count(status, label)
-		}
-		if marks != 1 || !strings.Contains(status, want) || strings.Contains(status, "you:") || strings.Contains(status, "receipt:") {
-			t.Fatalf("message %s status = %q; want one %q mark", id, status, want)
-		}
-		return status
+		return rows[i+1]
 	}
 	t.Fatalf("message %s not visible: %q", id, rows)
 	return ""
