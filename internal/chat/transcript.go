@@ -64,7 +64,7 @@ func (m *Model) entryLines(e *entry) []renderLine {
 			b.addText(text, wrap(text, width-len(body)), body)
 		}
 	}
-	b.add(styled(wrap(m.entryStatus(e), width-4), mutedStyle), bullet)
+	b.add(m.statusLines(e, width), body)
 	if e.gapBelow {
 		b.add([]string{warnStyle.Render("── older messages may be missing here · /history loads them ──")}, body)
 	}
@@ -99,6 +99,15 @@ func (b *lineBuilder) addText(text string, parts []string, in indent) {
 		pos += len(part)
 	}
 	b.src++
+}
+
+// statusLines is the entry's delivery state, wrapped: a received message
+// leads with its acknowledgment mark, a sent one with a bullet.
+func (m *Model) statusLines(e *entry, width int) []string {
+	if e.direction == "received" {
+		return wrap(m.receivedStatus(e), width-len(body))
+	}
+	return styled(wrap("· "+m.sentStatus(e), width-len(body)), mutedStyle)
 }
 
 func styled(parts []string, style lipgloss.Style) []string {
@@ -155,17 +164,62 @@ func (m *Model) replyLabel(e *entry) string {
 	return "re " + strconv.Quote(safe(id)) + " (claim)"
 }
 
-func (m *Model) entryStatus(e *entry) string {
+// Acknowledgment states of a received message, as shown on its row.
+const (
+	AckNeeded   = "needs ack"
+	AckQueued   = "ack queued"
+	AckDone     = "acknowledged"
+	ackMarkWarn = "○ "
+	ackMarkWait = "◐ "
+	ackMarkDone = "● "
+)
+
+// ackState is the one acknowledgment state a received message is in. An
+// acknowledgment counts as queued from the operator's /ack until the broker
+// confirms it, whether it waits for the receipt or is already on the wire.
+func (m *Model) ackState(e *entry) string {
+	id := e.msg.MessageID
+	switch {
+	case e.operatorStage == protocol.StageAgentAcknowledged:
+		return AckDone
+	case m.inbox.queuedAcks[id] != nil, m.requested(kindAck, id):
+		return AckQueued
+	}
+	return AckNeeded
+}
+
+// ackMark styles the state as one distinct mark per message.
+func (m *Model) ackMark(e *entry) string {
+	switch m.ackState(e) {
+	case AckDone:
+		return doneStyle.Render(ackMarkDone + AckDone)
+	case AckQueued:
+		return queueStyle.Render(ackMarkWait + AckQueued + m.inbox.queuedAcks[e.msg.MessageID].note())
+	}
+	return needStyle.Render(ackMarkWarn + AckNeeded)
+}
+
+// receivedStatus is the mark, then anything that needs attention: a content
+// conflict or a receipt the broker hasn't confirmed after a failure. The
+// happy path (receipt pending or confirmed) shows nothing more.
+func (m *Model) receivedStatus(e *entry) string {
+	var notes []string
+	if e.conflict {
+		notes = append(notes, "CONFLICT: content changed under this ID")
+	}
+	if e.receipt == ReceiptFailed {
+		notes = append(notes, "receipt failed, retrying")
+	}
+	if len(notes) == 0 {
+		return m.ackMark(e)
+	}
+	return m.ackMark(e) + mutedStyle.Render(" · "+strings.Join(notes, " · "))
+}
+
+func (m *Model) sentStatus(e *entry) string {
 	var parts []string
 	if e.conflict {
 		parts = append(parts, "CONFLICT: content changed under this ID")
-	}
-	if e.direction == "received" {
-		parts = append(parts, "you: "+stageLabel(e.operatorStage), "receipt: "+orDash(e.receipt))
-		if q := m.inbox.queuedAcks[e.msg.MessageID]; q != nil {
-			parts = append(parts, "ack queued"+q.note())
-		}
-		return strings.Join(parts, " · ")
 	}
 	for _, st := range e.view().Stages {
 		parts = append(parts, safe(st.AgentID)+": "+stageLabel(st.Stage))
@@ -179,9 +233,10 @@ func (m *Model) entryStatus(e *entry) string {
 	return strings.Join(parts, " · ")
 }
 
-// note says why a queued ack is suspended, if it is.
+// note says why a queued ack is suspended, if it is; an ack on the wire has
+// no queue entry and no note.
 func (q *queuedAck) note() string {
-	if q.suspended == "" {
+	if q == nil || q.suspended == "" {
 		return ""
 	}
 	return " (suspended: " + q.suspended + ")"

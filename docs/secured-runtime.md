@@ -105,10 +105,13 @@ bottom. A hint line above the input always shows who your message will reach.
   line; it never touches your draft. `/agents`, `/reply [#n]`, `/ack [#n]`
   (received, not approval), `/history`, `/stages #n`, `/to`, `/find`,
   `/copy #n`, `/clear`, `/help`, `/quit`. `#n` is the number shown on each
-  message.
+  message. Each received message shows one mark for its state: `○ needs ack`,
+  `◐ ack queued`, `● acknowledged`.
 - **Keys:** Enter sends. Shift+Enter, Alt+Enter, Ctrl+J, or `\` then Enter
-  insert a new line. PgUp/PgDn scroll, Ctrl+End jumps to the newest message,
-  Ctrl+R replies to the newest message to you, F1 shows help, Ctrl+Q quits.
+  insert a new line; the input grows with your draft up to six rows. PgUp/PgDn
+  scroll, PgUp at the top loads older messages, Ctrl+End jumps to the newest
+  message, Ctrl+R replies to the newest message to you, F1 shows help, Ctrl+Q
+  quits.
 - **One chat at a time:** a second chat exits with `owner_busy`. While a chat
   is open, one-shot `pairtask operator receive` and `ack` are refused; `send`
   and `history` still work.

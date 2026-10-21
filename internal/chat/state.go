@@ -79,6 +79,7 @@ type EntryView struct {
 	BodyOmitted     bool
 	Receipt         string
 	OperatorStage   string
+	Ack             string // received: AckNeeded, AckQueued or AckDone
 	Stages          []protocol.RecipientStage
 	StagesTruncated bool
 	Conflict        bool
@@ -115,7 +116,11 @@ func (m *Model) State() StateView {
 	}
 	m.composeState(&v)
 	for _, e := range m.timeline.order {
-		v.Entries = append(v.Entries, e.view())
+		ev := e.view()
+		if e.direction == "received" {
+			ev.Ack = m.ackState(e)
+		}
+		v.Entries = append(v.Entries, ev)
 	}
 	if in := m.send.intent; in != nil {
 		v.Intent = &IntentView{MessageID: in.ID, Scope: in.Scope, InReplyTo: in.InReplyTo, State: in.State, Recipients: in.Recipients, Excluded: in.Excluded, Detail: in.Detail}

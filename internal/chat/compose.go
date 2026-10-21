@@ -9,8 +9,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// composerMaxLines bounds the composer's height on screen.
+// composerMaxLines bounds the composer's height on screen: it grows with the
+// draft, soft-wrapped rows included, up to this many rows and scrolls inside
+// after that.
 const composerMaxLines = 6
+
+// composerMaxContentLines keeps the editor's content guard out of the way: the
+// draft is bounded by the payload limit at send time, not by its row count.
+const composerMaxContentLines = 1 << 20
 
 // composer is the single input: the draft, its explicit audience and reply,
 // the command line and the open picker.
@@ -54,7 +60,8 @@ func newComposer() composer {
 	editor.Prompt = "› "
 	editor.Placeholder = "Message everyone · @agent for one · / for commands"
 	editor.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "alt+enter", "ctrl+j"))
-	editor.SetHeight(1)
+	editor.DynamicHeight, editor.MinHeight, editor.MaxHeight = true, 1, composerMaxLines
+	editor.MaxContentHeight = composerMaxContentLines
 	editor.Focus()
 	return composer{editor: editor}
 }
@@ -112,21 +119,14 @@ func (m *Model) updateEditor(msg tea.Msg) tea.Cmd {
 }
 
 // afterEdit refreshes the draft's derived state: the paste flag resets on an
-// empty draft, the mention picker follows the cursor's token, and the
-// composer grows with the text.
+// empty draft and the mention picker follows the cursor's token. The editor
+// sizes itself to its visual rows.
 func (m *Model) afterEdit() {
 	c := &m.compose
 	if c.draftEmpty() {
 		c.pasted = false
 	}
 	m.refreshAgentPicker()
-	m.sizeComposer()
-}
-
-// sizeComposer grows the composer with its lines, up to composerMaxLines.
-func (m *Model) sizeComposer() {
-	lines := strings.Count(m.compose.editor.Value(), "\n") + 1
-	m.compose.editor.SetHeight(max(1, min(lines, composerMaxLines)))
 }
 
 // paste inserts pasted text as one insertion; it never sends, runs a
@@ -143,9 +143,7 @@ func (m *Model) paste(msg tea.PasteMsg) tea.Cmd {
 		c.pasted = true
 	}
 	c.picker = nil
-	cmd := m.updateEditor(msg)
-	m.sizeComposer()
-	return cmd
+	return m.updateEditor(msg)
 }
 
 // refreshAgentPicker opens the @ picker while the cursor is in an unfinished

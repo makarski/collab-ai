@@ -4,8 +4,6 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/pairtask/pairtask/internal/protocol"
 )
 
 // target resolves "#n" to a loaded current-epoch entry, or fallback's entry
@@ -83,9 +81,10 @@ func (m *Model) hasSent() bool {
 	return false
 }
 
-// unacknowledged is a received entry the operator hasn't acknowledged or queued.
+// unacknowledged is a received entry the operator hasn't acknowledged, queued
+// or sent an acknowledgment for.
 func (m *Model) unacknowledged(e *entry) bool {
-	return e.operatorStage != protocol.StageAgentAcknowledged && m.inbox.queuedAcks[e.msg.MessageID] == nil
+	return m.ackState(e) == AckNeeded
 }
 
 func (m *Model) ackCommand(arg argument) tea.Cmd {
