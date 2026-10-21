@@ -84,9 +84,9 @@ func (m *Model) screen() string {
 }
 
 // frameLayout is how many rows each part gets. The audience divider and one
-// composer row come first, then the header, the divider under it (only while
-// the transcript keeps a row), the status line, the transcript, more composer
-// rows and the picker.
+// composer row come first, then the header, the status line, the divider
+// under the header (only while the transcript keeps a row), the transcript,
+// more composer rows and the picker.
 type frameLayout struct {
 	header, divider, status bool
 	transcript              int
@@ -99,11 +99,13 @@ func (m *Model) layout() frameLayout {
 	if rest > 0 {
 		l.header, rest = true, rest-1
 	}
-	if rest > 1 {
-		l.divider, rest = true, rest-1
-	}
 	if rest > 0 && m.statusLine() != "" {
 		l.status, rest = true, rest-1
+	}
+	// The rule under the header is decoration: it never takes the last
+	// transcript row.
+	if rest > 1 {
+		l.divider, rest = true, rest-1
 	}
 	want := m.compose.editor.Height() - 1
 	if m.compose.cmd != nil {
