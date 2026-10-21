@@ -284,6 +284,8 @@ func (m *Model) acknowledge(e *entry) tea.Cmd {
 	case m.inbox.queuedAcks[id] != nil:
 		delete(m.inbox.queuedAcks, id)
 		m.status = "queued acknowledgment cancelled"
+	case m.requested(kindAck, id):
+		m.status = "acknowledgment already sent, waiting for the broker"
 	case e.receipt == ReceiptConfirmed:
 		return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, id)
 	default:

@@ -50,9 +50,7 @@ func (m *Model) catchupPage(req protocol.PageRequest, page *protocol.HistoryPage
 	overlap := m.insertHistory(page, true)
 	m.history.pages++
 	m.history.count += len(page.Entries)
-	if first {
-		m.startScroll(page)
-	}
+	m.startScroll(page)
 	if catchupDone(first, overlap, page) {
 		return m.finishCatchup()
 	}
@@ -76,7 +74,9 @@ func (m *Model) catchupCapped() bool {
 	return m.history.pages >= m.opts.Bounds.CatchupPages || m.history.count >= m.opts.Bounds.CatchupEntries
 }
 
-// startScroll freezes the bound for scrolling into older history once.
+// startScroll freezes the bound for scrolling into older history once, on the
+// first history page ever read. The inbox drain usually adopts messages before
+// that page lands, so this can't depend on the timeline being empty.
 func (m *Model) startScroll(page *protocol.HistoryPage) {
 	if m.history.scrollUpper == 0 {
 		m.history.scrollUpper = page.UpperSeq
@@ -145,7 +145,11 @@ func (m *Model) applyHistoryStages(e *entry, h protocol.HistoryEntry, wm protoco
 // loadOlder fills the gap below gap, or loads history below the oldest
 // loaded message when gap is nil.
 func (m *Model) loadOlder(gap *entry) tea.Cmd {
-	if m.history.loadingOlder || m.history.scrollUpper == 0 {
+	if m.history.loadingOlder {
+		return nil
+	}
+	if m.history.scrollUpper == 0 {
+		m.status = "history not loaded yet"
 		return nil
 	}
 	before, upper := m.timeline.oldestSeq(), m.history.scrollUpper

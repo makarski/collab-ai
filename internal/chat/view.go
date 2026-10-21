@@ -17,6 +17,9 @@ var (
 	errStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
 	youStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
 	pickStyle  = lipgloss.NewStyle().Reverse(true)
+	needStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	queueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	doneStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	agentHues  = []string{"2", "3", "4", "5", "9", "10", "11", "12", "13", "14"}
 )
 
@@ -82,7 +85,7 @@ func (m *Model) layout() frameLayout {
 	if rest > 0 && m.statusLine() != "" {
 		l.status, rest = true, rest-1
 	}
-	want := m.composerLines() - 1
+	want := m.compose.editor.Height() - 1
 	if m.compose.cmd != nil {
 		want = 0
 	}
@@ -95,10 +98,6 @@ func (m *Model) layout() frameLayout {
 	}
 	l.transcript = max(0, rest)
 	return l
-}
-
-func (m *Model) composerLines() int {
-	return max(1, min(strings.Count(m.compose.editor.Value(), "\n")+1, composerMaxLines))
 }
 
 func (m *Model) header() string {
@@ -156,12 +155,16 @@ func (p *picker) label(item string) string {
 	return fmt.Sprintf("  /%s %s  %s", c.name, c.usage, mutedStyle.Render(c.help))
 }
 
+// composerRows renders the editor at the rows the layout gave it; on a small
+// terminal that is fewer than it sized itself to.
 func (m *Model) composerRows(l frameLayout) []string {
 	c := &m.compose
 	if c.cmd != nil {
 		return []string{c.cmd.input.View()}
 	}
-	c.editor.SetHeight(l.composer)
+	if c.editor.Height() != l.composer {
+		c.editor.SetHeight(l.composer)
+	}
 	return strings.Split(c.editor.View(), "\n")
 }
 

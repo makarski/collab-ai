@@ -773,7 +773,8 @@ runs outside `Update`, as commands.
 - If the cap is reached first, the timeline shows an explicit **history gap**
   marker, which can be paged.
 - The frozen `upper`/`before` cursor for scrolling into older history is
-  separate from the live catch-up cursor.
+  separate from the live catch-up cursor. It is set from the first history
+  page ever read, whether or not the inbox drain adopted messages first.
 - New messages increase an unread counter and never move a scrolled-away
   selection.
 
@@ -955,15 +956,23 @@ a message's text on the clipboard (OSC 52).
   ```
   12:41  codex-1 → you                                   #127
          Review is done; MERGE for 6cdc7c5.
-         ↳ re #126 · received · you acknowledged
+         ↳ re #126
+         ● acknowledged
   12:42  you → everyone (claude-1, codex-1)               #128
          Stand-up in 5 minutes.
-         ↳ claude-1 acknowledged · codex-1 received
+         · claude-1: acknowledged · codex-1: received
   ```
-  Sender and recipients are coloured per agent; delivery state is one dim
-  line. Peer text stays escaped (PR3 safety rules unchanged).
+  Sender and recipients are coloured per agent; delivery state is one line.
+  A received message carries exactly one mark for its acknowledgment state:
+  `○ needs ack`, `◐ ack queued` (with the reason when the queued
+  acknowledgment is suspended) or `● acknowledged`. A content conflict or a
+  failed receipt confirmation follows the mark; a pending or confirmed receipt
+  shows nothing more. A sent message lists its recipients' stages, dim.
+  Peer text stays escaped (PR3 safety rules unchanged).
 - **Input (bottom):** a multi-line text box with a hint line above it:
-  `→ everyone (2 online)` or `→ codex-1` or `/command`.
+  `→ everyone (2 online)` or `→ codex-1` or `/command`. It grows with the
+  draft, soft-wrapped rows included, up to six rows, and scrolls inside
+  after that.
 - No side panel, no separate `To:` field, no focus cycling.
 
 ### Addressing
@@ -1099,6 +1108,8 @@ still count them; `/history` after `/clear` shows the older rows again.
   followed by Enter insert a new line. ↑/↓ move in the editor when no picker is open.
 - PgUp/PgDn scroll the transcript; Ctrl+End jumps to the newest message. New
   messages while scrolled up raise the unread count instead of moving the view.
+  PgUp at the top of the loaded transcript loads older history under the
+  frozen cursor, or reports "no older messages".
 - Ctrl+R replies to the newest message to you; Ctrl+K opens the command line;
   F1 is `/help`; Ctrl+Q quits.
 - No key for acknowledging: `/ack` only (Ctrl+A is select-all/home for many).
