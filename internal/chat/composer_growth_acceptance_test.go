@@ -14,7 +14,7 @@ func growthComposerRows(t *testing.T, h *chatHarness) []string {
 	t.Helper()
 	rows := strings.Split(ansi.Strip(h.m.View().Content), "\n")
 	for i, row := range rows {
-		if strings.Contains(row, "→ EVERYONE") {
+		if strings.Contains(row, "── to everyone") {
 			return rows[i+1:]
 		}
 	}
