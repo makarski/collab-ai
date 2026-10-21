@@ -1,6 +1,8 @@
 """Mac sharing validation must not silently expand host access."""
 
+import os
 from pathlib import Path
+import pwd
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -38,10 +40,25 @@ class MacShareTests(unittest.TestCase):
         commands = shares.acl_commands(mounts, "collab-share")
         self.assertTrue(commands)
         for command in commands:
-            self.assertEqual(command[0], "/bin/chmod")
-            if "-R" in command:
-                self.assertIn("-P", command)
+            self.assertIn(command[0], ("/bin/chmod", "/usr/bin/find"))
+            self.assertNotIn("sudo", command)
+            self.assertNotIn("-R", command)
+            if command[0] == "/usr/bin/find":
+                self.assertNotIn("-L", command)
+                self.assertEqual(command[4:11], ["(", "-type", "f", "-o", "-type", "d", ")"])
         self.assertTrue(any("file_inherit" in " ".join(command) for command in commands))
+
+    def test_setup_changes_only_entries_the_operator_owns(self):
+        # Files the share account wrote already inherited both rules; only an owner may add an ACL.
+        mounts = self.validate([self.mount(container_readonly=False)])
+        operator = pwd.getpwuid(os.getuid()).pw_name
+        trees = [command for command in shares.acl_commands(mounts, "collab-share") if command[0] == "/usr/bin/find"]
+        self.assertEqual(len(trees), 2)
+        for command in trees:
+            self.assertEqual(command[1:4], ["/Users/operator/workspace/project", "-user", operator])
+            self.assertEqual(command[-6:-3], ["-exec", "/bin/chmod", "+a"])
+            self.assertIn("file_inherit", command[-3])
+            self.assertEqual(command[-2:], ["{}", "+"])
 
     def test_reports_unshared_targets_without_following_or_granting_them(self):
         with tempfile.TemporaryDirectory() as directory:
