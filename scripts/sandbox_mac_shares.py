@@ -139,13 +139,23 @@ def acl_commands(mounts, user):
         parents.update(parent for parent in source.parents if str(parent).startswith("/Users/"))
         rights = access_rights(entry["container_readonly"])
         rule = f"user:{user} allow {rights},file_inherit,directory_inherit"
-        commands.append(["/bin/chmod", "-R", "-P", "+a", rule, str(source)])
+        commands.append(owned_tree_command(source, operator, rule))
         if not entry["container_readonly"]:
             rule = f"user:{operator} allow {rights},file_inherit,directory_inherit"
-            commands.append(["/bin/chmod", "-R", "-P", "+a", rule, str(source)])
+            commands.append(owned_tree_command(source, operator, rule))
     for parent in sorted(parents):
         commands.insert(0, ["/bin/chmod", "+a", f"user:{user} allow search", str(parent)])
     return commands
+
+
+def owned_tree_command(source, operator, rule):
+    """Add rule to every file and directory under source that the operator owns.
+    Only an owner may change an ACL. Entries the share account created through
+    a running share are its own, and already carry both rules by inheritance,
+    so they are skipped rather than failing a later setup. Symbolic links are
+    never followed or changed."""
+    return ["/usr/bin/find", str(source), "-user", operator, "(", "-type", "f", "-o", "-type", "d", ")",
+            "-exec", "/bin/chmod", "+a", rule, "{}", "+"]
 
 
 def access_rights(readonly):
@@ -161,6 +171,6 @@ def setup(mounts, user):
     for command in commands:
         subprocess.run(command, check=True)
     identity(user)
-    # ACL changes run as the operator, never as root. -P does not follow links.
+    # ACL changes run as the operator, never as root, and only on the operator's own entries.
     for command in acl_commands(mounts, user):
         subprocess.run(command, check=True)

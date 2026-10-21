@@ -67,7 +67,10 @@ Inside workspace, `cd` to that same path. Edits reach host files immediately.
 Setup installs a root-owned helper outside shared projects. It drops to the
 non-login `collab-share` account and clears supplementary groups before serving
 files under a directory-restricted macOS sandbox. It exposes no host shell or port.
-Existing ownership stays unchanged. You can edit newly created files too.
+Existing ownership stays unchanged. You can edit newly created files too:
+files written from the workspace belong to `collab-share` and inherit your
+access from the directory. A later `setup` leaves those entries alone, since
+only an owner may change an ACL, and grants the rest as before.
 
 **Existing Mac installs:** rerun `sandbox-share.py setup --mounts-file /path/to/mounts.json`
 before upgrading macOS. Setup sets `RealName` on both sharing records, including
