@@ -243,7 +243,7 @@ func (m *Model) helpRows() []string {
 		support = "reported by this terminal"
 	}
 	rows := []string{
-		titleStyle.Render("collab operator chat") + mutedStyle.Render("  (F1 or Esc closes)"),
+		titleStyle.Render(chatTitle) + mutedStyle.Render("  (F1 or Esc closes)"),
 		"",
 		"Sending   no mention → everyone · @codex-1 @claude-1 text → just them · @all → everyone",
 		"          mentions count only at the start; later @ is plain text · \\@ starts with a literal @",

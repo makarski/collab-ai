@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -21,6 +22,18 @@ var (
 	queueStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	doneStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	agentHues  = []string{"2", "3", "4", "5", "9", "10", "11", "12", "13", "14"}
+	// The header is a colour band; the audience divider names where the draft
+	// goes, everyone in the warning colour so a broadcast is never a surprise.
+	bandStyle     = lipgloss.NewStyle().Background(lipgloss.Color("4")).Foreground(lipgloss.Color("15"))
+	bandTitle     = bandStyle.Bold(true)
+	everyoneStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	ruleStyle     = lipgloss.NewStyle().Faint(true)
+)
+
+const (
+	chatTitle   = "pairtask operator chat"
+	keyReminder = "Enter send · / commands · F1 help"
+	rule        = "─"
 )
 
 // Minimum terminal size; below it the chat shows a notice and won't send.
@@ -57,30 +70,37 @@ func (m *Model) screen() string {
 	if l.header {
 		rows = append(rows, m.header())
 	}
+	if l.divider {
+		rows = append(rows, m.rule())
+	}
 	rows = append(rows, m.mainArea(l)...)
 	rows = append(rows, m.pickerRows(l)...)
 	if l.status {
 		rows = append(rows, m.statusLine())
 	}
-	rows = append(rows, m.hintLine())
+	rows = append(rows, m.audienceDivider())
 	rows = append(rows, m.composerRows(l)...)
 	return fitLines(strings.Join(rows, "\n"), m.width)
 }
 
-// frameLayout is how many rows each part gets. The hint line and one composer
-// row come first, then the header, the status line, the transcript, more
-// composer rows and the picker.
+// frameLayout is how many rows each part gets. The audience divider and one
+// composer row come first, then the header, the divider under it (only while
+// the transcript keeps a row), the status line, the transcript, more composer
+// rows and the picker.
 type frameLayout struct {
-	header, status   bool
-	transcript       int
-	picker, composer int
+	header, divider, status bool
+	transcript              int
+	picker, composer        int
 }
 
 func (m *Model) layout() frameLayout {
 	l := frameLayout{composer: 1}
-	rest := m.height - 2 // hint + one composer row
+	rest := m.height - 2 // audience divider + one composer row
 	if rest > 0 {
 		l.header, rest = true, rest-1
+	}
+	if rest > 1 {
+		l.divider, rest = true, rest-1
 	}
 	if rest > 0 && m.statusLine() != "" {
 		l.status, rest = true, rest-1
@@ -100,19 +120,41 @@ func (m *Model) layout() frameLayout {
 	return l
 }
 
+// header is one colour band across the width: the title and connection
+// facts on the left, the key reminder on the right when it fits.
 func (m *Model) header() string {
 	conn := m.conn
 	if m.conn == Connected && !m.baseline {
 		conn = "syncing"
 	}
 	online := len(m.agents.list)
+	var title, facts string
 	switch {
 	case m.width >= 76:
-		return titleStyle.Render("collab operator chat") + mutedStyle.Render(fmt.Sprintf("  %s · %d online · unread %d · inbox %d · F1 help", conn, online, m.timeline.unread, m.inbox.pending))
+		title, facts = chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)
 	case m.width >= 52:
-		return titleStyle.Render("operator chat") + mutedStyle.Render(fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread))
+		title, facts = "operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)
+	default:
+		facts = fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread)
 	}
-	return mutedStyle.Render(fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread))
+	return m.band(title, facts)
+}
+
+// band lays the header out on a background that spans the whole width.
+func (m *Model) band(title, facts string) string {
+	left := bandTitle.Render(title) + bandStyle.Render(facts)
+	used := ansi.StringWidth(title) + ansi.StringWidth(facts)
+	right := ""
+	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 {
+		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder)
+		used = m.width
+	}
+	return left + right + bandStyle.Render(strings.Repeat(" ", max(0, m.width-used)))
+}
+
+// rule is the divider between the header and the transcript.
+func (m *Model) rule() string {
+	return ruleStyle.Render(strings.Repeat(rule, max(0, m.width)))
 }
 
 // mainArea is the transcript, or an open panel in its place.
@@ -228,15 +270,15 @@ func (m *Model) audienceText(a audience) string {
 	switch {
 	case a.source == SourceReply:
 		r := m.compose.reply
-		return fmt.Sprintf("↳ reply to #%d → %s", r.seq, safe(r.sender))
+		return fmt.Sprintf("reply to #%d → %s", r.seq, safe(r.sender))
 	case a.everyone:
-		return fmt.Sprintf("→ EVERYONE (%d online, advisory%s)", len(m.agents.list), m.partialNote())
+		return fmt.Sprintf("to everyone (%d online%s)", len(m.agents.list), m.partialNote())
 	}
 	ids := make([]string, len(a.ids))
 	for i, id := range a.ids {
 		ids[i] = safe(id)
 	}
-	return "→ " + strings.Join(ids, ", ")
+	return "to " + strings.Join(ids, ", ")
 }
 
 func (m *Model) partialNote() string {
@@ -246,10 +288,32 @@ func (m *Model) partialNote() string {
 	return ""
 }
 
-func (m *Model) hintLine() string {
+// audienceDivider is the rule above the composer that names where the draft
+// goes: "── to codex-1 ────" in that agent's colour, everyone in the warning
+// colour, a blocking reason in the error colour.
+func (m *Model) audienceDivider() string {
 	text := m.hintText()
+	label := m.audienceStyle(text).Render(text)
+	fill := max(0, m.width-ansi.StringWidth(text)-4)
+	return ruleStyle.Render(rule+rule+" ") + label + ruleStyle.Render(" "+strings.Repeat(rule, fill))
+}
+
+// audienceStyle colours the audience label by what the draft would do.
+func (m *Model) audienceStyle(text string) lipgloss.Style {
 	if strings.HasPrefix(text, "✗") {
-		return errStyle.Render(text)
+		return errStyle
 	}
-	return warnStyle.Render(text) + mutedStyle.Render("   Enter send · / commands · F1 help")
+	if m.compose.cmd != nil {
+		return titleStyle
+	}
+	a := m.resolveAudience()
+	switch {
+	case a.source == SourceReply:
+		return agentStyle(m.compose.reply.sender)
+	case a.everyone:
+		return everyoneStyle
+	case len(a.ids) > 0:
+		return agentStyle(a.ids[0])
+	}
+	return titleStyle
 }
