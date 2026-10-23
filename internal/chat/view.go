@@ -26,6 +26,7 @@ var (
 	// goes, everyone in the warning colour so a broadcast is never a surprise.
 	bandStyle     = lipgloss.NewStyle().Background(lipgloss.Color("4")).Foreground(lipgloss.Color("15"))
 	bandTitle     = bandStyle.Bold(true)
+	bandWarn      = bandStyle.Foreground(lipgloss.Color("3")).Bold(true)
 	everyoneStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 	ruleStyle     = lipgloss.NewStyle().Faint(true)
 )
@@ -134,9 +135,6 @@ func (m *Model) header() string {
 	switch {
 	case m.width >= 76:
 		title, facts = chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)
-		if reminder := m.ackReminder(); reminder != "" {
-			facts += " · " + reminder
-		}
 	case m.width >= 52:
 		title, facts = "operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)
 	default:
@@ -149,6 +147,10 @@ func (m *Model) header() string {
 func (m *Model) band(title, facts string) string {
 	left := bandTitle.Render(title) + bandStyle.Render(facts)
 	used := ansi.StringWidth(title) + ansi.StringWidth(facts)
+	if reminder := m.ackReminder(); reminder != "" && m.width >= 76 {
+		left += bandStyle.Render(" · ") + reminder
+		used += 3 + ansi.StringWidth(reminder)
+	}
 	right := ""
 	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 {
 		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder)

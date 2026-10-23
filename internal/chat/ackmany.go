@@ -142,7 +142,10 @@ func (m *Model) inboxStatusResponse(req pendingRequest, resp protocol.Message) t
 		return nil
 	}
 	m.usage = resp.Inbox
-	if !forBulk || b.sel.UpperSeq != 0 {
+	if !forBulk {
+		return m.refreshUsage(false) // a change that landed while this read was in flight
+	}
+	if b.sel.UpperSeq != 0 {
 		return nil
 	}
 	if resp.Inbox.Unacknowledged == 0 || resp.Inbox.HeadSeq == 0 {
@@ -216,18 +219,27 @@ func (m *Model) sendRefused(ev *protocol.SessionEvent) tea.Cmd {
 	return m.refreshUsage(true)
 }
 
-// refreshUsage reads the inbox usage for the header's warning, coalesced: one
-// read in flight at a time, only while something is pending, and only when
-// the pending count moved since the last read unless forced. A quiet inbox
-// costs no request.
+// refreshUsage reads the inbox usage for the header's warning. Inbox changes
+// mark the usage dirty; one read is in flight at a time and a change that
+// lands meanwhile is read again afterwards, so the warning never goes stale.
+// Unforced, a quiet inbox (nothing pending, nothing dirty) costs no request;
+// a refusal forces a read, since a global or retained bound can refuse while
+// the operator inbox itself is empty.
 func (m *Model) refreshUsage(force bool) tea.Cmd {
-	if !m.ready() || m.inbox.pending == 0 || m.requested(kindInboxStatus, statusForHeader) {
+	if !m.ready() || m.requested(kindInboxStatus, statusForHeader) {
 		return nil
 	}
-	if !force && m.usage != nil && m.usage.Unacknowledged == m.inbox.pending {
+	if !force && !m.usageDirty {
 		return nil
 	}
+	m.usageDirty = false
 	return m.request(kindInboxStatus, protocol.Message{Type: protocol.TypeOperatorInboxStatus}, statusForHeader)
+}
+
+// usageChanged notes an inbox change for the next usage read.
+func (m *Model) usageChanged() tea.Cmd {
+	m.usageDirty = m.inbox.pending > 0 || m.usage != nil
+	return m.refreshUsage(false)
 }
 
 // ackReminder is the header's call to action while anything needs
@@ -236,7 +248,7 @@ func (m *Model) ackReminder() string {
 	if m.inbox.pending == 0 {
 		return ""
 	}
-	text := fmt.Sprintf("%d need ack · /ack all", m.inbox.pending)
+	text := bandStyle.Render(fmt.Sprintf("%d need ack · /ack all", m.inbox.pending))
 	if m.usage == nil {
 		return text
 	}
@@ -246,7 +258,7 @@ func (m *Model) ackReminder() string {
 			if u.Unacknowledged >= m.usage.Limits.SenderMessages || u.Bytes >= m.usage.Limits.SenderBytes {
 				state = "AT BOUND"
 			}
-			text += fmt.Sprintf(" · %s %d/%d %s", safe(u.AgentID), u.Unacknowledged, m.usage.Limits.SenderMessages, state)
+			text += bandStyle.Render(" · ") + bandWarn.Render(fmt.Sprintf("%s %d/%d %s", safe(u.AgentID), u.Unacknowledged, m.usage.Limits.SenderMessages, state))
 		}
 	}
 	return text
