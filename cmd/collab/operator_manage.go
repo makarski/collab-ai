@@ -73,7 +73,7 @@ func writeInboxStatus(w io.Writer, s protocol.InboxStatus) {
 	fmt.Fprintf(w, "operator inbox: %d unacknowledged (%d not yet received), %s of %s, %d/%d messages; head #%d, oldest unacknowledged #%d\n",
 		s.Unacknowledged, s.Unreceived, humanBytes(s.Bytes), humanBytes(s.Limits.InboxBytes), s.Unacknowledged, s.Limits.InboxMessages, s.HeadSeq, s.OldestUnacknowledgedSeq)
 	for _, u := range s.Senders {
-		fmt.Fprintf(w, "  %-24s %3d/%d unacknowledged (%d not yet received), %s of %s%s\n", u.AgentID, u.Unacknowledged, s.Limits.SenderMessages, u.Unreceived, humanBytes(u.Bytes), humanBytes(s.Limits.SenderBytes), nearBound(u, s.Limits))
+		fmt.Fprintf(w, "  %-24q %3d/%d unacknowledged (%d not yet received), %s of %s%s\n", u.AgentID, u.Unacknowledged, s.Limits.SenderMessages, u.Unreceived, humanBytes(u.Bytes), humanBytes(s.Limits.SenderBytes), nearBound(u, s.Limits))
 	}
 	fmt.Fprintf(w, "retained history: %d/%d messages, %s of %s\n", s.Retained.Messages, s.Retained.LimitMessages, humanBytes(s.Retained.Bytes), humanBytes(s.Retained.LimitBytes))
 }
@@ -145,12 +145,32 @@ func parseInboxAck(args []string, stderr io.Writer) (inboxAck, int) {
 		}
 		run.set = map[string]bool{}
 		flags.Visit(func(f *flag.Flag) { run.set[f.Name] = true })
-		if run.sel.Limit < 1 || run.sel.Limit > protocol.AckManyMax {
-			return errors.New("limit must be 1 to 256")
+		if err := run.validateSelection(); err != nil {
+			return err
 		}
 		return run.call.validate()
 	})
 	return run, code
+}
+
+// validateSelection rejects bounds that could never form a valid page,
+// before anything is sent.
+func (r inboxAck) validateSelection() error {
+	if r.sel.Limit < 1 || r.sel.Limit > protocol.AckManyMax {
+		return errors.New("limit must be 1 to 256")
+	}
+	if r.set["upper"] && r.sel.UpperSeq == 0 {
+		return errors.New("upper must be a committed sequence above 0; omit it to use the inbox head")
+	}
+	if r.set["upper"] && r.sel.AfterSeq >= r.sel.UpperSeq {
+		return errors.New("after must be below upper")
+	}
+	if r.set["from"] {
+		if err := protocol.ValidateAgentID(r.sel.From); err != nil {
+			return fmt.Errorf("from: %w", err)
+		}
+	}
+	return nil
 }
 
 // resolveBounds freezes the upper bound and the start from the inbox status
@@ -184,8 +204,8 @@ func (r *inboxAck) acknowledge(ctx context.Context, stdout, stderr io.Writer) (p
 		if err != nil {
 			return total, err
 		}
-		if resp.AckMany == nil {
-			fmt.Fprintln(stderr, "operator inbox ack response has no result; acknowledgment not verified")
+		if err := validateAckMany(r.sel, resp); err != nil {
+			fmt.Fprintln(stderr, "operator inbox ack returned an invalid result; acknowledgment not verified:", err)
 			return total, errReported
 		}
 		if r.call.asJSON {
@@ -202,4 +222,44 @@ func (r *inboxAck) acknowledge(ctx context.Context, stdout, stderr io.Writer) (p
 		}
 		r.sel.AfterSeq = resp.AckMany.NextAfterSeq
 	}
+}
+
+// validateAckMany checks a page result before it is trusted: the stage and
+// principal, counts within the page, receipts matching the new
+// acknowledgments, and a cursor inside the bound that advances when there is
+// more, so a malformed broker can neither loop the client nor move it past
+// the frozen upper bound.
+func validateAckMany(sel protocol.AckSelection, resp protocol.Message) error {
+	if resp.Stage != protocol.StageAgentAcknowledged || resp.AgentID != protocol.OperatorID {
+		return errors.New("stage or principal is not the operator's acknowledgment")
+	}
+	res := resp.AckMany
+	if res == nil {
+		return errors.New("no result")
+	}
+	if err := validateCounts(sel, res); err != nil {
+		return err
+	}
+	if len(resp.Receipts) != res.Acknowledged {
+		return errors.New("receipts don't match the acknowledged count")
+	}
+	for _, r := range resp.Receipts {
+		if r.Stage != protocol.StageAgentAcknowledged || r.AgentID != protocol.OperatorID || r.MessageID == "" {
+			return errors.New("a receipt isn't an operator acknowledgment")
+		}
+	}
+	return nil
+}
+
+func validateCounts(sel protocol.AckSelection, res *protocol.AckManyResult) error {
+	if res.Acknowledged < 0 || res.AlreadyAcknowledged < 0 || res.Skipped < 0 || res.Acknowledged+res.AlreadyAcknowledged+res.Skipped > sel.Limit {
+		return errors.New("counts are outside the page")
+	}
+	if res.NextAfterSeq < sel.AfterSeq || res.NextAfterSeq > sel.UpperSeq {
+		return errors.New("cursor is outside the selection")
+	}
+	if res.More && res.NextAfterSeq <= sel.AfterSeq {
+		return errors.New("continuation makes no progress")
+	}
+	return nil
 }

@@ -149,7 +149,11 @@ counted as a connected session.
   `invalid_reply`. A database error is `internal`, never `invalid_reply`.
   Without `in_reply_to`, the message is proactive.
 - **Quotas,** checked atomically in the persist transaction and measured with
-  `DurableWireBytes`; violations return `inbox_full`:
+  `DurableWireBytes`; violations return `inbox_full`, whose detail names the
+  bound that refused (`sender messages: 16/16 unacknowledged messages`,
+  `inbox bytes`, `global pending`, `retained messages`, …) and the operator
+  session receives `send_refused` for the sender, since only the operator can
+  free the bound:
   - per logical sender: at most 16 pending messages and 512 KiB
   - the whole operator inbox: at most 256 messages and 8 MiB
   - the global pending and retained caps still apply
@@ -249,6 +253,25 @@ page.
     receipt is reported as a distinct error, and the printed page stays
     usable and replayable. The CLI doesn't persist cursors.
   - `pairtask operator ack [--socket P] [--json] [--timeout D] MESSAGE_ID`.
+  - `pairtask operator inbox status [--socket P] [--json]` reads usage against
+    the inbox bounds (per sender and whole inbox: unacknowledged, not yet
+    received, bytes; retained history) and changes nothing; the read is
+    audited.
+  - `pairtask operator inbox ack [--from AGENT] [--after SEQ] [--upper SEQ]
+    [--limit N] [--all]` acknowledges a stable page (`operator_ack_many`):
+    every operator-inbox row with `after < seq <= upper`, from one sender when
+    given, in sequence order, acknowledged or not, so a retry re-examines the
+    same rows. Received rows are acknowledged, each with its own payload-free
+    audit row; already acknowledged rows are counted; rows not yet received
+    are skipped and counted, never receipted. Omitted bounds are frozen from
+    the inbox status once (`upper` = head, `after` = oldest unacknowledged
+    minus one) so arrivals during the run are never swept in; `--all`
+    continues under that frozen upper until `more` is false. The CLI refuses
+    `--upper 0` and `after >= upper` before connecting and verifies every
+    result (stage, principal, counts within the page, receipts, a cursor
+    inside the bound that advances) before trusting it. While a chat owns the
+    session the one-shot command reports `owner_busy`; the chat's `/ack all`
+    is the in-session path.
   - `pairtask operator send` gains `--in-reply-to ID`.
 - **Status:** an additive `StatusSnapshot.OperatorPending *int`. `nil` means an
   older broker and is shown as "unknown", not 0. `DurablePending.Total`
@@ -316,6 +339,7 @@ Events are notifications, not payloads.
 | --- | --- | --- |
 | `conversation_changed` | a new operator-sent message (from any session or one-shot send) or a new message to the operator is committed | seq, message ID, direction (`sent`/`received`) |
 | `inbox_changed` | an inbox message arrives, is received, or is acknowledged | head seq, pending count |
+| `send_refused` | an agent's message to the operator hit an inbox bound | the sender's agent ID and the bound as `<bound>: <count>/<limit> <unit>` |
 | `stage_changed` | a committed **first** transition of a recipient stage on an operator-sent message, or a committed reclaim that moves a pending delivery to a new session (stage `accepted`) | message ID, agent ID, session ID, stage |
 | `presence_changed` | an agent connects or disconnects | agent ID, session ID, state, negotiated version |
 
@@ -1079,7 +1103,7 @@ acknowledges, quits or picks recipients.
 |---|---|
 | `/agents` | List agents: online/offline, protocol, last seen |
 | `/reply [#n]` | Reply to received message #n (default: the newest message to you); `/reply cancel` clears |
-| `/ack [#n]` | Acknowledge received message #n (default: newest unacknowledged to you); received, not approval |
+| `/ack [#n\|all\|from id]` | `/ack` opens a picker of messages needing acknowledgment, newest first, Enter acknowledges the selected one, Esc leaves the draft untouched; `/ack #n` targets one; `/ack all` and `/ack from id` acknowledge in bulk through `operator_ack_many` under a frozen upper bound and report "acknowledged N (M already, K not yet received)"; received, not approval |
 | `/history` | Load older messages into the transcript |
 | `/stages #n` | Recipient delivery stages for a sent message (bounded, coalesced as today) |
 | `/to ["id", …]` | Explicit audience for the next message; `/to` alone clears it |
