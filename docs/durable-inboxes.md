@@ -89,8 +89,17 @@ pre-existing/non-durable history. The filesystem can still run out of space;
 storage errors are reported without claiming acceptance or acknowledgment.
 
 There is **no automatic expiry or eviction**, including for acknowledged history.
-Reaching a bound rejects new durable sends atomically with `inbox_full`. An
-acknowledgment frees pending capacity; it does not free retained-history capacity.
+Reaching a bound rejects new durable sends atomically with `inbox_full`, whose
+detail names the bound (`<bound>: <count>/<limit> <unit>`); a refused send to
+the operator also raises `send_refused` on the operator session. An
+acknowledgment frees pending capacity; it does not free retained-history
+capacity. The operator frees pending capacity in bulk with
+`pairtask operator inbox ack` or the chat's `/ack all`, which acknowledge a
+stable, explicitly bounded page (see `docs/operator-chat.md`, CLI) and never
+receipt what the operator client hasn't adopted. `pairtask operator inbox
+status` shows usage against the per-sender, operator-inbox and
+retained-history bounds; the global pending bounds across all inboxes are
+reported only when they refuse a send.
 This deliberately small first implementation requires operator-managed archival
 at the retained-history limit. Archival is not provided by this change. Preserve
 unfinished work and stop the broker before any database maintenance; starting a

@@ -17,11 +17,13 @@ const (
 	TypeAck     = "ack"     // client -> broker receipt; broker -> client persisted acknowledgment
 
 	// Operator socket only: one request per connection.
-	TypeOperatorSend     = "operator_send"
-	TypeOperatorReceive  = "operator_receive"  // request a page of the operator inbox
-	TypeOperatorReceived = "operator_received" // confirm the client adopted received messages
-	TypeOperatorAck      = "operator_ack"      // the human's explicit receipt of one message
-	TypeOperatorPage     = "operator_page"     // response to operator_receive
+	TypeOperatorSend        = "operator_send"
+	TypeOperatorReceive     = "operator_receive"      // request a page of the operator inbox
+	TypeOperatorReceived    = "operator_received"     // confirm the client adopted received messages
+	TypeOperatorAck         = "operator_ack"          // the human's explicit receipt of one message
+	TypeOperatorAckMany     = "operator_ack_many"     // the human's explicit receipt of a stable page of messages
+	TypeOperatorInboxStatus = "operator_inbox_status" // request and response: inbox usage against its bounds
+	TypeOperatorPage        = "operator_page"         // response to operator_receive
 
 	// Live operator session.
 	TypeOperatorSessionOpen   = "operator_session_open"
@@ -156,6 +158,9 @@ type Message struct {
 	PageRequest     *PageRequest      `json:"page_request,omitempty"`     // operator_receive
 	Page            *OperatorPage     `json:"page,omitempty"`             // operator_page
 	MessageIDs      []string          `json:"message_ids,omitempty"`      // operator_received
+	AckSelection    *AckSelection     `json:"ack_selection,omitempty"`    // operator_ack_many
+	AckMany         *AckManyResult    `json:"ack_many,omitempty"`         // operator_ack_many response
+	Inbox           *InboxStatus      `json:"inbox,omitempty"`            // operator_inbox_status response
 	RequestID       string            `json:"request_id,omitempty"`       // operator session requests and their responses
 	Client          string            `json:"client,omitempty"`           // operator_session_open
 	Session         *SessionInfo      `json:"session,omitempty"`          // operator_session
@@ -176,7 +181,65 @@ type Message struct {
 const (
 	OperatorPageDefault = 16
 	OperatorPageMax     = 32
+	AckManyDefault      = 64
+	AckManyMax          = 256
 )
+
+// AckSelection is a stable page of operator-inbox rows to acknowledge: every
+// row with AfterSeq < seq <= UpperSeq (from one sender when From is set),
+// acknowledged or not, in sequence order, at most Limit rows. Retrying the
+// same selection re-examines the same rows.
+type AckSelection struct {
+	From     string `json:"from,omitempty"`
+	AfterSeq uint64 `json:"after_seq"`
+	UpperSeq uint64 `json:"upper_seq"`
+	Limit    int    `json:"limit,omitempty"` // omitted or 0 means AckManyDefault
+}
+
+// AckManyResult reports what one operator_ack_many page did. Skipped rows
+// were not yet received and stay untouched; a later run of the same scope
+// acknowledges them once they are.
+type AckManyResult struct {
+	Acknowledged        int    `json:"acknowledged"`
+	AlreadyAcknowledged int    `json:"already_acknowledged"`
+	Skipped             int    `json:"skipped"`
+	NextAfterSeq        uint64 `json:"next_after_seq"`
+	More                bool   `json:"more"`
+}
+
+// InboxStatus is the operator inbox's usage against its bounds. Unreceived
+// rows are a subset of unacknowledged ones.
+type InboxStatus struct {
+	HeadSeq                 uint64        `json:"head_seq"`
+	OldestUnacknowledgedSeq uint64        `json:"oldest_unacknowledged_seq"`
+	Unacknowledged          int           `json:"unacknowledged"`
+	Unreceived              int           `json:"unreceived"`
+	Bytes                   int           `json:"bytes"`
+	Limits                  InboxLimits   `json:"limits"`
+	Senders                 []SenderUsage `json:"senders"`
+	Retained                RetainedUsage `json:"retained"`
+}
+
+type InboxLimits struct {
+	SenderMessages int `json:"sender_messages"`
+	SenderBytes    int `json:"sender_bytes"`
+	InboxMessages  int `json:"inbox_messages"`
+	InboxBytes     int `json:"inbox_bytes"`
+}
+
+type SenderUsage struct {
+	AgentID        string `json:"agent_id"`
+	Unacknowledged int    `json:"unacknowledged"`
+	Unreceived     int    `json:"unreceived"`
+	Bytes          int    `json:"bytes"`
+}
+
+type RetainedUsage struct {
+	Messages      int `json:"messages"`
+	Bytes         int `json:"bytes"`
+	LimitMessages int `json:"limit_messages"`
+	LimitBytes    int `json:"limit_bytes"`
+}
 
 // PageRequest selects unacknowledged operator-inbox messages with
 // AfterSeq < seq <= UpperSeq. UpperSeq 0 starts a new scan bounded by the

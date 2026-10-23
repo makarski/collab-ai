@@ -189,8 +189,15 @@ func (m *Model) pickerKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		p.selected = (p.selected - 1 + len(p.items)) % len(p.items)
 	case "down":
 		p.selected = (p.selected + 1) % len(p.items)
-	case "tab", "enter":
+	case "enter":
+		if p.kind == PickerAck {
+			return m.pickAck(p.items[p.selected]), true
+		}
 		m.complete(p.items[p.selected])
+	case "tab":
+		if p.kind != PickerAck {
+			m.complete(p.items[p.selected])
+		}
 	case "esc":
 		m.compose.picker = nil
 	default:

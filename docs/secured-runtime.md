@@ -102,7 +102,8 @@ bottom. A hint line above the input always shows who your message will reach.
     Start with `\@` for a message that begins with `@`.
   - IDs that can't be typed as `@id` are addressed with `/to ["id"]`.
 - **Commands:** `/` in an empty input, or Ctrl+K at any time, opens the command
-  line; it never touches your draft. `/agents`, `/reply [#n]`, `/ack [#n]`
+  line; it never touches your draft. `/agents`, `/reply [#n]`, `/ack` (a
+  picker of what needs acknowledging; `/ack all`, `/ack from id` in bulk)
   (received, not approval), `/history`, `/stages #n`, `/to`, `/find`,
   `/copy #n`, `/clear`, `/help`, `/quit`. `#n` is the number shown on each
   message. Each received message shows one mark for its state: `○ needs ack`,

@@ -88,20 +88,20 @@ func checkDurableCapacity(ctx context.Context, tx *sql.Tx, size durableSize) err
 		return err
 	}
 	if count >= MaxRetainedMessages {
-		return ErrInboxFull
+		return inboxFull("retained messages", count, MaxRetainedMessages, "messages")
 	}
 	if bytes+size.bytes+len(size.recipients)*1024 > MaxRetainedBytes {
-		return ErrInboxFull
+		return inboxFull("retained bytes", bytes+size.bytes+len(size.recipients)*1024, MaxRetainedBytes, "bytes")
 	}
 	query := `SELECT COUNT(*), COALESCE(SUM(d.wire_bytes),0) FROM durable_inbox i JOIN durable_messages d USING(message_id) WHERE i.acknowledged_at IS NULL`
 	if err := tx.QueryRowContext(ctx, query).Scan(&count, &bytes); err != nil {
 		return err
 	}
 	if count+len(size.recipients) > MaxGlobalPending {
-		return ErrInboxFull
+		return inboxFull("global pending", count+len(size.recipients), MaxGlobalPending, "recipient entries")
 	}
 	if bytes+size.bytes*len(size.recipients) > MaxGlobalPendingBytes {
-		return ErrInboxFull
+		return inboxFull("global pending bytes", bytes+size.bytes*len(size.recipients), MaxGlobalPendingBytes, "bytes")
 	}
 	return checkRecipientCapacity(ctx, tx, size)
 }
@@ -120,10 +120,10 @@ func checkRecipientCapacity(ctx context.Context, tx *sql.Tx, size durableSize) e
 			return err
 		}
 		if count >= MaxPendingMessages {
-			return ErrInboxFull
+			return inboxFull("recipient messages", count, MaxPendingMessages, "unacknowledged messages")
 		}
 		if bytes+size.bytes > MaxPendingBytes {
-			return ErrInboxFull
+			return inboxFull("recipient bytes", bytes+size.bytes, MaxPendingBytes, "unacknowledged bytes")
 		}
 	}
 	return nil

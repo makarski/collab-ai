@@ -26,6 +26,7 @@ var (
 	// goes, everyone in the warning colour so a broadcast is never a surprise.
 	bandStyle     = lipgloss.NewStyle().Background(lipgloss.Color("4")).Foreground(lipgloss.Color("15"))
 	bandTitle     = bandStyle.Bold(true)
+	bandWarn      = bandStyle.Foreground(lipgloss.Color("3")).Bold(true)
 	everyoneStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 	ruleStyle     = lipgloss.NewStyle().Faint(true)
 )
@@ -130,22 +131,29 @@ func (m *Model) header() string {
 		conn = "syncing"
 	}
 	online := len(m.agents.list)
-	var title, facts string
+	var h headerText
 	switch {
 	case m.width >= 76:
-		title, facts = chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)
+		h = headerText{chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)}
 	case m.width >= 52:
-		title, facts = "operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)
+		h = headerText{"operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)}
 	default:
-		facts = fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread)
+		h = headerText{"", fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread)}
 	}
-	return m.band(title, facts)
+	return m.band(h)
 }
 
+// headerText is the header's title and the facts beside it.
+type headerText struct{ title, facts string }
+
 // band lays the header out on a background that spans the whole width.
-func (m *Model) band(title, facts string) string {
-	left := bandTitle.Render(title) + bandStyle.Render(facts)
-	used := ansi.StringWidth(title) + ansi.StringWidth(facts)
+func (m *Model) band(h headerText) string {
+	left := bandTitle.Render(h.title) + bandStyle.Render(h.facts)
+	used := ansi.StringWidth(h.title) + ansi.StringWidth(h.facts)
+	if reminder := m.ackReminder(); reminder != "" && m.width >= 76 {
+		left += bandStyle.Render(" · ") + reminder
+		used += 3 + ansi.StringWidth(reminder)
+	}
 	right := ""
 	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 {
 		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder)
@@ -182,7 +190,7 @@ func (m *Model) pickerRows(l frameLayout) []string {
 	start := max(0, min(p.selected-n+1, len(p.items)-n))
 	var rows []string
 	for i := start; i < min(start+n, len(p.items)); i++ {
-		label := p.label(p.items[i])
+		label := m.pickerLabel(p, p.items[i])
 		if i == p.selected {
 			label = pickStyle.Render(label)
 		}
@@ -191,9 +199,12 @@ func (m *Model) pickerRows(l frameLayout) []string {
 	return rows
 }
 
-func (p *picker) label(item string) string {
-	if p.kind == PickerAgent {
+func (m *Model) pickerLabel(p *picker, item string) string {
+	switch p.kind {
+	case PickerAgent:
 		return "  @" + safe(item)
+	case PickerAck:
+		return m.ackLabel(item)
 	}
 	c := byName(item)
 	return fmt.Sprintf("  /%s %s  %s", c.name, c.usage, mutedStyle.Render(c.help))

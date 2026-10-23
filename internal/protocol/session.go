@@ -20,6 +20,7 @@ const (
 	EventStageChanged        = "stage_changed"
 	EventPresenceChanged     = "presence_changed"
 	EventResyncRequired      = "resync_required"
+	EventSendRefused         = "send_refused" // an agent's send to the operator hit an inbox bound
 )
 
 // SessionCapabilities are advertised in the operator_session response.
@@ -97,6 +98,7 @@ type SessionEvent struct {
 	Stage           string    `json:"stage,omitempty"`
 	State           string    `json:"state,omitempty"`
 	ProtocolVersion int       `json:"protocol_version,omitempty"`
+	Detail          string    `json:"detail,omitempty"` // send_refused: the bound that refused
 }
 
 // Operator history limits. New operator payloads are capped so every new

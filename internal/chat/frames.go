@@ -65,6 +65,8 @@ func (m *Model) applyEvent(ev *protocol.SessionEvent) tea.Cmd {
 		m.stageChanged(ev)
 	case protocol.EventPresenceChanged:
 		m.agents.apply(ev)
+	case protocol.EventSendRefused:
+		return m.sendRefused(ev)
 	}
 	return nil
 }
@@ -83,9 +85,9 @@ func (m *Model) inboxChanged(ev *protocol.SessionEvent) tea.Cmd {
 	grew := ev.HeadSeq > m.inbox.headSeq
 	m.inbox.headSeq = ev.HeadSeq
 	if grew {
-		return m.startDrain()
+		return tea.Batch(m.startDrain(), m.usageChanged())
 	}
-	return nil
+	return m.usageChanged()
 }
 
 func (m *Model) stageChanged(ev *protocol.SessionEvent) {
@@ -116,14 +118,16 @@ type responseHandler func(*Model, pendingRequest, protocol.Message) tea.Cmd
 
 // responseHandlers route a response by the kind of request it answers.
 var responseHandlers = map[string]responseHandler{
-	kindSnapshot: func(m *Model, _ pendingRequest, resp protocol.Message) tea.Cmd { return m.snapshotLoaded(resp) },
-	kindReceive:  (*Model).receiveResponse,
-	kindReceived: (*Model).receiptsConfirmed,
-	kindAck:      (*Model).acknowledged,
-	kindCatchup:  (*Model).catchupResponse,
-	kindOlder:    (*Model).olderResponse,
-	kindStages:   (*Model).stagesPage,
-	kindSend:     (*Model).sendResult,
+	kindSnapshot:    func(m *Model, _ pendingRequest, resp protocol.Message) tea.Cmd { return m.snapshotLoaded(resp) },
+	kindReceive:     (*Model).receiveResponse,
+	kindReceived:    (*Model).receiptsConfirmed,
+	kindAck:         (*Model).acknowledged,
+	kindCatchup:     (*Model).catchupResponse,
+	kindOlder:       (*Model).olderResponse,
+	kindStages:      (*Model).stagesPage,
+	kindSend:        (*Model).sendResult,
+	kindInboxStatus: (*Model).inboxStatusResponse,
+	kindAckMany:     (*Model).ackManyResponse,
 }
 
 func (m *Model) handle(req pendingRequest, resp protocol.Message) tea.Cmd {
@@ -183,7 +187,7 @@ func (m *Model) snapshotLoaded(resp protocol.Message) tea.Cmd {
 			e.stagesTruncated = s.ReceiptsTruncated
 		}
 	}
-	return tea.Batch(m.startDrain(), m.startCatchup(), m.resendUnknown())
+	return tea.Batch(m.startDrain(), m.startCatchup(), m.resendUnknown(), m.refreshUsage(snap.InboxPending > 0))
 }
 
 func validSnapshot(resp protocol.Message) bool {

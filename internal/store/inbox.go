@@ -30,6 +30,9 @@ var (
 	ErrInvalidReply  = errors.New("in_reply_to must name an operator message delivered to this sender")
 	ErrInvalidCursor = errors.New("invalid cursor; start a new scan with after_seq 0 and upper_seq 0")
 	ErrInvalidLimit  = errors.New("invalid limit; use 1 to 32, or omit it for 16")
+	// ErrInvalidSelection rejects an acknowledgment page without an explicit
+	// upper bound above its start, or with a limit outside 1 to 256.
+	ErrInvalidSelection = errors.New("invalid selection; upper_seq must exceed after_seq and limit must be 1 to 256, or omitted for 64")
 )
 
 func checkOperatorInboxCapacity(ctx context.Context, tx *sql.Tx, size durableSize) error {
@@ -38,14 +41,20 @@ func checkOperatorInboxCapacity(ctx context.Context, tx *sql.Tx, size durableSiz
 	if err := tx.QueryRowContext(ctx, pending+` AND m.sender = ?`, protocol.OperatorID, size.sender).Scan(&count, &bytes); err != nil {
 		return err
 	}
-	if count >= OperatorSenderMessages || bytes+size.bytes > OperatorSenderBytes {
-		return ErrInboxFull
+	if count >= OperatorSenderMessages {
+		return inboxFull("sender messages", count, OperatorSenderMessages, "unacknowledged messages")
+	}
+	if bytes+size.bytes > OperatorSenderBytes {
+		return inboxFull("sender bytes", bytes+size.bytes, OperatorSenderBytes, "unacknowledged bytes")
 	}
 	if err := tx.QueryRowContext(ctx, pending, protocol.OperatorID).Scan(&count, &bytes); err != nil {
 		return err
 	}
-	if count >= OperatorInboxMessages || bytes+size.bytes > OperatorInboxBytes {
-		return ErrInboxFull
+	if count >= OperatorInboxMessages {
+		return inboxFull("inbox messages", count, OperatorInboxMessages, "unacknowledged messages")
+	}
+	if bytes+size.bytes > OperatorInboxBytes {
+		return inboxFull("inbox bytes", bytes+size.bytes, OperatorInboxBytes, "unacknowledged bytes")
 	}
 	return nil
 }

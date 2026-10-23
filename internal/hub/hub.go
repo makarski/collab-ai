@@ -300,9 +300,37 @@ func (h *Hub) persistRoute(ctx context.Context, in Inbound, recipients []protoco
 		return out, &routingError{protocol.ErrMalformedFrame, "routed message exceeds the 1 MiB frame limit"}
 	}
 	if err := h.store.PersistMessage(ctx, out, in.From.SessionID, recipients); err != nil {
-		return out, h.persistenceError(out.MessageID, err)
+		return out, h.refusedSend(ctx, in, recipients, err)
 	}
 	return out, nil
+}
+
+// refusedSend maps a persistence failure; when an inbox bound refused a
+// message to the operator, the refusal is audited (payload-free) and then
+// the operator session learns which bound, since only the operator can free
+// it. Without the audit row, no event is raised.
+func (h *Hub) refusedSend(ctx context.Context, in Inbound, recipients []protocol.Recipient, err error) *routingError {
+	rerr := h.persistenceError(in.Msg.MessageID, err)
+	var full *store.InboxFullError
+	if !errors.As(err, &full) || !addressesOperator(recipients) {
+		return rerr
+	}
+	audit := store.OperatorAudit{Action: "send_refused", MessageID: in.Msg.MessageID, Scope: "from=" + in.From.ID, Result: store.AuditRejected, Detail: full.Detail()}
+	if _, aerr := h.store.RecordOperatorAudit(ctx, audit); aerr != nil {
+		h.log.Error("refusal audit failed; operator not notified", "message_id", in.Msg.MessageID, "error", aerr)
+		return rerr
+	}
+	h.emit(protocol.SessionEvent{Kind: protocol.EventSendRefused, AgentID: in.From.ID, Detail: full.Detail()})
+	return rerr
+}
+
+func addressesOperator(recipients []protocol.Recipient) bool {
+	for _, r := range recipients {
+		if r.AgentID == protocol.OperatorID {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Hub) persistenceError(id string, err error) *routingError {

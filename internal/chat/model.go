@@ -114,16 +114,20 @@ type Model struct {
 	send    sendState
 	agents  agentView
 
-	compose  composer
-	panel    *panel
-	view     viewport
-	cutoff   uint64 // /clear: rows with seq <= cutoff are hidden
-	find     string // the last /find query
-	found    uint64 // seq of the last /find match
-	keyboard bool
-	status   string
-	width    int
-	height   int
+	compose    composer
+	panel      *panel
+	view       viewport
+	cutoff     uint64 // /clear: rows with seq <= cutoff are hidden
+	find       string // the last /find query
+	found      uint64 // seq of the last /find match
+	keyboard   bool
+	status     string
+	bulk       *bulkAck              // a running /ack all or /ack from
+	bulkSeq    int                   // numbers bulk runs for their request tokens
+	usageDirty bool                  // an inbox change since the last usage read
+	usage      *protocol.InboxStatus // the last inbox status read, for the header
+	width      int
+	height     int
 }
 
 type pendingRequest struct {
@@ -347,6 +351,7 @@ func (m *Model) closed(gen uint64, err error) tea.Cmd {
 	m.inbox.disconnected()
 	m.history.disconnected()
 	m.send.disconnected()
+	m.bulkDisconnected()
 	if isMalformed(err) {
 		return m.stop(err)
 	}

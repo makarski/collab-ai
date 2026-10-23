@@ -94,6 +94,75 @@ func (h *Hub) operatorAck(ctx context.Context, clients map[string]*Client, req o
 	return protocol.Message{Type: protocol.TypeAck, MessageID: id, Stage: protocol.StageAgentAcknowledged, AgentID: protocol.OperatorID}
 }
 
+// operatorAckMany records the human's explicit receipt of one stable page
+// of rows; like operatorAck it is not approval, and it never receipts.
+func (h *Hub) operatorAckMany(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
+	if busy := h.ownerBusy(req); busy != nil {
+		h.auditRejected(ctx, "ack_many", req, &routingError{busy.Code, busy.Detail})
+		return *busy
+	}
+	sel, rerr := ackSelection(req.msg.AckSelection)
+	if rerr != nil {
+		h.auditRejected(ctx, "ack_many", req, rerr)
+		return rerr.frame("")
+	}
+	report, err := h.store.AcknowledgeOperatorMany(ctx, sel, store.OperatorAudit{Action: "ack_many", PrincipalUID: req.uid, Result: store.AuditAccepted})
+	if err != nil {
+		rerr := h.inboxError("acknowledge many", err)
+		h.auditRejected(ctx, "ack_many", req, rerr)
+		return rerr.frame("")
+	}
+	for _, t := range report.Transitions {
+		h.notifySender(clients, t)
+	}
+	if len(report.Transitions) > 0 {
+		h.emitInbox(ctx)
+	}
+	result := report.Result
+	return protocol.Message{Type: protocol.TypeAck, Stage: protocol.StageAgentAcknowledged, AgentID: protocol.OperatorID, Receipts: report.Receipts, AckMany: &result}
+}
+
+// ackSelection validates the page before anything is read or written.
+func ackSelection(sel *protocol.AckSelection) (protocol.AckSelection, *routingError) {
+	if sel == nil {
+		return protocol.AckSelection{}, &routingError{protocol.ErrMalformedFrame, "ack_selection is required"}
+	}
+	if sel.From != "" {
+		if err := protocol.ValidateAgentID(sel.From); err != nil {
+			return protocol.AckSelection{}, &routingError{protocol.ErrMalformedFrame, "from: " + err.Error()}
+		}
+	}
+	if !selectionBounded(*sel) {
+		return protocol.AckSelection{}, &routingError{protocol.ErrMalformedFrame, store.ErrInvalidSelection.Error()}
+	}
+	return *sel, nil
+}
+
+// selectionBounded requires an explicit upper bound above the start and a
+// limit within the page maximum.
+func selectionBounded(sel protocol.AckSelection) bool {
+	ordered := sel.UpperSeq > 0 && sel.AfterSeq < sel.UpperSeq
+	sized := sel.Limit >= 0 && sel.Limit <= protocol.AckManyMax
+	return ordered && sized
+}
+
+// operatorInboxStatus reports usage against the inbox bounds; it changes no
+// receipts and, like every read, is returned only with its audit row.
+func (h *Hub) operatorInboxStatus(ctx context.Context, req operatorRequest) protocol.Message {
+	status, err := h.store.OperatorInboxStatus(ctx)
+	if err != nil {
+		rerr := h.inboxError("inbox status", err)
+		h.auditRejected(ctx, "inbox_status", req, rerr)
+		return rerr.frame("")
+	}
+	detail := fmt.Sprintf("unacknowledged=%d unreceived=%d senders=%d", status.Unacknowledged, status.Unreceived, len(status.Senders))
+	if _, err := h.store.RecordOperatorAudit(ctx, store.OperatorAudit{Action: "inbox_status", PrincipalUID: req.uid, Result: store.AuditAccepted, Detail: detail}); err != nil {
+		h.log.Error("operator read audit failed; status not returned", "action", "inbox_status", "error", err)
+		return (&routingError{protocol.ErrInternal, "operator audit unavailable"}).frame("")
+	}
+	return protocol.Message{Type: protocol.TypeOperatorInboxStatus, Inbox: &status}
+}
+
 // receivedIDs requires a non-empty list of valid IDs and removes duplicates.
 func receivedIDs(ids []string) ([]string, *routingError) {
 	if len(ids) == 0 || len(ids) > protocol.OperatorPageMax {
@@ -125,7 +194,7 @@ func (h *Hub) inboxError(action string, err error) *routingError {
 	switch {
 	case errors.Is(err, store.ErrInvalidAck):
 		return &routingError{protocol.ErrInvalidAck, "message is not in the operator inbox, or not yet received"}
-	case errors.Is(err, store.ErrInvalidCursor), errors.Is(err, store.ErrInvalidLimit):
+	case errors.Is(err, store.ErrInvalidCursor), errors.Is(err, store.ErrInvalidLimit), errors.Is(err, store.ErrInvalidSelection):
 		return &routingError{protocol.ErrMalformedFrame, err.Error()}
 	}
 	h.log.Error("operator inbox operation failed", "action", action, "error", err)

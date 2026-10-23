@@ -65,26 +65,38 @@ type operatorSend struct {
 	auditID int64
 }
 
-func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
-	switch req.msg.Type {
-	case protocol.TypeOperatorSend:
-		return h.routeOperatorSend(ctx, clients, req)
-	case protocol.TypeOperatorReceive:
+// operatorHandler serves one operator request type.
+type operatorHandler func(h *Hub, ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message
+
+// operatorHandlers route a request by its type; session-only types are
+// refused here, since they need an open operator session.
+var operatorHandlers = map[string]operatorHandler{
+	protocol.TypeOperatorSend:     (*Hub).routeOperatorSend,
+	protocol.TypeOperatorReceived: (*Hub).operatorReceived,
+	protocol.TypeOperatorAck:      (*Hub).operatorAck,
+	protocol.TypeOperatorAckMany:  (*Hub).operatorAckMany,
+	protocol.TypeOperatorReceive: func(h *Hub, ctx context.Context, _ map[string]*Client, req operatorRequest) protocol.Message {
 		return h.operatorRead(ctx, req, "receive", h.readInbox)
-	case protocol.TypeOperatorReceived:
-		return h.operatorReceived(ctx, clients, req)
-	case protocol.TypeOperatorAck:
-		return h.operatorAck(ctx, clients, req)
-	case protocol.TypeOperatorHistory:
+	},
+	protocol.TypeOperatorHistory: func(h *Hub, ctx context.Context, _ map[string]*Client, req operatorRequest) protocol.Message {
 		return h.operatorRead(ctx, req, "history", h.readHistory)
-	case protocol.TypeOperatorMessageStages:
+	},
+	protocol.TypeOperatorInboxStatus: func(h *Hub, ctx context.Context, _ map[string]*Client, req operatorRequest) protocol.Message {
+		return h.operatorInboxStatus(ctx, req)
+	},
+	protocol.TypeOperatorMessageStages: func(h *Hub, ctx context.Context, _ map[string]*Client, req operatorRequest) protocol.Message {
 		return h.messageStages(ctx, req)
-	case protocol.TypeOperatorSessionOpen, protocol.TypeOperatorSnapshot:
-		rerr := &routingError{protocol.ErrInvalidState, "this request needs an open operator session"}
-		h.auditRejected(ctx, "request", req, rerr)
-		return rerr.frame(req.msg.MessageID)
+	},
+}
+
+func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req operatorRequest) protocol.Message {
+	if handle := operatorHandlers[req.msg.Type]; handle != nil {
+		return handle(h, ctx, clients, req)
 	}
 	rerr := &routingError{protocol.ErrUnsupportedOperation, "unsupported operator request type"}
+	if req.msg.Type == protocol.TypeOperatorSessionOpen || req.msg.Type == protocol.TypeOperatorSnapshot {
+		rerr = &routingError{protocol.ErrInvalidState, "this request needs an open operator session"}
+	}
 	h.auditRejected(ctx, "request", req, rerr)
 	return rerr.frame(req.msg.MessageID)
 }

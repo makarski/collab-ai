@@ -25,6 +25,8 @@ type StateView struct {
 	QueuedAcks        []QueuedAckView
 	InFlight          int
 	Queued            int
+	InboxUsage        *protocol.InboxStatus
+	BulkAck           *BulkAckView
 	Draft             string
 	Pasted            bool
 	Audience          AudienceView
@@ -109,7 +111,7 @@ func (m *Model) State() StateView {
 		Agents:      append([]protocol.AgentPresence(nil), m.agents.list...),
 		AgentsTotal: m.agents.total, AgentsPartial: m.agents.partial, InboxPending: m.inbox.pending,
 		InboxHeadSeq: m.inbox.headSeq, Unread: m.timeline.unread, Paused: m.timeline.paused,
-		InFlight: m.inFlight(), Queued: len(m.outbox), Draft: c.editor.Value(), Pasted: c.pasted,
+		InFlight: m.inFlight(), Queued: len(m.outbox), InboxUsage: m.usage, BulkAck: m.bulkView(), Draft: c.editor.Value(), Pasted: c.pasted,
 		Audience: m.audienceView(), Hint: m.hintText(), ScrollOffset: m.scrollOffset(), Cutoff: m.cutoff,
 		Status: m.status, Help: m.panel != nil && m.panel.kind == panelHelp, TooSmall: m.tooSmall(),
 		KeyDisambiguation: m.keyboard, ExitCode: m.exitCode, Fatal: m.fatal,
