@@ -30,6 +30,7 @@ type inboxState struct {
 	drainAgain bool
 	resumeAt   *protocol.PageRequest // where a scan paused at capacity continues
 	queuedAcks map[string]*queuedAck
+	quiet      map[string]bool // acknowledgments a reply made: no status line on success
 }
 
 // queuedAck is an explicit acknowledgment waiting for confirmed receipt. It
@@ -41,6 +42,13 @@ type queuedAck struct {
 
 func (s *inboxState) disconnected() {
 	s.draining, s.drainAgain, s.resumeAt = false, false, nil
+	// An automatic acknowledgment on the wire is lost with the connection; only
+	// a still-queued one keeps its quiet provenance.
+	for id := range s.quiet {
+		if s.queuedAcks[id] == nil {
+			delete(s.quiet, id)
+		}
+	}
 }
 
 // suspend holds one queued acknowledgment, keeping the first reason.
@@ -283,12 +291,15 @@ func (m *Model) acknowledge(e *entry) tea.Cmd {
 		m.status = "already acknowledged"
 	case m.inbox.queuedAcks[id] != nil:
 		delete(m.inbox.queuedAcks, id)
+		delete(m.inbox.quiet, id)
 		m.status = "queued acknowledgment cancelled"
 	case m.requested(kindAck, id):
 		m.status = "acknowledgment already sent, waiting for the broker"
 	case e.receipt == ReceiptConfirmed:
+		delete(m.inbox.quiet, id) // explicit: the confirmation is reported
 		return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: id}, id)
 	default:
+		delete(m.inbox.quiet, id)
 		m.inbox.queuedAcks[id] = &queuedAck{hash: e.hash}
 		m.status = "acknowledgment queued until receipt is confirmed (/ack again cancels)"
 	}
@@ -310,8 +321,12 @@ func (m *Model) sendQueuedAck(e *entry) tea.Cmd {
 	return m.request(kindAck, protocol.Message{Type: protocol.TypeOperatorAck, MessageID: e.msg.MessageID}, e.msg.MessageID)
 }
 
+// acknowledged applies the broker's answer; the quiet provenance of an
+// automatic acknowledgment ends with its request, whatever the outcome.
 func (m *Model) acknowledged(req pendingRequest, resp protocol.Message) tea.Cmd {
 	id := req.ids[0]
+	quiet := m.inbox.quiet[id]
+	delete(m.inbox.quiet, id)
 	if !ackConfirms(resp, id) {
 		m.status = "acknowledgment not confirmed: " + brokerReason(resp)
 		return nil
@@ -319,7 +334,9 @@ func (m *Model) acknowledged(req pendingRequest, resp protocol.Message) tea.Cmd 
 	if e := m.timeline.entries[id]; e != nil {
 		e.operatorStage = protocol.StageAgentAcknowledged
 	}
-	m.status = "acknowledged by operator (received, not approval)"
+	if !quiet {
+		m.status = "acknowledged by operator (received, not approval)"
+	}
 	return nil
 }
 

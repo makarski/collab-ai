@@ -148,6 +148,7 @@ func New(opts Options) *Model {
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.timeline = newTimeline()
 	m.inbox.queuedAcks = map[string]*queuedAck{}
+	m.inbox.quiet = map[string]bool{}
 	m.compose = newComposer()
 	m.view.following = true
 	m.resize(tea.WindowSizeMsg{Width: m.width, Height: m.height})
