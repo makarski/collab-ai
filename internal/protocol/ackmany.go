@@ -43,23 +43,45 @@ func (r ReceiptState) isOperatorAck() bool {
 }
 
 func validateAckCounts(sel AckSelection, res *AckManyResult) error {
-	limit := sel.Limit
-	if limit == 0 {
-		limit = AckManyDefault
+	examined, err := examinedRows(sel.pageLimit(), res)
+	if err != nil {
+		return err
 	}
+	return validateAckCursor(sel, res, examined)
+}
+
+// pageLimit is the selection's row limit with the default applied.
+func (sel AckSelection) pageLimit() int {
+	if sel.Limit == 0 {
+		return AckManyDefault
+	}
+	return sel.Limit
+}
+
+// examinedRows checks each count, then their sum, against the page limit
+// and returns how many rows the page examined.
+func examinedRows(limit int, res *AckManyResult) (int, error) {
+	examined := 0
 	for _, n := range []int{res.Acknowledged, res.AlreadyAcknowledged, res.Skipped} {
 		if n < 0 || n > limit {
-			return errors.New("counts are outside the page")
+			return 0, errors.New("counts are outside the page")
 		}
+		examined += n
 	}
-	examined := res.Acknowledged + res.AlreadyAcknowledged + res.Skipped
 	if examined > limit {
-		return errors.New("counts are outside the page")
+		return 0, errors.New("counts are outside the page")
 	}
+	return examined, nil
+}
+
+// validateAckCursor keeps the cursor inside the selection, advancing past
+// every examined row and whenever more is promised.
+func validateAckCursor(sel AckSelection, res *AckManyResult, examined int) error {
 	if res.NextAfterSeq < sel.AfterSeq || res.NextAfterSeq > sel.UpperSeq {
 		return errors.New("cursor is outside the selection")
 	}
-	if (res.More || examined > 0) && res.NextAfterSeq <= sel.AfterSeq {
+	mustAdvance := res.More || examined > 0
+	if mustAdvance && res.NextAfterSeq <= sel.AfterSeq {
 		return errors.New("the cursor didn't advance past the examined rows")
 	}
 	return nil
