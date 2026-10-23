@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
+	"unicode"
 
 	"github.com/pairtask/pairtask/internal/protocol"
 )
@@ -210,13 +212,33 @@ func (r *inboxAck) reportPartial(stderr io.Writer, total protocol.AckManyResult)
 }
 
 // resume is the command tail that continues this run with its exact scope:
-// the frozen upper bound and the sender filter, never widened.
+// the frozen upper bound and the sender filter, never widened. The sender
+// is shell-quoted so pasting the hint can't expand it; an ID with control
+// characters is never advertised as pasteable.
 func (r *inboxAck) resume(after uint64) string {
 	tail := fmt.Sprintf("--after %d --upper %d", after, r.sel.UpperSeq)
-	if r.sel.From != "" {
-		tail += fmt.Sprintf(" --from %q", r.sel.From)
+	switch {
+	case r.sel.From == "":
+	case hasControl(r.sel.From):
+		tail += " and the same --from value passed literally (it contains control characters)"
+	default:
+		tail += " --from " + shellQuote(r.sel.From)
 	}
 	return tail
+}
+
+// shellQuote single-quotes s for a POSIX shell; nothing inside expands.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func hasControl(s string) bool {
+	for _, r := range s {
+		if unicode.IsControl(r) || !unicode.IsPrint(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // acknowledge runs one request, or continues under the frozen upper bound
