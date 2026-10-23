@@ -9,7 +9,8 @@ import "errors"
 // more. A malformed broker can then neither loop a client nor move it past
 // the frozen upper bound.
 func ValidateAckMany(sel AckSelection, resp Message) error {
-	if resp.Type != TypeAck || resp.Stage != StageAgentAcknowledged || resp.AgentID != OperatorID {
+	acknowledgment := resp.Type == TypeAck && resp.Stage == StageAgentAcknowledged
+	if !acknowledgment || resp.AgentID != OperatorID {
 		return errors.New("stage or principal is not the operator's acknowledgment")
 	}
 	res := resp.AckMany
