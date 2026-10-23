@@ -97,7 +97,9 @@ capacity. The operator frees pending capacity in bulk with
 `pairtask operator inbox ack` or the chat's `/ack all`, which acknowledge a
 stable, explicitly bounded page (see `docs/operator-chat.md`, CLI) and never
 receipt what the operator client hasn't adopted. `pairtask operator inbox
-status` shows usage against every bound.
+status` shows usage against the per-sender, operator-inbox and
+retained-history bounds; the global pending bounds across all inboxes are
+reported only when they refuse a send.
 This deliberately small first implementation requires operator-managed archival
 at the retained-history limit. Archival is not provided by this change. Preserve
 unfinished work and stop the broker before any database maintenance; starting a
