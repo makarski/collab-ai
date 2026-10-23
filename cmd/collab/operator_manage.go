@@ -122,6 +122,7 @@ func runInboxAck(ctx context.Context, args []string, stdout, stderr io.Writer) i
 	}
 	total, err := run.acknowledge(ctx, stdout, stderr)
 	if err != nil {
+		run.reportPartial(stderr, total)
 		return 1
 	}
 	if !run.call.asJSON {
@@ -193,6 +194,17 @@ func (r *inboxAck) resolveBounds(ctx context.Context, stderr io.Writer) error {
 		r.sel.UpperSeq = 0 // nothing to acknowledge; never a malformed write
 	}
 	return nil
+}
+
+// reportPartial says what a run confirmed before it failed, and how to
+// continue it under the same frozen upper bound, so a retry is safe.
+func (r *inboxAck) reportPartial(stderr io.Writer, total protocol.AckManyResult) {
+	if total.Acknowledged+total.AlreadyAcknowledged+total.Skipped == 0 {
+		fmt.Fprintf(stderr, "nothing was acknowledged; retry with --after %d --upper %d\n", r.sel.AfterSeq, r.sel.UpperSeq)
+		return
+	}
+	fmt.Fprintf(stderr, "partial: acknowledged %d, %d already acknowledged, %d not yet received, confirmed through #%d under upper #%d; continue with --after %d --upper %d\n",
+		total.Acknowledged, total.AlreadyAcknowledged, total.Skipped, total.NextAfterSeq, r.sel.UpperSeq, total.NextAfterSeq, r.sel.UpperSeq)
 }
 
 // acknowledge runs one request, or continues under the frozen upper bound

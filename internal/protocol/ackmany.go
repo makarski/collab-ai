@@ -22,10 +22,12 @@ func ValidateAckMany(sel AckSelection, resp Message) error {
 	if len(resp.Receipts) != res.Acknowledged {
 		return errors.New("receipts don't match the acknowledged count")
 	}
+	seen := make(map[string]bool, len(resp.Receipts))
 	for _, r := range resp.Receipts {
-		if r.Stage != StageAgentAcknowledged || r.AgentID != OperatorID || r.MessageID == "" {
-			return errors.New("a receipt isn't an operator acknowledgment")
+		if r.Stage != StageAgentAcknowledged || r.AgentID != OperatorID || r.MessageID == "" || seen[r.MessageID] {
+			return errors.New("a receipt isn't a distinct operator acknowledgment")
 		}
+		seen[r.MessageID] = true
 	}
 	return nil
 }
@@ -35,14 +37,20 @@ func validateAckCounts(sel AckSelection, res *AckManyResult) error {
 	if limit == 0 {
 		limit = AckManyDefault
 	}
-	if res.Acknowledged < 0 || res.AlreadyAcknowledged < 0 || res.Skipped < 0 || res.Acknowledged+res.AlreadyAcknowledged+res.Skipped > limit {
+	for _, n := range []int{res.Acknowledged, res.AlreadyAcknowledged, res.Skipped} {
+		if n < 0 || n > limit {
+			return errors.New("counts are outside the page")
+		}
+	}
+	examined := res.Acknowledged + res.AlreadyAcknowledged + res.Skipped
+	if examined > limit {
 		return errors.New("counts are outside the page")
 	}
 	if res.NextAfterSeq < sel.AfterSeq || res.NextAfterSeq > sel.UpperSeq {
 		return errors.New("cursor is outside the selection")
 	}
-	if res.More && res.NextAfterSeq <= sel.AfterSeq {
-		return errors.New("continuation makes no progress")
+	if (res.More || examined > 0) && res.NextAfterSeq <= sel.AfterSeq {
+		return errors.New("the cursor didn't advance past the examined rows")
 	}
 	return nil
 }
