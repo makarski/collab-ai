@@ -122,6 +122,8 @@ type Model struct {
 	found    uint64 // seq of the last /find match
 	keyboard bool
 	status   string
+	bulk     *bulkAck              // a running /ack all or /ack from
+	usage    *protocol.InboxStatus // the last inbox status read, for the header
 	width    int
 	height   int
 }

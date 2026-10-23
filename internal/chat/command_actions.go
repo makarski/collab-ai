@@ -87,15 +87,6 @@ func (m *Model) unacknowledged(e *entry) bool {
 	return m.ackState(e) == AckNeeded
 }
 
-func (m *Model) ackCommand(arg argument) tea.Cmd {
-	e, reason := m.target(arg, m.newestReceived(m.unacknowledged))
-	if e == nil {
-		m.status = reason
-		return nil
-	}
-	return m.acknowledge(e)
-}
-
 func (m *Model) replyRun(arg argument) tea.Cmd {
 	m.replyCommand(arg)
 	return nil

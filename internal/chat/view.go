@@ -134,6 +134,9 @@ func (m *Model) header() string {
 	switch {
 	case m.width >= 76:
 		title, facts = chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)
+		if reminder := m.ackReminder(); reminder != "" {
+			facts += " · " + reminder
+		}
 	case m.width >= 52:
 		title, facts = "operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)
 	default:
@@ -182,7 +185,7 @@ func (m *Model) pickerRows(l frameLayout) []string {
 	start := max(0, min(p.selected-n+1, len(p.items)-n))
 	var rows []string
 	for i := start; i < min(start+n, len(p.items)); i++ {
-		label := p.label(p.items[i])
+		label := m.pickerLabel(p, p.items[i])
 		if i == p.selected {
 			label = pickStyle.Render(label)
 		}
@@ -191,9 +194,12 @@ func (m *Model) pickerRows(l frameLayout) []string {
 	return rows
 }
 
-func (p *picker) label(item string) string {
-	if p.kind == PickerAgent {
+func (m *Model) pickerLabel(p *picker, item string) string {
+	switch p.kind {
+	case PickerAgent:
 		return "  @" + safe(item)
+	case PickerAck:
+		return m.ackLabel(item)
 	}
 	c := byName(item)
 	return fmt.Sprintf("  /%s %s  %s", c.name, c.usage, mutedStyle.Render(c.help))
