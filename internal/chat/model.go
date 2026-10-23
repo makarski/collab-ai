@@ -123,6 +123,7 @@ type Model struct {
 	keyboard bool
 	status   string
 	bulk     *bulkAck              // a running /ack all or /ack from
+	bulkSeq  int                   // numbers bulk runs for their request tokens
 	usage    *protocol.InboxStatus // the last inbox status read, for the header
 	width    int
 	height   int
@@ -349,6 +350,7 @@ func (m *Model) closed(gen uint64, err error) tea.Cmd {
 	m.inbox.disconnected()
 	m.history.disconnected()
 	m.send.disconnected()
+	m.bulkDisconnected()
 	if isMalformed(err) {
 		return m.stop(err)
 	}

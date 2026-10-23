@@ -22,11 +22,16 @@ const PickerAck = "ack"
 // bulkAck is one /ack all or /ack from run: the inbox status read first, then
 // stable pages under a frozen upper bound.
 type bulkAck struct {
+	token   string // ties the status read and the pages to this run
 	from    string
 	sel     protocol.AckSelection
 	running bool
 	result  protocol.AckManyResult
 }
+
+// Request tokens: a bulk run's status read is its own, never one triggered
+// by a refusal notice.
+const statusForHeader = "header"
 
 // BulkAckView is the state of a bulk acknowledgment, for tests and the CLI.
 type BulkAckView struct {
@@ -119,19 +124,25 @@ func (m *Model) startBulkAck(from string) tea.Cmd {
 		m.status = "a bulk acknowledgment is already running"
 		return nil
 	}
-	m.bulk = &bulkAck{from: from, running: true}
-	return m.request(kindInboxStatus, protocol.Message{Type: protocol.TypeOperatorInboxStatus})
+	m.bulkSeq++
+	m.bulk = &bulkAck{token: fmt.Sprintf("bulk-%d", m.bulkSeq), from: from, running: true}
+	return m.request(kindInboxStatus, protocol.Message{Type: protocol.TypeOperatorInboxStatus}, m.bulk.token)
 }
 
 // inboxStatusResponse keeps the usage for the header and, when a bulk run
 // is waiting for it, starts the first page.
-func (m *Model) inboxStatusResponse(_ pendingRequest, resp protocol.Message) tea.Cmd {
+func (m *Model) inboxStatusResponse(req pendingRequest, resp protocol.Message) tea.Cmd {
+	b := m.bulk
+	forBulk := b != nil && b.running && req.is(kindInboxStatus, b.token)
 	if resp.Type != protocol.TypeOperatorInboxStatus || resp.Inbox == nil {
-		return m.bulkFailed("inbox status not read: " + brokerReason(resp))
+		if forBulk {
+			return m.bulkFailed("inbox status not read: " + brokerReason(resp))
+		}
+		m.status = "inbox status not read: " + brokerReason(resp)
+		return nil
 	}
 	m.usage = resp.Inbox
-	b := m.bulk
-	if b == nil || !b.running || b.sel.UpperSeq != 0 {
+	if !forBulk || b.sel.UpperSeq != 0 {
 		return nil
 	}
 	if resp.Inbox.Unacknowledged == 0 || resp.Inbox.HeadSeq == 0 {
@@ -148,23 +159,26 @@ func (m *Model) inboxStatusResponse(_ pendingRequest, resp protocol.Message) tea
 
 func (m *Model) ackManyPage() tea.Cmd {
 	sel := m.bulk.sel
-	return m.request(kindAckMany, protocol.Message{Type: protocol.TypeOperatorAckMany, AckSelection: &sel})
+	return m.request(kindAckMany, protocol.Message{Type: protocol.TypeOperatorAckMany, AckSelection: &sel}, m.bulk.token)
 }
 
 // ackManyResponse applies one page: receipts mark rows acknowledged, then the
 // next page continues under the same upper bound, or the run ends.
-func (m *Model) ackManyResponse(_ pendingRequest, resp protocol.Message) tea.Cmd {
-	if resp.Type != protocol.TypeAck || resp.AckMany == nil {
+func (m *Model) ackManyResponse(req pendingRequest, resp protocol.Message) tea.Cmd {
+	b := m.bulk
+	if b == nil || !req.is(kindAckMany, b.token) {
+		return nil // a page from an earlier run: nothing is applied from it
+	}
+	if resp.Type == protocol.TypeError {
 		return m.bulkFailed("bulk acknowledgment failed: " + brokerReason(resp))
 	}
+	if err := protocol.ValidateAckMany(b.sel, resp); err != nil {
+		return m.bulkFailed("bulk acknowledgment returned an invalid result; nothing applied: " + err.Error())
+	}
 	for _, r := range resp.Receipts {
-		if e := m.timeline.entries[r.MessageID]; e != nil && r.Stage == protocol.StageAgentAcknowledged {
+		if e := m.timeline.entries[r.MessageID]; e != nil {
 			e.operatorStage = protocol.StageAgentAcknowledged
 		}
-	}
-	b := m.bulk
-	if b == nil {
-		return nil
 	}
 	b.result.Acknowledged += resp.AckMany.Acknowledged
 	b.result.AlreadyAcknowledged += resp.AckMany.AlreadyAcknowledged
@@ -186,14 +200,34 @@ func (m *Model) bulkFailed(reason string) tea.Cmd {
 	return nil
 }
 
+// bulkDisconnected ends a running bulk acknowledgment with the connection:
+// its pages are idempotent, so /ack all again continues under a fresh bound.
+func (m *Model) bulkDisconnected() {
+	if m.bulk != nil && m.bulk.running {
+		m.bulk.running = false
+		m.status = "bulk acknowledgment interrupted by the disconnect; /ack all continues it"
+	}
+}
+
 // sendRefused tells the operator which bound refused an agent's message,
 // since only the operator can free it, and refreshes the usage.
 func (m *Model) sendRefused(ev *protocol.SessionEvent) tea.Cmd {
 	m.status = safe(ev.AgentID) + "'s message was refused: " + safe(ev.Detail)
-	if !m.ready() || m.requested(kindInboxStatus, "") {
+	return m.refreshUsage(true)
+}
+
+// refreshUsage reads the inbox usage for the header's warning, coalesced: one
+// read in flight at a time, only while something is pending, and only when
+// the pending count moved since the last read unless forced. A quiet inbox
+// costs no request.
+func (m *Model) refreshUsage(force bool) tea.Cmd {
+	if !m.ready() || m.inbox.pending == 0 || m.requested(kindInboxStatus, statusForHeader) {
 		return nil
 	}
-	return m.request(kindInboxStatus, protocol.Message{Type: protocol.TypeOperatorInboxStatus})
+	if !force && m.usage != nil && m.usage.Unacknowledged == m.inbox.pending {
+		return nil
+	}
+	return m.request(kindInboxStatus, protocol.Message{Type: protocol.TypeOperatorInboxStatus}, statusForHeader)
 }
 
 // ackReminder is the header's call to action while anything needs

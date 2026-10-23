@@ -204,7 +204,7 @@ func (r *inboxAck) acknowledge(ctx context.Context, stdout, stderr io.Writer) (p
 		if err != nil {
 			return total, err
 		}
-		if err := validateAckMany(r.sel, resp); err != nil {
+		if err := protocol.ValidateAckMany(r.sel, resp); err != nil {
 			fmt.Fprintln(stderr, "operator inbox ack returned an invalid result; acknowledgment not verified:", err)
 			return total, errReported
 		}
@@ -222,44 +222,4 @@ func (r *inboxAck) acknowledge(ctx context.Context, stdout, stderr io.Writer) (p
 		}
 		r.sel.AfterSeq = resp.AckMany.NextAfterSeq
 	}
-}
-
-// validateAckMany checks a page result before it is trusted: the stage and
-// principal, counts within the page, receipts matching the new
-// acknowledgments, and a cursor inside the bound that advances when there is
-// more, so a malformed broker can neither loop the client nor move it past
-// the frozen upper bound.
-func validateAckMany(sel protocol.AckSelection, resp protocol.Message) error {
-	if resp.Stage != protocol.StageAgentAcknowledged || resp.AgentID != protocol.OperatorID {
-		return errors.New("stage or principal is not the operator's acknowledgment")
-	}
-	res := resp.AckMany
-	if res == nil {
-		return errors.New("no result")
-	}
-	if err := validateCounts(sel, res); err != nil {
-		return err
-	}
-	if len(resp.Receipts) != res.Acknowledged {
-		return errors.New("receipts don't match the acknowledged count")
-	}
-	for _, r := range resp.Receipts {
-		if r.Stage != protocol.StageAgentAcknowledged || r.AgentID != protocol.OperatorID || r.MessageID == "" {
-			return errors.New("a receipt isn't an operator acknowledgment")
-		}
-	}
-	return nil
-}
-
-func validateCounts(sel protocol.AckSelection, res *protocol.AckManyResult) error {
-	if res.Acknowledged < 0 || res.AlreadyAcknowledged < 0 || res.Skipped < 0 || res.Acknowledged+res.AlreadyAcknowledged+res.Skipped > sel.Limit {
-		return errors.New("counts are outside the page")
-	}
-	if res.NextAfterSeq < sel.AfterSeq || res.NextAfterSeq > sel.UpperSeq {
-		return errors.New("cursor is outside the selection")
-	}
-	if res.More && res.NextAfterSeq <= sel.AfterSeq {
-		return errors.New("continuation makes no progress")
-	}
-	return nil
 }

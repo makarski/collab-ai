@@ -85,9 +85,9 @@ func (m *Model) inboxChanged(ev *protocol.SessionEvent) tea.Cmd {
 	grew := ev.HeadSeq > m.inbox.headSeq
 	m.inbox.headSeq = ev.HeadSeq
 	if grew {
-		return m.startDrain()
+		return tea.Batch(m.startDrain(), m.refreshUsage(false))
 	}
-	return nil
+	return m.refreshUsage(false)
 }
 
 func (m *Model) stageChanged(ev *protocol.SessionEvent) {
@@ -187,7 +187,7 @@ func (m *Model) snapshotLoaded(resp protocol.Message) tea.Cmd {
 			e.stagesTruncated = s.ReceiptsTruncated
 		}
 	}
-	return tea.Batch(m.startDrain(), m.startCatchup(), m.resendUnknown())
+	return tea.Batch(m.startDrain(), m.startCatchup(), m.resendUnknown(), m.refreshUsage(true))
 }
 
 func validSnapshot(resp protocol.Message) bool {
