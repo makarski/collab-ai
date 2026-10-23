@@ -25,6 +25,23 @@ func TestInboxManagementRefusalIsVisibleWithoutAcceptingOrLeakingPayload(t *test
 			t.Fatalf("refusal lacks bound %q: %q", want, refusal.Detail)
 		}
 	}
+	managementCheckRefusalEvents(t, owner, mark)
+	var auditDetail, auditScope string
+	operatorNoError(t, f.db.QueryRow("SELECT detail, scope FROM operator_audit WHERE action='send_refused' AND message_id='refused' AND result='rejected'").Scan(&auditDetail, &auditScope))
+	if strings.Contains(auditDetail, "PRIVATE_INBOX_PAYLOAD") || !strings.Contains(auditDetail, "16/16") {
+		t.Fatalf("refusal audit must record bound without payload: %q", auditDetail)
+	}
+	if !strings.Contains(auditScope, "author") {
+		t.Fatalf("refusal audit missing sender: %q", auditScope)
+	}
+	operatorEqual(t, "refused message never enters history", f.count("messages"), 16)
+	operatorEqual(t, "refused message never enters durable inbox", f.count("durable_inbox"), 16)
+	operatorEqual(t, "refusal never receipts existing work", inboxReceiptCount(f, "received_at"), 0)
+	operatorEqual(t, "refusal never acknowledges existing work", inboxReceiptCount(f, "acknowledged_at"), 0)
+}
+
+func managementCheckRefusalEvents(t *testing.T, owner *sessionProbe, mark sessionMark) {
+	t.Helper()
 	refusals := 0
 	for _, frame := range owner.barrier() {
 		event := sessionCheckEvent(t, frame, &mark)
@@ -44,18 +61,6 @@ func TestInboxManagementRefusalIsVisibleWithoutAcceptingOrLeakingPayload(t *test
 		}
 	}
 	operatorEqual(t, "operator receives one refusal event", refusals, 1)
-	var auditDetail, auditScope string
-	operatorNoError(t, f.db.QueryRow("SELECT detail, scope FROM operator_audit WHERE action='send_refused' AND message_id='refused' AND result='rejected'").Scan(&auditDetail, &auditScope))
-	if strings.Contains(auditDetail, "PRIVATE_INBOX_PAYLOAD") || !strings.Contains(auditDetail, "16/16") {
-		t.Fatalf("refusal audit must record bound without payload: %q", auditDetail)
-	}
-	if !strings.Contains(auditScope, "author") {
-		t.Fatalf("refusal audit missing sender: %q", auditScope)
-	}
-	operatorEqual(t, "refused message never enters history", f.count("messages"), 16)
-	operatorEqual(t, "refused message never enters durable inbox", f.count("durable_inbox"), 16)
-	operatorEqual(t, "refusal never receipts existing work", inboxReceiptCount(f, "received_at"), 0)
-	operatorEqual(t, "refusal never acknowledges existing work", inboxReceiptCount(f, "acknowledged_at"), 0)
 }
 
 func TestInboxBulkAckRecoversSenderCapacityWithoutDeletingHistory(t *testing.T) {
