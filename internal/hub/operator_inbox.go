@@ -132,10 +132,18 @@ func ackSelection(sel *protocol.AckSelection) (protocol.AckSelection, *routingEr
 			return protocol.AckSelection{}, &routingError{protocol.ErrMalformedFrame, "from: " + err.Error()}
 		}
 	}
-	if sel.UpperSeq == 0 || sel.AfterSeq >= sel.UpperSeq || sel.Limit < 0 || sel.Limit > protocol.AckManyMax {
+	if !selectionBounded(*sel) {
 		return protocol.AckSelection{}, &routingError{protocol.ErrMalformedFrame, store.ErrInvalidSelection.Error()}
 	}
 	return *sel, nil
+}
+
+// selectionBounded requires an explicit upper bound above the start and a
+// limit within the page maximum.
+func selectionBounded(sel protocol.AckSelection) bool {
+	ordered := sel.UpperSeq > 0 && sel.AfterSeq < sel.UpperSeq
+	sized := sel.Limit >= 0 && sel.Limit <= protocol.AckManyMax
+	return ordered && sized
 }
 
 // operatorInboxStatus reports usage against the inbox bounds; it changes no

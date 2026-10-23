@@ -19,17 +19,27 @@ func ValidateAckMany(sel AckSelection, resp Message) error {
 	if err := validateAckCounts(sel, res); err != nil {
 		return err
 	}
-	if len(resp.Receipts) != res.Acknowledged {
+	return validateAckReceipts(resp.Receipts, res.Acknowledged)
+}
+
+// validateAckReceipts requires one distinct operator acknowledgment per
+// newly acknowledged row.
+func validateAckReceipts(receipts []ReceiptState, acknowledged int) error {
+	if len(receipts) != acknowledged {
 		return errors.New("receipts don't match the acknowledged count")
 	}
-	seen := make(map[string]bool, len(resp.Receipts))
-	for _, r := range resp.Receipts {
-		if r.Stage != StageAgentAcknowledged || r.AgentID != OperatorID || r.MessageID == "" || seen[r.MessageID] {
+	seen := make(map[string]bool, len(receipts))
+	for _, r := range receipts {
+		if !r.isOperatorAck() || seen[r.MessageID] {
 			return errors.New("a receipt isn't a distinct operator acknowledgment")
 		}
 		seen[r.MessageID] = true
 	}
 	return nil
+}
+
+func (r ReceiptState) isOperatorAck() bool {
+	return r.Stage == StageAgentAcknowledged && r.AgentID == OperatorID && r.MessageID != ""
 }
 
 func validateAckCounts(sel AckSelection, res *AckManyResult) error {

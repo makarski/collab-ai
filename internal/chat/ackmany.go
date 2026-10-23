@@ -145,17 +145,24 @@ func (m *Model) inboxStatusResponse(req pendingRequest, resp protocol.Message) t
 	if !forBulk {
 		return m.refreshUsage(false) // a change that landed while this read was in flight
 	}
+	return m.startBulkPages(*resp.Inbox)
+}
+
+// startBulkPages freezes the run's bounds from its own status read and
+// requests the first page, or ends a run with nothing to do.
+func (m *Model) startBulkPages(status protocol.InboxStatus) tea.Cmd {
+	b := m.bulk
 	if b.sel.UpperSeq != 0 {
-		return nil
+		return nil // already started
 	}
-	if resp.Inbox.Unacknowledged == 0 || resp.Inbox.HeadSeq == 0 {
+	if status.Unacknowledged == 0 || status.HeadSeq == 0 {
 		m.bulk = nil
 		m.status = "nothing to acknowledge"
 		return nil
 	}
-	b.sel = protocol.AckSelection{From: b.from, UpperSeq: resp.Inbox.HeadSeq, Limit: protocol.AckManyDefault}
-	if resp.Inbox.OldestUnacknowledgedSeq > 0 {
-		b.sel.AfterSeq = resp.Inbox.OldestUnacknowledgedSeq - 1
+	b.sel = protocol.AckSelection{From: b.from, UpperSeq: status.HeadSeq, Limit: protocol.AckManyDefault}
+	if status.OldestUnacknowledgedSeq > 0 {
+		b.sel.AfterSeq = status.OldestUnacknowledgedSeq - 1
 	}
 	return m.ackManyPage()
 }

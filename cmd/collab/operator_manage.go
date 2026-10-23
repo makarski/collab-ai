@@ -162,16 +162,28 @@ func (r inboxAck) validateSelection() error {
 	if r.sel.Limit < 1 || r.sel.Limit > protocol.AckManyMax {
 		return errors.New("limit must be 1 to 256")
 	}
-	if r.set["upper"] && r.sel.UpperSeq == 0 {
+	if err := r.validateBounds(); err != nil {
+		return err
+	}
+	if !r.set["from"] {
+		return nil
+	}
+	if err := protocol.ValidateAgentID(r.sel.From); err != nil {
+		return fmt.Errorf("from: %w", err)
+	}
+	return nil
+}
+
+// validateBounds checks an explicit upper bound; an omitted one is frozen
+// from the inbox status later.
+func (r inboxAck) validateBounds() error {
+	switch {
+	case !r.set["upper"]:
+		return nil
+	case r.sel.UpperSeq == 0:
 		return errors.New("upper must be a committed sequence above 0; omit it to use the inbox head")
-	}
-	if r.set["upper"] && r.sel.AfterSeq >= r.sel.UpperSeq {
+	case r.sel.AfterSeq >= r.sel.UpperSeq:
 		return errors.New("after must be below upper")
-	}
-	if r.set["from"] {
-		if err := protocol.ValidateAgentID(r.sel.From); err != nil {
-			return fmt.Errorf("from: %w", err)
-		}
 	}
 	return nil
 }
@@ -246,26 +258,39 @@ func hasControl(s string) bool {
 func (r *inboxAck) acknowledge(ctx context.Context, stdout, stderr io.Writer) (protocol.AckManyResult, error) {
 	var total protocol.AckManyResult
 	for {
-		resp, err := r.call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorAckMany, AckSelection: &r.sel}, expectation{protocol.TypeAck, "operator inbox ack"}, stderr)
+		page, err := r.page(ctx, stdout, stderr)
 		if err != nil {
 			return total, err
 		}
-		if err := protocol.ValidateAckMany(r.sel, resp); err != nil {
-			fmt.Fprintln(stderr, "operator inbox ack returned an invalid result; acknowledgment not verified:", err)
-			return total, errReported
-		}
-		if r.call.asJSON {
-			if encodeJSON(stdout, stderr, resp) != 0 {
-				return total, errReported
-			}
-		}
-		total.Acknowledged += resp.AckMany.Acknowledged
-		total.AlreadyAcknowledged += resp.AckMany.AlreadyAcknowledged
-		total.Skipped += resp.AckMany.Skipped
-		total.NextAfterSeq, total.More = resp.AckMany.NextAfterSeq, resp.AckMany.More
-		if !r.all || !resp.AckMany.More {
+		total = addPage(total, page)
+		if !r.all || !page.More {
 			return total, nil
 		}
-		r.sel.AfterSeq = resp.AckMany.NextAfterSeq
+		r.sel.AfterSeq = page.NextAfterSeq
 	}
+}
+
+// page runs one request and returns its verified result.
+func (r *inboxAck) page(ctx context.Context, stdout, stderr io.Writer) (protocol.AckManyResult, error) {
+	resp, err := r.call.expect(ctx, protocol.Message{Type: protocol.TypeOperatorAckMany, AckSelection: &r.sel}, expectation{protocol.TypeAck, "operator inbox ack"}, stderr)
+	if err != nil {
+		return protocol.AckManyResult{}, err
+	}
+	if err := protocol.ValidateAckMany(r.sel, resp); err != nil {
+		fmt.Fprintln(stderr, "operator inbox ack returned an invalid result; acknowledgment not verified:", err)
+		return protocol.AckManyResult{}, errReported
+	}
+	if r.call.asJSON && encodeJSON(stdout, stderr, resp) != 0 {
+		return protocol.AckManyResult{}, errReported
+	}
+	return *resp.AckMany, nil
+}
+
+// addPage accumulates a page into the run's totals; the cursor is the page's.
+func addPage(total, page protocol.AckManyResult) protocol.AckManyResult {
+	total.Acknowledged += page.Acknowledged
+	total.AlreadyAcknowledged += page.AlreadyAcknowledged
+	total.Skipped += page.Skipped
+	total.NextAfterSeq, total.More = page.NextAfterSeq, page.More
+	return total
 }

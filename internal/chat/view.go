@@ -131,22 +131,25 @@ func (m *Model) header() string {
 		conn = "syncing"
 	}
 	online := len(m.agents.list)
-	var title, facts string
+	var h headerText
 	switch {
 	case m.width >= 76:
-		title, facts = chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)
+		h = headerText{chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)}
 	case m.width >= 52:
-		title, facts = "operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)
+		h = headerText{"operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)}
 	default:
-		facts = fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread)
+		h = headerText{"", fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread)}
 	}
-	return m.band(title, facts)
+	return m.band(h)
 }
 
+// headerText is the header's title and the facts beside it.
+type headerText struct{ title, facts string }
+
 // band lays the header out on a background that spans the whole width.
-func (m *Model) band(title, facts string) string {
-	left := bandTitle.Render(title) + bandStyle.Render(facts)
-	used := ansi.StringWidth(title) + ansi.StringWidth(facts)
+func (m *Model) band(h headerText) string {
+	left := bandTitle.Render(h.title) + bandStyle.Render(h.facts)
+	used := ansi.StringWidth(h.title) + ansi.StringWidth(h.facts)
 	if reminder := m.ackReminder(); reminder != "" && m.width >= 76 {
 		left += bandStyle.Render(" · ") + reminder
 		used += 3 + ansi.StringWidth(reminder)

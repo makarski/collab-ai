@@ -85,63 +85,98 @@ type AckManyReport struct {
 // skipped and counted, never receipted here. Everything commits together
 // with the request's audit row.
 func (s *Store) AcknowledgeOperatorMany(ctx context.Context, sel protocol.AckSelection, audit OperatorAudit) (AckManyReport, error) {
-	var report AckManyReport
 	limit, err := ackManyLimit(sel)
 	if err != nil {
-		return report, err
+		return AckManyReport{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return report, err
+		return AckManyReport{}, err
 	}
 	defer tx.Rollback()
-	var last uint64
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) FROM messages`).Scan(&last); err != nil {
-		return report, err
+	run := &ackRun{ctx: ctx, tx: tx, now: time.Now().UTC(), uid: audit.PrincipalUID}
+	if err := run.apply(sel, limit); err != nil {
+		return run.report, err
 	}
-	if sel.UpperSeq > last {
-		return report, ErrInvalidSelection // the bound must be committed history, never a guess
-	}
-	rows, err := selectionRows(ctx, tx, sel, limit+1)
-	if err != nil {
-		return report, err
-	}
-	report.Result.NextAfterSeq = sel.AfterSeq
-	if len(rows) > limit {
-		rows, report.Result.More = rows[:limit], true
-	}
-	now := time.Now().UTC()
-	for _, row := range rows {
-		report.Result.NextAfterSeq = row.seq
-		if err := s.ackSelected(ctx, tx, row, now, audit.PrincipalUID, &report); err != nil {
-			return report, err
-		}
-	}
-	audit.Detail = fmt.Sprintf("after=%d upper=%d from=%q acknowledged=%d already=%d skipped=%d more=%t", sel.AfterSeq, sel.UpperSeq, sel.From, report.Result.Acknowledged, report.Result.AlreadyAcknowledged, report.Result.Skipped, report.Result.More)
+	audit.Detail = run.detail(sel)
 	if err := insertAudit(ctx, tx, audit); err != nil {
-		return report, err
+		return run.report, err
 	}
-	return report, tx.Commit()
+	return run.report, tx.Commit()
 }
 
-// ackSelected applies one row of a selection to the report.
-func (s *Store) ackSelected(ctx context.Context, tx *sql.Tx, row selectedRow, now time.Time, uid int, report *AckManyReport) error {
+// ackRun applies one selection inside one transaction.
+type ackRun struct {
+	ctx    context.Context
+	tx     *sql.Tx
+	now    time.Time
+	uid    int
+	report AckManyReport
+}
+
+// apply reads the stable page and acknowledges what it may; the bound must
+// be committed history, never a guess.
+func (r *ackRun) apply(sel protocol.AckSelection, limit int) error {
+	if err := r.checkCommitted(sel.UpperSeq); err != nil {
+		return err
+	}
+	rows, err := selectionRows(r.ctx, r.tx, sel, limit+1)
+	if err != nil {
+		return err
+	}
+	r.report.Result.NextAfterSeq = sel.AfterSeq
+	if len(rows) > limit {
+		rows, r.report.Result.More = rows[:limit], true
+	}
+	for _, row := range rows {
+		r.report.Result.NextAfterSeq = row.seq
+		if err := r.ackSelected(row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ackRun) checkCommitted(upper uint64) error {
+	var last uint64
+	if err := r.tx.QueryRowContext(r.ctx, `SELECT COALESCE(MAX(seq), 0) FROM messages`).Scan(&last); err != nil {
+		return err
+	}
+	if upper > last {
+		return ErrInvalidSelection
+	}
+	return nil
+}
+
+func (r *ackRun) detail(sel protocol.AckSelection) string {
+	res := r.report.Result
+	return fmt.Sprintf("after=%d upper=%d from=%q acknowledged=%d already=%d skipped=%d more=%t", sel.AfterSeq, sel.UpperSeq, sel.From, res.Acknowledged, res.AlreadyAcknowledged, res.Skipped, res.More)
+}
+
+// ackSelected applies one row of the selection to the report.
+func (r *ackRun) ackSelected(row selectedRow) error {
 	switch {
 	case row.acknowledged.Valid:
-		report.Result.AlreadyAcknowledged++
+		r.report.Result.AlreadyAcknowledged++
 	case !row.received.Valid:
-		report.Result.Skipped++
+		r.report.Result.Skipped++
 	default:
-		if err := updateDurableReceipt(ctx, tx, operatorStage(row.id, protocol.StageAgentAcknowledged), now); err != nil {
-			return err
-		}
-		if err := insertAudit(ctx, tx, OperatorAudit{Action: "ack", PrincipalUID: uid, MessageID: row.id, Result: AuditAccepted, Detail: "bulk"}); err != nil {
-			return err
-		}
-		report.Transitions = append(report.Transitions, OperatorTransition{row.id, row.sender, protocol.StageAgentAcknowledged})
-		report.Receipts = append(report.Receipts, protocol.ReceiptState{MessageID: row.id, AgentID: protocol.OperatorID, Stage: protocol.StageAgentAcknowledged})
-		report.Result.Acknowledged++
+		return r.acknowledge(row)
 	}
+	return nil
+}
+
+// acknowledge records the transition with its own payload-free audit row.
+func (r *ackRun) acknowledge(row selectedRow) error {
+	if err := updateDurableReceipt(r.ctx, r.tx, operatorStage(row.id, protocol.StageAgentAcknowledged), r.now); err != nil {
+		return err
+	}
+	if err := insertAudit(r.ctx, r.tx, OperatorAudit{Action: "ack", PrincipalUID: r.uid, MessageID: row.id, Result: AuditAccepted, Detail: "bulk"}); err != nil {
+		return err
+	}
+	r.report.Transitions = append(r.report.Transitions, OperatorTransition{row.id, row.sender, protocol.StageAgentAcknowledged})
+	r.report.Receipts = append(r.report.Receipts, protocol.ReceiptState{MessageID: row.id, AgentID: protocol.OperatorID, Stage: protocol.StageAgentAcknowledged})
+	r.report.Result.Acknowledged++
 	return nil
 }
 
