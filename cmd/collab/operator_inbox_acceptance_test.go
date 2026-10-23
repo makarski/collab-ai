@@ -16,10 +16,16 @@ import (
 )
 
 type inboxCLIRequest struct {
-	Type        string   `json:"type"`
-	MessageID   string   `json:"message_id"`
-	MessageIDs  []string `json:"message_ids"`
-	InReplyTo   string   `json:"in_reply_to"`
+	Type         string   `json:"type"`
+	MessageID    string   `json:"message_id"`
+	MessageIDs   []string `json:"message_ids"`
+	InReplyTo    string   `json:"in_reply_to"`
+	AckSelection struct {
+		From  string `json:"from"`
+		After uint64 `json:"after_seq"`
+		Upper uint64 `json:"upper_seq"`
+		Limit int    `json:"limit"`
+	} `json:"ack_selection"`
 	PageRequest struct {
 		After uint64 `json:"after_seq"`
 		Upper uint64 `json:"upper_seq"`
