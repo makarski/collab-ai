@@ -200,11 +200,23 @@ func (r *inboxAck) resolveBounds(ctx context.Context, stderr io.Writer) error {
 // continue it under the same frozen upper bound, so a retry is safe.
 func (r *inboxAck) reportPartial(stderr io.Writer, total protocol.AckManyResult) {
 	if total.Acknowledged+total.AlreadyAcknowledged+total.Skipped == 0 {
-		fmt.Fprintf(stderr, "nothing was acknowledged; retry with --after %d --upper %d\n", r.sel.AfterSeq, r.sel.UpperSeq)
+		// The request may have committed before its response was lost; the
+		// retry re-examines the same rows and reports them as already done.
+		fmt.Fprintf(stderr, "no acknowledgments confirmed; retry with %s\n", r.resume(r.sel.AfterSeq))
 		return
 	}
-	fmt.Fprintf(stderr, "partial: acknowledged %d, %d already acknowledged, %d not yet received, confirmed through #%d under upper #%d; continue with --after %d --upper %d\n",
-		total.Acknowledged, total.AlreadyAcknowledged, total.Skipped, total.NextAfterSeq, r.sel.UpperSeq, total.NextAfterSeq, r.sel.UpperSeq)
+	fmt.Fprintf(stderr, "partial: acknowledged %d, %d already acknowledged, %d not yet received, confirmed through #%d under upper #%d; continue with %s\n",
+		total.Acknowledged, total.AlreadyAcknowledged, total.Skipped, total.NextAfterSeq, r.sel.UpperSeq, r.resume(total.NextAfterSeq))
+}
+
+// resume is the command tail that continues this run with its exact scope:
+// the frozen upper bound and the sender filter, never widened.
+func (r *inboxAck) resume(after uint64) string {
+	tail := fmt.Sprintf("--after %d --upper %d", after, r.sel.UpperSeq)
+	if r.sel.From != "" {
+		tail += fmt.Sprintf(" --from %q", r.sel.From)
+	}
+	return tail
 }
 
 // acknowledge runs one request, or continues under the frozen upper bound
