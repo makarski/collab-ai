@@ -1144,8 +1144,8 @@ behaviour. Only the view, the input model and addressing change.
 
 - Ctrl+G to edit a long draft in `$VISUAL`/`$EDITOR` (Codex CLI, hermes,
   aider).
-- Draft history on ↑/↓ and Ctrl+R search; a recalled draft must restore its
-  audience and reply metadata or require choosing them again.
+- Draft history on ↑/↓ and Ctrl+R search (recall of the last sent message is
+  now in Chat v3, slice D).
 - Configurable keymaps and themes.
 
 ### Tests
@@ -1158,3 +1158,190 @@ explicit-audience tests; the recipient-field and focus plumbing, recipient
 grammar, reply/selection and narrow-view tests move to the new input model.
 New: the addressing parser, pickers, commands, `/clear`, resize and wrapped
 reachability, and a real-terminal check of the alternate-screen lifecycle.
+
+## Chat v3: conversations (design, 2026-10-21)
+
+Operator feedback after real use of v2 (#100): a message without a mention
+goes to everyone and the only sign is the hint line, so it is easy to
+broadcast by mistake; the transcript doesn't show which conversation you are
+in; the controls want dividers and colour; `/ack` is confusing and a reply
+should acknowledge; the transcript should scroll with the mouse; the last
+message should be recallable. Agreed with Codex on 2026-10-21. No wire or
+broker change: everything here is a view and an input rule in
+`internal/chat`.
+
+### Conversations are views over one timeline
+
+The timeline stays one store in sequence order. A conversation is a filter
+over it with its own scroll anchor, unread badge, `/clear` cutoff and `/find`
+scope.
+
+- **All**, the common chat: every entry, exactly the v2 transcript.
+  Broadcasts are composed here.
+- **1:1 with agent X**: what you received from X, and what X received from
+  you. A sent entry belongs to X's view only when the broker-accepted
+  recipients include X: `to` is X, `group` includes X, or X appears in the
+  entry's recipient stages. Presence never implies membership, and a past
+  broadcast never appears in a newly discovered agent's view. A truncated
+  stage list means "not yet known", never exclusion: when `/stages #n` later
+  reveals X, the entry appears in X's view at its sequence position with no
+  unread flag and no arrival notice. The row keeps its real audience label
+  ("you → everyone").
+- **Group messages** land in All and in each member's 1:1. There are no
+  group conversations in this step.
+- Rejected: All as a broadcasts-only room with agent replies placed by
+  `in_reply_to`. Agents' messages are always direct to the operator and
+  `in_reply_to` is a sender's claim, so that view would be empty or wrong.
+
+**Which conversations exist.** The bar lists All, then one entry per agent
+in the live directory: agents online or with an entry in the loaded
+timeline, in order of first appearance in this session (a new agent
+appends). The directory is derived from presence and the timeline and is not
+bounded separately. Saved view state (anchor, badge, cutoff, draft, reply
+binding) is allocated only when a view is opened, and at most 64 views are
+saved. Opening a 65th evicts an eligible saved view: not selected, empty
+draft, no reply binding, regardless of presence. If every saved view is
+protected, opening another is refused with "conversation state limit
+reached; send or clear a saved draft first"; protected state is never
+discarded, and presence alone never allocates or pins a view. Evicting saved
+state does not remove the directory entry: the two are separate structures,
+and the directory stays derived from the bounded presence list and loaded
+timeline. Numbers are displayed positions and are explicitly not stable
+across a directory removal: append-only order while nothing is removed,
+compaction when an agent leaves the directory, shown in the bar.
+
+**Per-view state.** The scroll anchor works as in v2 on entry IDs with the
+same epoch rules. `/clear` cutoffs are per view, sequence-based in the
+current epoch, and reset on a new epoch. `/find` searches the selected view.
+Loading older history from a filtered view pages the global history: one
+PgUp at the top keeps paging through pages with no match for that view, up
+to the catch-up page bound, with "loading older history (n pages)" in the
+status line and a clear end state ("no older messages", or "no older
+messages from X in the last N pages; PgUp continues").
+
+**Unread** is a flag per entry: set on insertion unless the entry had a line
+rendered while the selected view followed the bottom; cleared for entries
+that actually had a line rendered while the selected view followed the
+bottom. Entries hidden by `/clear` or above the viewport stay unread; a tall
+entry counts as shown once any of its lines is rendered while following. A
+view's badge counts its flagged entries; the header counts distinct flagged
+entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
+
+### Screen
+
+```
+ pairtask operator chat   connected · 2 online · F1 help
+ 1 All   2 claude-1 •3   3 codex-1
+ ───────────────────────────────────────────────────────────────
+ 12:41  codex-1 → you                                     #127
+        Review is done; MERGE for 6cdc7c5.
+        ● acknowledged
+ ── to codex-1 ──────────────────────────────────────────────────
+ › draft
+```
+
+- **Header**: a colour band (one background colour, white text, bold title
+  "pairtask operator chat"). Width tiers as in v2.
+- **Conversation bar**, one row: `1 All`, then `2 claude-1`, with `•N` unread
+  in the warning colour. The selected one is rendered reversed in its agent
+  colour (All in the title colour). The selected tab is always visible; the
+  bar scrolls horizontally with `…`.
+- **Divider under the bar.** One line.
+- **Audience divider** replaces the v2 hint line, same row budget and the
+  same content rules (audience, reply target, blocking reason, "pasted text,
+  mentions ignored"): `── to codex-1 ──…` in codex-1's colour, `── to everyone
+  (2 online) ──…` in the warning colour (bold yellow line), `── reply to #127
+  → codex-1 ──…`, `── ✗ reason ──…` in the error colour. The v2 key reminder
+  ("Enter send · / commands · F1 help") moves to the header's right end when
+  it fits.
+- **Degradation order** on small terminals: audience divider and one composer
+  row, header, conversation bar and its divider, status, transcript, extra
+  composer rows, picker. The minimum stays 4 rows by 20 columns.
+
+### Input sends to the selected conversation
+
+- **Per-conversation drafts.** Each conversation owns its draft text, reply
+  target and `/to` audience. Switching shows that conversation's draft
+  untouched; a switch never re-addresses anything.
+- **In All** the v2 grammar is unchanged: no mention → everyone, leading
+  `@id`s → those agents as a one-off (the divider follows them while typing),
+  `/to` as today.
+- **In a 1:1 with X** the draft goes direct to X. Leading mentions that name
+  only X are allowed; any other leading mention, `@all` or `/to` blocks with
+  "mentions address other agents only in All (Tab)". `/to` exists only in
+  All.
+- **Switching**: Tab and Shift+Tab cycle when no picker owns the key (Tab in
+  a picker still completes), Alt+1..9 jump to displayed positions, `/chat`
+  for the rest: `/chat all` is the common chat, `/chat <id>` takes an ID in
+  the mention grammar, `/chat "id"` (a JSON string) addresses any other ID,
+  including an agent literally named `all`; labels are escaped as everywhere.
+- **Replies stay put.** `/reply #n` and Ctrl+R switch to the sender's 1:1
+  and freeze the reply there; after the send you stay. From All, an
+  unaddressed draft's text moves with the reply into the sender's 1:1 and
+  All's draft becomes empty; an addressed All draft (mentions or `/to`) is
+  refused as in v2. When the reply would switch into a different view whose
+  saved draft is nonempty or already carries a reply binding, the reply is
+  refused with "<id> has an unsent draft: switch to it to send or clear it
+  first", and every draft and binding stays untouched. A reply inside the
+  current 1:1 keeps that view's draft and attaches the reply, as in v2.
+  Ctrl+R in a
+  1:1 replies to the newest message from that agent; in All, to the newest
+  received message overall.
+- A plain message in a 1:1 (no `/reply`, no Ctrl+R) sets no `in_reply_to`
+  and acknowledges nothing: correlation stays explicit because agents read
+  it as a claim.
+
+### Acknowledgments
+
+- **A reply acknowledges.** When a reply intent is created, the chat records
+  a binding: the replied-to message ID, its content hash and its epoch. When
+  the broker accepts that send, including a late confirmation of an
+  unknown-outcome send, the binding is consumed once and runs an
+  **idempotent ensure-ack**: if the target is already acknowledged, queued or
+  in flight nothing happens (never a cancel, never a second send); an
+  existing suspension stays; otherwise `operator_ack` is sent if the receipt
+  is confirmed, or queued under the v2 receipt-before-ack rule. A retained
+  target whose hash or epoch no longer matches the binding is not
+  acknowledged: the acknowledgment is queued suspended with the v2 reason
+  ("content changed", "broker restarted"), visible on the row's mark. A
+  target that is no longer loaded gets nothing, and the status line reports
+  "automatic acknowledgment of #n could not be completed". Rejection, or an
+  unknown outcome never confirmed, never acknowledges.
+- **The happy path is quiet.** The automatic path writes nothing to the
+  status line; the row mark (`○ needs ack`, `◐ ack queued`, `● acknowledged`)
+  is the single signal. The explicit `/ack` keeps its texts and the
+  second-`/ack`-cancels rule: it is "seen, no reply needed".
+
+### Mouse and the last message
+
+- **Mouse wheel scrolls the transcript.** The view enables cell-motion mouse
+  mode; wheel up and down move the transcript by three lines, anchored like
+  PgUp/PgDn; the wheel at the top loads older history; the wheel at the
+  bottom resumes following. Over a composer taller than its visible rows the
+  wheel scrolls the composer. Trade-off: with mouse mode on, terminals need
+  Shift (Option on macOS) held for native text selection; `/copy #n` remains
+  the clipboard path. The wheel works over `incus exec -t` and SSH.
+- **Recall the last message.** Up in an empty draft loads your newest sent
+  message's text into the composer; a second Up walks older, Down forward;
+  emptying the draft or Esc leaves recall. Recall restores the sent scope,
+  not the historical recipient list: direct and group IDs exactly as sent, a
+  broadcast as a broadcast, which the audience divider shows as "to everyone
+  (N online)" in the warning colour before it is sent again. Recall never
+  moves or re-addresses a draft in a direct conversation. Sent messages are
+  immutable on the wire, so this is a new send and the transcript shows
+  both. PgUp/PgDn always page the transcript; Up/Down move the cursor inside
+  a nonempty draft as in v2.
+
+### Slices
+
+- **A. Dividers and header**: the audience divider replacing the hint line,
+  the header band and title, the divider under the header. View only; no
+  conversation bar, switching, acknowledgment or recall behaviour.
+- **B. Reply acknowledges**: the binding and the ensure-ack on acceptance.
+- **C. Conversations**: membership, bar, switching, per-view state and
+  drafts, sending to the selection, reply switching, `/chat`.
+- **D. Mouse wheel and last-message recall.**
+
+Each slice: Codex writes the acceptance tests, Claude implements, Codex
+reviews, merge on green CI for the exact head plus MERGE for that SHA. The
+contract above is amended with each slice.
