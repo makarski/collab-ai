@@ -340,7 +340,6 @@ func (m *Model) acknowledged(req pendingRequest, resp protocol.Message) tea.Cmd 
 	return nil
 }
 
-
 func ackConfirms(resp protocol.Message, id string) bool {
 	if resp.Type != protocol.TypeAck {
 		return false
