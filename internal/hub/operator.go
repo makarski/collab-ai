@@ -75,6 +75,10 @@ func (h *Hub) routeOperator(ctx context.Context, clients map[string]*Client, req
 		return h.operatorReceived(ctx, clients, req)
 	case protocol.TypeOperatorAck:
 		return h.operatorAck(ctx, clients, req)
+	case protocol.TypeOperatorAckMany:
+		return h.operatorAckMany(ctx, clients, req)
+	case protocol.TypeOperatorInboxStatus:
+		return h.operatorInboxStatus(ctx, req)
 	case protocol.TypeOperatorHistory:
 		return h.operatorRead(ctx, req, "history", h.readHistory)
 	case protocol.TypeOperatorMessageStages:

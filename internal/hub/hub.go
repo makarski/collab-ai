@@ -300,9 +300,30 @@ func (h *Hub) persistRoute(ctx context.Context, in Inbound, recipients []protoco
 		return out, &routingError{protocol.ErrMalformedFrame, "routed message exceeds the 1 MiB frame limit"}
 	}
 	if err := h.store.PersistMessage(ctx, out, in.From.SessionID, recipients); err != nil {
-		return out, h.persistenceError(out.MessageID, err)
+		return out, h.refusedSend(in, recipients, err)
 	}
 	return out, nil
+}
+
+// refusedSend maps a persistence failure; when an inbox bound refused a
+// message to the operator, the operator session learns which bound, since
+// only the operator can free it.
+func (h *Hub) refusedSend(in Inbound, recipients []protocol.Recipient, err error) *routingError {
+	rerr := h.persistenceError(in.Msg.MessageID, err)
+	var full *store.InboxFullError
+	if errors.As(err, &full) && addressesOperator(recipients) {
+		h.emit(protocol.SessionEvent{Kind: protocol.EventSendRefused, AgentID: in.From.ID, Detail: full.Detail()})
+	}
+	return rerr
+}
+
+func addressesOperator(recipients []protocol.Recipient) bool {
+	for _, r := range recipients {
+		if r.AgentID == protocol.OperatorID {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Hub) persistenceError(id string, err error) *routingError {
