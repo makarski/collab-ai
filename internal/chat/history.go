@@ -192,7 +192,7 @@ func (m *Model) olderPage(req protocol.PageRequest, page *protocol.HistoryPage) 
 // paging global history through pages with nothing for that conversation,
 // bounded by the catch-up page bound, and reports where it ended.
 type olderRun struct {
-	key   string
+	key   viewKey
 	pages int
 }
 
@@ -212,7 +212,7 @@ func (m *Model) continueOlder(page *protocol.HistoryPage, _ int) tea.Cmd {
 	}
 	if run.pages >= m.opts.Bounds.CatchupPages {
 		m.history.run = nil
-		m.status = fmt.Sprintf("no older messages from %s in the last %d pages; PgUp continues", safe(run.key), run.pages)
+		m.status = fmt.Sprintf("no older messages from %s in the last %d pages; PgUp continues", safe(run.key.agent()), run.pages)
 		return nil
 	}
 	m.status = fmt.Sprintf("loading older history (%d pages)", run.pages)
@@ -220,7 +220,7 @@ func (m *Model) continueOlder(page *protocol.HistoryPage, _ int) tea.Cmd {
 }
 
 // pageMatches reports whether the page brought anything for the view.
-func (m *Model) pageMatches(key string, page *protocol.HistoryPage) bool {
+func (m *Model) pageMatches(key viewKey, page *protocol.HistoryPage) bool {
 	for _, e := range m.timeline.order {
 		if inPage(e, page) && m.inView(e, key) {
 			return true

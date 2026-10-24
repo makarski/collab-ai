@@ -74,7 +74,7 @@ func (m *Model) scrollPage(direction int) tea.Cmd {
 	bottom := max(0, len(lines)-height)
 	if direction < 0 && start == 0 {
 		m.anchor(lines, 0)
-		if m.conv.selected != "" && m.history.run == nil {
+		if !m.conv.selected.common() && m.history.run == nil {
 			m.history.run = &olderRun{key: m.conv.selected}
 		}
 		return m.loadOlder(nil)

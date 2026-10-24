@@ -1,13 +1,7 @@
 package chat
 
 import (
-	"encoding/json"
-	"fmt"
 	"slices"
-	"strconv"
-	"strings"
-
-	tea "charm.land/bubbletea/v2"
 
 	"github.com/pairtask/pairtask/internal/protocol"
 )
@@ -22,6 +16,16 @@ const savedViewsMax = 64
 
 // SourceConversation is the audience a 1:1 view gives a draft by itself.
 const SourceConversation = "conversation"
+
+// viewKey names a conversation: an agent ID, or allKey for the common chat,
+// which no valid agent ID can equal.
+type viewKey string
+
+const allKey viewKey = ""
+
+func (k viewKey) common() bool { return k == allKey }
+
+func (k viewKey) agent() string { return string(k) }
 
 // view is one conversation's saved state: where it was scrolled, what it
 // hides and searches for, and its own draft with the draft's reply target
@@ -40,8 +44,8 @@ type view struct {
 // selected conversation and the saved views.
 type conversations struct {
 	order    []string // agent IDs by first appearance in this session
-	selected string   // "" is All
-	saved    map[string]*view
+	selected viewKey
+	saved    map[viewKey]*view
 	uses     int
 }
 
@@ -103,6 +107,12 @@ func (s *agentSet) add(id string) {
 	s.seen = append(s.seen, id)
 }
 
+func (s *agentSet) addAll(ids []string) {
+	for _, id := range ids {
+		s.add(id)
+	}
+}
+
 // reservedID is an ID that never names a conversation.
 func reservedID(id string) bool {
 	return id == "" || id == protocol.OperatorID || id == protocol.Broadcast
@@ -114,21 +124,31 @@ func reservedID(id string) bool {
 // even when its agent left presence and the timeline.
 func (m *Model) liveAgents() agentSet {
 	live := agentSet{has: map[string]bool{}}
+	m.addTimelineAgents(&live)
+	m.addPresentAgents(&live)
+	live.add(m.conv.selected.agent())
+	m.addProtectedViews(&live)
+	return live
+}
+
+func (m *Model) addTimelineAgents(live *agentSet) {
 	for _, e := range m.timeline.order {
-		for _, id := range entryAgents(e) {
-			live.add(id)
-		}
+		live.addAll(entryAgents(e))
 	}
+}
+
+func (m *Model) addPresentAgents(live *agentSet) {
 	for _, a := range m.agents.list {
 		live.add(a.AgentID)
 	}
-	live.add(m.conv.selected)
+}
+
+func (m *Model) addProtectedViews(live *agentSet) {
 	for key, v := range m.conv.saved {
 		if v.protected() {
-			live.add(key)
+			live.add(key.agent())
 		}
 	}
-	return live
 }
 
 // entryAgents lists the agents an entry belongs to: its sender, or its
@@ -151,17 +171,18 @@ func entryAgents(e *entry) []string {
 // everything; a 1:1 with X holds what X sent and what X is an accepted
 // recipient of. Presence never implies membership; a truncated stage list
 // means "not yet known".
-func (m *Model) inView(e *entry, key string) bool {
-	if key == "" {
+func (m *Model) inView(e *entry, key viewKey) bool {
+	if key.common() {
 		return true
 	}
+	id := key.agent()
 	if e.direction == "received" {
-		return e.msg.From == key
+		return e.msg.From == id
 	}
-	if e.msg.To == key || slices.Contains(e.msg.Group, key) {
+	if e.msg.To == id || slices.Contains(e.msg.Group, id) {
 		return true
 	}
-	_, ok := e.stages[key]
+	_, ok := e.stages[id]
 	return ok
 }
 
@@ -169,17 +190,12 @@ func (m *Model) inView(e *entry, key string) bool {
 // is allocated only when opened; beyond the bound, an unselected view with
 // no draft and no reply binding is evicted, and when none is, the switch is
 // refused and nothing changes.
-func (m *Model) selectView(key string) bool {
+func (m *Model) selectView(key viewKey) bool {
 	if key == m.conv.selected {
 		return true
 	}
 	target := m.conv.saved[key]
-	if key != "" && target == nil && !slices.Contains(m.conv.order, key) {
-		m.status = "no conversation with " + safe(key)
-		return false
-	}
-	if target == nil && !m.allocateView() {
-		m.status = "conversation state limit reached; send or clear a saved draft first"
+	if target == nil && !m.openable(key) {
 		return false
 	}
 	m.conv.uses++
@@ -196,14 +212,28 @@ func (m *Model) selectView(key string) bool {
 	return true
 }
 
+// openable reports whether a conversation without saved state may be
+// opened: its agent is in the directory and a view slot is free.
+func (m *Model) openable(key viewKey) bool {
+	if !key.common() && !slices.Contains(m.conv.order, key.agent()) {
+		m.status = "no conversation with " + safe(key.agent())
+		return false
+	}
+	if !m.allocateView() {
+		m.status = "conversation state limit reached; send or clear a saved draft first"
+		return false
+	}
+	return true
+}
+
 // allocateView makes room for one more saved view.
 func (m *Model) allocateView() bool {
 	if len(m.conv.saved)+1 < savedViewsMax { // +1: the selected view counts
 		return true
 	}
-	victim, best, found := "", 0, false
+	victim, best, found := allKey, 0, false
 	for key, v := range m.conv.saved {
-		if key == "" || v.protected() {
+		if key.common() || v.protected() {
 			continue // All is permanent; a draft or reply binding is never discarded
 		}
 		if !found || v.used < best {
@@ -231,15 +261,15 @@ func (m *Model) freshComposer() composer {
 }
 
 func (m *Model) placeholder() string {
-	if m.conv.selected == "" {
+	if m.conv.selected.common() {
 		return "Message everyone · @agent for one · / for commands"
 	}
-	return "Message " + safe(m.conv.selected) + " · / for commands"
+	return "Message " + safe(m.conv.selected.agent()) + " · / for commands"
 }
 
 // savedDraft reports whether a conversation holds an unsent draft or a reply
 // binding, selected or saved.
-func (m *Model) savedDraft(key string) bool {
+func (m *Model) savedDraft(key viewKey) bool {
 	if key == m.conv.selected {
 		return m.compose.protectedDraft()
 	}
@@ -255,68 +285,33 @@ func (c *composer) protectedDraft() bool {
 
 // cycleView moves the selection along the bar.
 func (m *Model) cycleView(step int) {
-	positions := append([]string{""}, m.conv.order...)
-	i := slices.Index(positions, m.conv.selected)
-	if i < 0 {
-		i = 0
-	}
+	positions := m.positions()
+	i := max(0, slices.Index(positions, m.conv.selected))
 	m.selectView(positions[(i+step+len(positions))%len(positions)])
+}
+
+// positions is the bar in order: All, then the directory.
+func (m *Model) positions() []viewKey {
+	keys := []viewKey{allKey}
+	for _, id := range m.conv.order {
+		keys = append(keys, viewKey(id))
+	}
+	return keys
 }
 
 // jumpView selects a displayed position, 1 being All.
 func (m *Model) jumpView(position int) {
-	if position == 1 {
-		m.selectView("")
-		return
-	}
-	if position-2 < len(m.conv.order) {
-		m.selectView(m.conv.order[position-2])
+	if positions := m.positions(); position >= 1 && position <= len(positions) {
+		m.selectView(positions[position-1])
 	}
 }
 
-// chatCommand: /chat all, /chat <id> for the mention grammar, /chat "id" (a
-// JSON string) for any other ID, including an agent literally named all.
-func (m *Model) chatCommand(arg argument) tea.Cmd {
-	key, err := chatTarget(string(arg))
-	if err != nil {
-		m.status = err.Error()
-		return nil
-	}
-	m.refreshDirectory()
-	m.selectView(key)
-	return nil
-}
-
-func chatTarget(arg string) (string, error) {
-	switch {
-	case arg == ConversationAll:
-		return "", nil
-	case strings.HasPrefix(arg, `"`):
-		var id string
-		if err := json.Unmarshal([]byte(arg), &id); err != nil {
-			return "", fmt.Errorf("/chat takes all, an agent mention, or a JSON string: %w", err)
-		}
-		return id, protocol.ValidateAgentID(id)
-	case mentionID.MatchString(arg):
-		return arg, nil
-	}
-	return "", fmt.Errorf("/chat takes all, an agent mention, or a JSON string")
-}
-
-func chatArg(a argument) error {
-	if a.empty() {
-		return fmt.Errorf("takes all, an agent mention, or a JSON string")
-	}
-	_, err := chatTarget(string(a))
-	return err
-}
-
-// unreadCount is the number of distinct unread entries, or of those in a
-// conversation when key is given with inView.
-func (m *Model) unreadCount(key string, filtered bool) int {
+// unreadIn counts the unread entries a conversation holds; for All that is
+// every unread entry, counted once.
+func (m *Model) unreadIn(key viewKey) int {
 	n := 0
 	for _, e := range m.timeline.order {
-		if e.unread && (!filtered || m.inView(e, key)) {
+		if e.unread && m.inView(e, key) {
 			n++
 		}
 	}
@@ -327,15 +322,11 @@ func (m *Model) unreadCount(key string, filtered bool) int {
 // the selected conversation follows the bottom. Entries above the window or
 // hidden by /clear stay unread.
 func (m *Model) markShown() {
-	if !m.view.following || m.tooSmall() || m.panel != nil {
-		return
-	}
-	height := m.layout().transcript
-	if height == 0 {
+	if !m.view.following || !m.transcriptVisible() {
 		return
 	}
 	lines := m.transcript()
-	start := max(0, len(lines)-height)
+	start := max(0, len(lines)-m.layout().transcript)
 	for _, l := range lines[start:] {
 		if e := m.timeline.entries[l.id]; e != nil {
 			e.unread = false
@@ -343,68 +334,11 @@ func (m *Model) markShown() {
 	}
 }
 
-// conversationViews lists the bar for the state view.
-func (m *Model) conversationViews() []ConversationView {
-	m.refreshDirectory()
-	out := []ConversationView{{All: true, Position: 1, Unread: m.unreadCount("", false), Selected: m.conv.selected == "", Draft: m.savedDraft("")}}
-	for i, id := range m.conv.order {
-		out = append(out, ConversationView{ID: id, Position: i + 2, Unread: m.unreadCount(id, true), Selected: m.conv.selected == id, Draft: m.savedDraft(id)})
+// transcriptVisible reports whether transcript rows are on screen at all: not
+// on a too-small terminal, not behind a panel, and only with rows to show.
+func (m *Model) transcriptVisible() bool {
+	if m.tooSmall() || m.panel != nil {
+		return false
 	}
-	return out
-}
-
-// barRow renders the conversation bar: positions, labels, unread badges, the
-// selected one reversed in its colour, scrolled so the selected one shows.
-func (m *Model) barRow() string {
-	var items []string
-	widths := []int{}
-	selected := 0
-	for _, c := range m.conversationViews() {
-		name := "All"
-		style := titleStyle
-		if !c.All {
-			name, style = safe(c.ID), agentStyle(c.ID)
-		}
-		label := strconv.Itoa(c.Position) + " " + name
-		if c.Unread > 0 {
-			label += " " + everyoneStyle.Render("•"+strconv.Itoa(c.Unread))
-		}
-		if c.Selected {
-			selected = len(items)
-			label = style.Reverse(true).Render(" " + label + " ")
-		} else {
-			label = " " + style.Render(label) + " "
-		}
-		items = append(items, label)
-		widths = append(widths, len(name)+len(strconv.Itoa(c.Position))+3+badgeWidth(c.Unread))
-	}
-	return fitBar(items, widths, selected, m.width)
-}
-
-func badgeWidth(n int) int {
-	if n == 0 {
-		return 0
-	}
-	return 2 + len(strconv.Itoa(n))
-}
-
-// fitBar joins the items from the first one that still shows the selected
-// item within the width, marking an overflow on the left with "…".
-func fitBar(items []string, widths []int, selected, width int) string {
-	start := 0
-	for {
-		used := 0
-		for i := start; i <= selected; i++ {
-			used += widths[i]
-		}
-		if used <= width-1 || start == selected {
-			break
-		}
-		start++
-	}
-	row := ""
-	if start > 0 {
-		row = ruleStyle.Render("…")
-	}
-	return row + strings.Join(items[start:], "")
+	return m.layout().transcript > 0
 }

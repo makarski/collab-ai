@@ -158,11 +158,11 @@ func (m *Model) header() string {
 	var h headerText
 	switch {
 	case m.width >= 76:
-		h = headerText{chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.unreadCount("", false), m.inbox.pending)}
+		h = headerText{chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.unreadIn(allKey), m.inbox.pending)}
 	case m.width >= 52:
-		h = headerText{"operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.unreadCount("", false))}
+		h = headerText{"operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.unreadIn(allKey))}
 	default:
-		h = headerText{"", fmt.Sprintf("%s · %d on · %d new", conn, online, m.unreadCount("", false))}
+		h = headerText{"", fmt.Sprintf("%s · %d on · %d new", conn, online, m.unreadIn(allKey))}
 	}
 	return m.band(h)
 }

@@ -155,7 +155,7 @@ func New(opts Options) *Model {
 	m.inbox.queuedAcks = map[string]*queuedAck{}
 	m.inbox.quiet = map[string]bool{}
 	m.compose = newComposer()
-	m.conv.saved = map[string]*view{}
+	m.conv.saved = map[viewKey]*view{}
 	m.view.following = true
 	m.resize(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	return m
