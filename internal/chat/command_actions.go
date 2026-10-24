@@ -128,10 +128,12 @@ func (m *Model) replyRefusal(e *entry) string {
 	if m.compose.addressed() {
 		return "draft is already addressed; remove the mentions or /to first"
 	}
-	if m.conv.selected != "" && m.conv.selected != e.msg.From && !m.compose.draftEmpty() {
+	switching := m.conv.selected != e.msg.From
+	inAnotherView := m.conv.selected != ""
+	if switching && inAnotherView && !m.compose.draftEmpty() {
 		return "draft is already addressed; send or clear it first"
 	}
-	if m.conv.selected != e.msg.From && m.savedDraft(e.msg.From) {
+	if switching && m.savedDraft(e.msg.From) {
 		return safe(e.msg.From) + " has an unsent draft: switch to it to send or clear it first"
 	}
 	return ""

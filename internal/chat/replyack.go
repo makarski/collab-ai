@@ -74,12 +74,16 @@ func (m *Model) bindAudience(scope protocol.Message, inReplyTo string) []ackBind
 	}
 	var out []ackBinding
 	for _, e := range m.timeline.order {
-		if e.direction != "received" || !slices.Contains(ids, e.msg.From) || !m.adoptedForAck(e) {
-			continue
+		if m.fromRecipient(e, ids) && m.adoptedForAck(e) {
+			out = append(out, ackBinding{id: e.msg.MessageID, seq: e.msg.Seq, hash: e.hash, epoch: e.epoch, sender: e.msg.From})
 		}
-		out = append(out, ackBinding{id: e.msg.MessageID, seq: e.msg.Seq, hash: e.hash, epoch: e.epoch, sender: e.msg.From})
 	}
 	return out
+}
+
+// fromRecipient reports a received message from one of the intended recipients.
+func (m *Model) fromRecipient(e *entry, ids []string) bool {
+	return e.direction == "received" && slices.Contains(ids, e.msg.From)
 }
 
 // adoptedForAck reports a message the audience acknowledgment may bind: read

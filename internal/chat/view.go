@@ -101,25 +101,38 @@ type frameLayout struct {
 func (m *Model) layout() frameLayout {
 	l := frameLayout{composer: 1}
 	rest := m.height - 2 // audience divider + one composer row
+	rest = m.layoutTop(&l, rest)
+	rest = m.layoutBottom(&l, rest)
+	l.transcript = max(0, rest)
+	return l
+}
+
+// layoutTop allocates the header, the conversation bar, the status line and
+// the rule under the bar. The bar and the rule are decoration: with a status
+// line to show, they leave it and one transcript row their space.
+func (m *Model) layoutTop(l *frameLayout, rest int) int {
 	if rest > 0 {
 		l.header, rest = true, rest-1
 	}
-	// Then the conversation bar, the status line and the rule under the bar.
-	// The bar and the rule are decoration: with a status line to show, they
-	// leave it and one transcript row their space.
+	status := m.statusLine() != ""
 	need := 1
-	if m.statusLine() != "" {
+	if status {
 		need = 2
 	}
 	if rest > need {
 		l.bar, rest = true, rest-1
 	}
-	if rest > 0 && m.statusLine() != "" {
+	if rest > 0 && status {
 		l.status, rest = true, rest-1
 	}
 	if rest > 1 {
 		l.divider, rest = true, rest-1
 	}
+	return rest
+}
+
+// layoutBottom allocates the extra composer rows and the picker.
+func (m *Model) layoutBottom(l *frameLayout, rest int) int {
 	want := m.compose.editor.Height() - 1
 	if m.compose.cmd != nil {
 		want = 0
@@ -131,8 +144,7 @@ func (m *Model) layout() frameLayout {
 		l.picker = min(len(p.items), pickerMax, max(0, rest-1))
 		rest -= l.picker
 	}
-	l.transcript = max(0, rest)
-	return l
+	return rest
 }
 
 // header is one colour band across the width: the title and connection

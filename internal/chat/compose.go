@@ -363,29 +363,37 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	return m.editorKey(msg)
 }
 
+// globalKeys act in every input mode.
+var globalKeys = map[string]func(*Model) tea.Cmd{
+	"ctrl+q":   (*Model).quit,
+	"ctrl+c":   (*Model).quit,
+	"f1":       func(m *Model) tea.Cmd { m.toggleHelp(); return nil },
+	"ctrl+k":   func(m *Model) tea.Cmd { m.ensureCommandLine(); return nil },
+	"ctrl+r":   (*Model).ctrlR,
+	"pgup":     func(m *Model) tea.Cmd { return m.page(-1) },
+	"pgdown":   func(m *Model) tea.Cmd { return m.page(1) },
+	"ctrl+end": func(m *Model) tea.Cmd { m.follow(); return nil },
+}
+
 func (m *Model) globalKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	switch msg.String() {
-	case "ctrl+q", "ctrl+c":
-		return m.quit(), true
-	case "f1":
-		m.toggleHelp()
-	case "ctrl+k":
-		m.ensureCommandLine()
-	case "ctrl+r":
-		return m.ctrlR(), true
-	case "pgup":
-		return m.page(-1), true
-	case "pgdown":
-		return m.page(1), true
-	case "ctrl+end":
-		m.follow()
-	case "alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9":
-		m.refreshDirectory()
-		m.jumpView(int(msg.String()[4] - '0'))
-	default:
-		return nil, false
+	key := msg.String()
+	if handle := globalKeys[key]; handle != nil {
+		return handle(m), true
 	}
-	return nil, true
+	if position, ok := altDigit(key); ok {
+		m.refreshDirectory()
+		m.jumpView(position)
+		return nil, true
+	}
+	return nil, false
+}
+
+// altDigit reads Alt+1..9 as a bar position.
+func altDigit(key string) (int, bool) {
+	if len(key) != 5 || !strings.HasPrefix(key, "alt+") || key[4] < '1' || key[4] > '9' {
+		return 0, false
+	}
+	return int(key[4] - '0'), true
 }
 
 func (m *Model) ensureCommandLine() {

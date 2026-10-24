@@ -62,45 +62,56 @@ type ConversationView struct {
 // the selected agent stays while selected. Positions are displayed order,
 // so they move only when an agent leaves.
 func (m *Model) refreshDirectory() {
-	live := map[string]bool{}
-	var seen []string
-	note := func(id string) {
-		if id == "" || id == protocol.OperatorID || id == protocol.Broadcast || live[id] {
-			return
-		}
-		live[id] = true
-		seen = append(seen, id)
-	}
-	for _, e := range m.timeline.order {
-		for _, id := range entryAgents(e) {
-			note(id)
-		}
-	}
-	for _, a := range m.agents.list {
-		note(a.AgentID)
-	}
-	if m.conv.selected != "" {
-		note(m.conv.selected)
-	}
-	// A view holding an unsent draft or a reply binding stays reachable even
-	// when its agent left presence and the loaded timeline.
-	for key, v := range m.conv.saved {
-		if key != "" && v.protected() {
-			note(key)
-		}
-	}
+	live := m.liveAgents()
 	kept := m.conv.order[:0]
 	for _, id := range m.conv.order {
-		if live[id] {
+		if live.has[id] {
 			kept = append(kept, id)
 		}
 	}
 	m.conv.order = kept
-	for _, id := range seen {
+	for _, id := range live.seen {
 		if !slices.Contains(m.conv.order, id) {
 			m.conv.order = append(m.conv.order, id)
 		}
 	}
+}
+
+// agentSet is an ordered set of agent IDs.
+type agentSet struct {
+	has  map[string]bool
+	seen []string
+}
+
+func (s *agentSet) add(id string) {
+	if id == "" || id == protocol.OperatorID || id == protocol.Broadcast || s.has[id] {
+		return
+	}
+	s.has[id] = true
+	s.seen = append(s.seen, id)
+}
+
+// liveAgents are the agents the directory lists: in the loaded timeline, in
+// presence, selected, or holding a protected view, in that order of first
+// appearance. A view with an unsent draft or a reply binding stays reachable
+// even when its agent left presence and the timeline.
+func (m *Model) liveAgents() agentSet {
+	live := agentSet{has: map[string]bool{}}
+	for _, e := range m.timeline.order {
+		for _, id := range entryAgents(e) {
+			live.add(id)
+		}
+	}
+	for _, a := range m.agents.list {
+		live.add(a.AgentID)
+	}
+	live.add(m.conv.selected)
+	for key, v := range m.conv.saved {
+		if v.protected() {
+			live.add(key)
+		}
+	}
+	return live
 }
 
 // entryAgents lists the agents an entry belongs to: its sender, or its

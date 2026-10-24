@@ -198,33 +198,43 @@ type olderRun struct {
 
 // continueOlder requests the next page while a filtered run found nothing
 // yet, and reports the end state otherwise.
-func (m *Model) continueOlder(page *protocol.HistoryPage, before int) tea.Cmd {
+func (m *Model) continueOlder(page *protocol.HistoryPage, _ int) tea.Cmd {
 	run := m.history.run
 	if run == nil {
 		return nil
 	}
 	run.pages++
-	matched := false
-	for _, e := range m.timeline.order[:len(m.timeline.order)-before+min(before, len(m.timeline.order))] {
-		if m.inView(e, run.key) && e.msg.Seq < page.UpperSeq && e.msg.Seq >= page.NextBeforeSeq {
-			matched = true
-			break
-		}
-	}
-	switch {
-	case matched, m.history.olderDone, !page.More:
-		m.history.run = nil
-		if !matched && (m.history.olderDone || !page.More) {
-			m.status = "no older messages"
-		}
+	matched := m.pageMatches(run.key, page)
+	exhausted := m.history.olderDone || !page.More
+	if matched || exhausted {
+		m.endOlderRun(matched, exhausted)
 		return nil
-	case run.pages >= m.opts.Bounds.CatchupPages:
+	}
+	if run.pages >= m.opts.Bounds.CatchupPages {
 		m.history.run = nil
 		m.status = fmt.Sprintf("no older messages from %s in the last %d pages; PgUp continues", safe(run.key), run.pages)
 		return nil
 	}
 	m.status = fmt.Sprintf("loading older history (%d pages)", run.pages)
 	return m.loadOlder(nil)
+}
+
+// pageMatches reports whether the page brought anything for the view.
+func (m *Model) pageMatches(key string, page *protocol.HistoryPage) bool {
+	for _, e := range m.timeline.order {
+		if e.msg.Seq < page.UpperSeq && e.msg.Seq >= page.NextBeforeSeq && m.inView(e, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// endOlderRun closes a run that found something or ran out of history.
+func (m *Model) endOlderRun(matched, exhausted bool) {
+	m.history.run = nil
+	if !matched && exhausted {
+		m.status = "no older messages"
+	}
 }
 
 func seqID(t timeline, seq uint64) string {
