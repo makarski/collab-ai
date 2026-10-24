@@ -133,6 +133,7 @@ func (m *Model) dispatch(scope protocol.Message, payload json.RawMessage, inRepl
 	m.send.intent = &intent{ID: uuid.NewString(), Scope: scope, Payload: payload, InReplyTo: inReplyTo, State: IntentSending, Ack: m.bindAck(), AckBatch: m.bindAudience(scope, inReplyTo)}
 	cmd := m.sendIntent()
 	m.compose.resetDraft()
+	m.endRecall()
 	m.status = ""
 	m.follow()
 	return cmd

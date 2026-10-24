@@ -28,6 +28,7 @@ type StateView struct {
 	InboxUsage        *protocol.InboxStatus
 	BulkAck           *BulkAckView
 	Conversations     []ConversationView
+	Recall            *RecallView
 	Selected          string // the selected conversation's agent ID; empty for the common chat
 	SelectedAll       bool
 	Draft             string
@@ -114,7 +115,7 @@ func (m *Model) State() StateView {
 		Agents:      append([]protocol.AgentPresence(nil), m.agents.list...),
 		AgentsTotal: m.agents.total, AgentsPartial: m.agents.partial, InboxPending: m.inbox.pending,
 		InboxHeadSeq: m.inbox.headSeq, Unread: m.unreadIn(allKey), Paused: m.timeline.paused,
-		Conversations: m.conversationViews(), Selected: m.conv.selected.agent(), SelectedAll: m.conv.selected.common(),
+		Conversations: m.conversationViews(), Selected: m.conv.selected.agent(), SelectedAll: m.conv.selected.common(), Recall: m.recallView(),
 		InFlight: m.inFlight(), Queued: len(m.outbox), InboxUsage: m.usage, BulkAck: m.bulkView(), Draft: c.editor.Value(), Pasted: c.pasted,
 		Audience: m.audienceView(), Hint: m.hintText(), ScrollOffset: m.scrollOffset(), Cutoff: m.cutoff,
 		Status: m.status, Help: m.panel != nil && m.panel.kind == panelHelp, TooSmall: m.tooSmall(),

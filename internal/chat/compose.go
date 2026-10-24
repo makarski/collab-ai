@@ -93,22 +93,38 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 			return cmd
 		}
 	}
-	switch msg.String() {
-	case "enter":
-		return m.enter()
-	case "esc":
-		return nil // a reply is cancelled only by /reply cancel
-	case "tab", "shift+tab":
-		m.switchView(msg.String())
-		return nil
+	if cmd, handled := m.draftKey(msg); handled {
+		return cmd
 	}
 	if msg.Text == "/" && c.draftEmpty() {
 		m.openCommandLine()
 		return nil
 	}
+	m.endRecall() // any edit leaves an ordinary draft
 	cmd := m.updateEditor(msg)
 	m.afterEdit()
 	return cmd
+}
+
+// draftKey handles the keys the editor never sees: Enter sends, Esc ends a
+// recall (a reply is cancelled only by /reply cancel), Tab cycles views, and
+// Up/Down walk sent messages while a recall owns the draft.
+func (m *Model) draftKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch msg.String() {
+	case "enter":
+		return m.enter(), true
+	case "esc":
+		m.endRecall()
+		return nil, true
+	case "tab", "shift+tab":
+		m.switchView(msg.String())
+		return nil, true
+	case "up":
+		return nil, m.recallUp()
+	case "down":
+		return nil, m.recallDown()
+	}
+	return nil, false
 }
 
 // switchView cycles the conversation bar from the editor: Tab forward,
@@ -165,6 +181,7 @@ func (m *Model) paste(msg tea.PasteMsg) tea.Cmd {
 		c.pasted = true
 	}
 	c.picker = nil
+	m.endRecall() // pasting edits the draft
 	return m.updateEditor(msg)
 }
 
