@@ -94,7 +94,7 @@ func TestChatCommandLineKeepsCursorVisibleInsideResizedBox(t *testing.T) {
 	h := v3DisplayHarness(t, false)
 	h.input(tea.WindowSizeMsg{Width: 80, Height: 24})
 	h.input(chatKey('k', tea.ModCtrl))
-	command := "find " + strings.Repeat("x", 100) + "TAIL"
+	command := "find " + strings.Repeat("x", 50) + "Ω" + strings.Repeat("y", 50) + "TAIL"
 	v2Type(h, command)
 	for _, width := range []int{80, 40, 20, 80} {
 		h.input(tea.WindowSizeMsg{Width: width, Height: 24})
@@ -104,6 +104,11 @@ func TestChatCommandLineKeepsCursorVisibleInsideResizedBox(t *testing.T) {
 	}
 	h.input(chatKey(tea.KeyHome, 0))
 	v3Contains(t, ansi.Strip(h.m.View().Content), "/find")
+	for range 55 {
+		h.input(chatKey(tea.KeyRight, 0))
+	}
+	h.input(tea.WindowSizeMsg{Width: 40, Height: 24})
+	v3Contains(t, ansi.Strip(h.m.View().Content), "Ω")
 	h.input(chatKey(tea.KeyEnd, 0))
 	v3Contains(t, ansi.Strip(h.m.View().Content), "TAIL")
 }
