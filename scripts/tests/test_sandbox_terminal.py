@@ -27,6 +27,15 @@ tty.setraw(0)
 """
 
 
+def terminal_settings(fd):
+    attrs = termios.tcgetattr(fd)
+    if sys.platform == "darwin":
+        # XNU sets PENDIN when restoring ICANON: transient input state, not
+        # a setting. bsd/kern/tty.c in apple-oss-distributions/xnu, TIOCSETA.
+        attrs[3] &= ~termios.PENDIN
+    return attrs
+
+
 class SessionTerminal:
     def __init__(self):
         self.master, self.slave = pty.openpty()
@@ -34,7 +43,7 @@ class SessionTerminal:
         attrs[3] &= ~termios.ECHO
         attrs[6][termios.VERASE] = b"\x08"
         termios.tcsetattr(self.slave, termios.TCSANOW, attrs)
-        self.original = termios.tcgetattr(self.slave)
+        self.original = terminal_settings(self.slave)
         self.process = None
         self.child_pid = None
         self.output = b""
@@ -66,9 +75,7 @@ class SessionTerminal:
     def read_ready(self):
         until = time.monotonic() + 5
         while time.monotonic() < until:
-            ready, _, _ = select.select([self.master], [], [], 0.05)
-            if ready:
-                self.output += os.read(self.master, 4096)
+            self.read_output(0.05)
             found = re.search(rb"READY ([0-9]+)\n", self.output)
             if found:
                 self.child_pid = int(found.group(1))
@@ -78,16 +85,34 @@ class SessionTerminal:
                 raise AssertionError("session exited before ready: %r" % error)
         raise AssertionError("session never became ready")
 
+    def read_output(self, timeout):
+        ready, _, _ = select.select([self.master], [], [], timeout)
+        if not ready:
+            return False
+        self.output += os.read(self.master, 4096)
+        return True
+
+    def wait_exit(self):
+        # Act as the terminal emulator while the wrapper runs. On macOS,
+        # TCSADRAIN cannot finish until the master consumes queued output.
+        until = time.monotonic() + 8
+        while time.monotonic() < until:
+            self.read_output(0.05)
+            if self.process.poll() is not None:
+                return
+        raise AssertionError("session did not exit while its terminal was drained")
+
     def finish(self):
+        self.wait_exit()
         output, error = self.process.communicate(timeout=8)
-        while select.select([self.master], [], [], 0)[0]:
-            self.output += os.read(self.master, 4096)
+        while self.read_output(0):
+            pass
         return self.output if output is None else output, error
 
 
 class TerminalRestoreAcceptanceTests(unittest.TestCase):
     def assert_restored(self, session, output):
-        self.assertEqual(termios.tcgetattr(session.slave), session.original)
+        self.assertEqual(terminal_settings(session.slave), session.original)
         for reset in RESETS:
             self.assertIn(reset, output)
         self.assertGreater(output.rfind(b"\x1b[?1003l"), output.find(b"\x1b[?1003h"))
@@ -107,7 +132,7 @@ class TerminalRestoreAcceptanceTests(unittest.TestCase):
             output, error = session.finish()
             self.assertEqual(process.returncode, 23, error)
             self.assertEqual(output, b"payload")
-            self.assertEqual(termios.tcgetattr(session.slave), session.original)
+            self.assertEqual(terminal_settings(session.slave), session.original)
 
     def test_wrapper_only_interrupt_restores_and_reaps_child(self):
         for signum in (signal.SIGINT, signal.SIGTERM):

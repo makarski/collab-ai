@@ -114,7 +114,10 @@ func TestChatBoxPickerIsBelowInputAndAboveFooter(t *testing.T) {
 			picker = i
 		}
 	}
-	if bottom < 0 || picker <= bottom || picker >= len(rows)-1 {
+	if bottom < 0 {
+		t.Fatal("input box bottom is missing")
+	}
+	if picker <= bottom || picker >= len(rows)-1 {
 		t.Fatalf("input, picker and footer order is wrong: %q", rows)
 	}
 	v3Contains(t, rows[len(rows)-1], "connected")
