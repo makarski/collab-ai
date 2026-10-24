@@ -46,6 +46,12 @@ def restore(state, fd, stdout):
     """Put the terminal back: the saved attributes exactly, else `stty sane`
     on a terminal, then the mode resets when stdout is a terminal. Piped,
     scp or tunnel use gets nothing."""
+    restore_attributes(state, fd)
+    if is_tty(stdout):
+        emit(stdout, RESTORE_SEQUENCE)
+
+
+def restore_attributes(state, fd):
     if state is not None:
         try:
             termios.tcsetattr(fd, termios.TCSADRAIN, state)
@@ -53,12 +59,16 @@ def restore(state, fd, stdout):
             pass
     elif fd >= 0 and os.isatty(fd):
         subprocess.run(["stty", "sane"], stdin=fd, check=False)
-    if is_tty(stdout):
-        try:
-            stdout.write(RESTORE_SEQUENCE)
-            stdout.flush()
-        except (OSError, ValueError):
-            pass  # a closed or broken terminal; the child's status still counts
+
+
+def emit(stdout, text):
+    """Write to a terminal that may already be closed or broken; the child's
+    status still counts."""
+    try:
+        stdout.write(text)
+        stdout.flush()
+    except (OSError, ValueError):
+        pass
 
 
 def exit_status(returncode):

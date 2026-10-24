@@ -167,38 +167,47 @@ func (m *Model) titleBand() string {
 // footer is the colour band under the input. Its parts come in priority
 // order while they fit: a status (a command's result or a refusal), the ack
 // reminder with its bound warning, the connection facts, then the key
-// reminder on the right.
+// reminder on the right unless a status replaced it.
 func (m *Model) footer() string {
+	status := m.statusLine()
 	var parts []string
-	if status := m.statusLine(); status != "" {
+	if status != "" {
 		parts = append(parts, bandTitle.Render(ansi.Truncate(status, m.width, "…")))
 	}
 	if reminder := m.ackReminder(); reminder != "" {
 		parts = append(parts, reminder)
 	}
-	parts = append(parts, bandStyle.Render(m.facts()))
-	left, used := "", 0
-	for _, part := range parts {
-		width := ansi.StringWidth(part)
-		if left == "" && width > m.width {
-			part, width = ansi.Truncate(part, m.width, "…"), m.width // the first part always shows
-		} else if left != "" {
-			width += 3
-		}
-		if used+width > m.width {
-			continue
-		}
-		if left != "" {
-			left += bandStyle.Render(" · ")
-		}
-		left, used = left+part, used+width
-	}
+	left, used := fitParts(append(parts, bandStyle.Render(m.facts())), m.width)
 	right := ""
-	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 && m.statusLine() == "" {
-		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder) // a status replaces the hints
+	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 && status == "" {
+		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder)
 		used = m.width
 	}
 	return left + right + bandStyle.Render(strings.Repeat(" ", max(0, m.width-used)))
+}
+
+// fitParts joins the parts that fit in the width with " · ", in order; the
+// first part is cut to the width rather than dropped. Returns the band and
+// the cells it uses.
+func fitParts(parts []string, width int) (string, int) {
+	line, used := "", 0
+	for _, part := range parts {
+		need := ansi.StringWidth(part)
+		if line == "" && need > width {
+			part, need = ansi.Truncate(part, width, "…"), width
+		}
+		if line != "" {
+			need += 3
+		}
+		if used+need > width {
+			continue
+		}
+		if line != "" {
+			line += bandStyle.Render(" · ")
+		}
+		line, used = line+part, used+need
+	}
+	return line, used
 }
 
 // facts is the connection state and the counts, shorter on narrow terminals.
@@ -269,21 +278,8 @@ func (m *Model) pickerLabel(p *picker, item string) string {
 // terminal that is fewer than it sized itself to. Inside the box each row
 // gets the side edges and a cell of padding.
 func (m *Model) composerRows(l frameLayout) []string {
-	c := &m.compose
-	c.setWidth(m.editorWidth(l.boxed))
-	var rows []string
-	if c.cmd != nil {
-		if want := c.width - 2; c.cmd.input.Width() != want { // the "/" prompt and the cursor cell; a long command scrolls inside
-			c.cmd.input.SetWidth(want)
-			c.cmd.input.SetCursor(c.cmd.input.Position()) // re-places the visible window on the cursor
-		}
-		rows = []string{c.cmd.input.View()}
-	} else {
-		if c.editor.Height() != l.composer {
-			c.editor.SetHeight(l.composer)
-		}
-		rows = strings.Split(c.editor.View(), "\n")
-	}
+	m.compose.setWidth(m.editorWidth(l.boxed))
+	rows := m.inputRows(l.composer)
 	if !l.boxed {
 		return rows
 	}
@@ -291,6 +287,29 @@ func (m *Model) composerRows(l frameLayout) []string {
 		rows[i] = m.boxRow(row)
 	}
 	return rows
+}
+
+// inputRows is the command line, or the editor at the given height.
+func (m *Model) inputRows(height int) []string {
+	c := &m.compose
+	if c.cmd != nil {
+		return []string{m.commandLineRow()}
+	}
+	if c.editor.Height() != height {
+		c.editor.SetHeight(height)
+	}
+	return strings.Split(c.editor.View(), "\n")
+}
+
+// commandLineRow renders the command line at the composer's width less the
+// "/" prompt and the cursor cell, so a long command scrolls inside.
+func (m *Model) commandLineRow() string {
+	in := &m.compose.cmd.input
+	if want := m.compose.width - 2; in.Width() != want {
+		in.SetWidth(want)
+		in.SetCursor(in.Position()) // re-places the visible window on the cursor
+	}
+	return in.View()
 }
 
 // boxMinWidth is the narrowest terminal that gets the input box; below it
