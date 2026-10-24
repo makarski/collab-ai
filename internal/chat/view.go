@@ -93,8 +93,8 @@ func (m *Model) screen() string {
 	return fitLines(strings.Join(rows, "\n"), m.width)
 }
 
-// entryRows is what one received message takes: its header line, a body
-// line and its acknowledgment mark.
+// entryRows is what the newest message needs to show its header, the first
+// line of its text and its acknowledgment mark; a longer text wraps past it.
 const entryRows = 3
 
 // frameLayout is how many rows each part gets. The audience divider, one
@@ -111,7 +111,7 @@ type frameLayout struct {
 func (m *Model) layout() frameLayout {
 	l := frameLayout{composer: 1}
 	rest := m.height - 3                        // audience divider + one composer row + footer
-	l.transcript = max(0, min(entryRows, rest)) // one whole message before any decoration
+	l.transcript = max(0, min(entryRows, rest)) // the newest message before any decoration
 	rest -= l.transcript
 	rest = m.layoutTop(&l, rest)
 	rest = m.layoutBottom(&l, rest)
@@ -270,9 +270,7 @@ func (m *Model) pickerLabel(p *picker, item string) string {
 // gets the side edges and a cell of padding.
 func (m *Model) composerRows(l frameLayout) []string {
 	c := &m.compose
-	if c.editor.Width() != m.editorWidth(l.boxed) {
-		c.editor.SetWidth(m.editorWidth(l.boxed))
-	}
+	c.setWidth(m.editorWidth(l.boxed))
 	var rows []string
 	if c.cmd != nil {
 		rows = []string{c.cmd.input.View()}

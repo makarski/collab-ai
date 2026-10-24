@@ -22,6 +22,7 @@ const composerMaxContentLines = 1 << 20
 // the command line and the open picker.
 type composer struct {
 	editor textarea.Model
+	width  int          // the outer width the editor was last sized to
 	pasted bool         // the draft began with pasted text: literal, never parsed
 	to     []string     // /to audience
 	reply  *replyTarget // frozen reply target
@@ -64,6 +65,16 @@ func newComposer() composer {
 	editor.MaxContentHeight = composerMaxContentLines
 	editor.Focus()
 	return composer{editor: editor}
+}
+
+// setWidth sizes the editor to an outer width, once per change: the editor
+// reports its inner width, so the outer one is remembered here.
+func (c *composer) setWidth(outer int) {
+	if c.width == outer {
+		return
+	}
+	c.width = outer
+	c.editor.SetWidth(outer)
 }
 
 // draftEmpty reports an empty draft (whitespace included).
@@ -473,8 +484,8 @@ func (m *Model) manualRetry() tea.Cmd {
 
 func (m *Model) resize(size tea.WindowSizeMsg) {
 	m.width, m.height = size.Width, size.Height
-	m.compose.editor.SetWidth(m.editorWidth(m.width >= boxMinWidth))
+	m.compose.setWidth(m.editorWidth(m.width >= boxMinWidth))
 	for _, v := range m.conv.saved {
-		v.compose.editor.SetWidth(m.editorWidth(m.width >= boxMinWidth))
+		v.compose.setWidth(m.editorWidth(m.width >= boxMinWidth))
 	}
 }
