@@ -119,7 +119,10 @@ bottom. A hint line above the input always shows who your message will reach.
   insert a new line; the input grows with your draft up to six rows. PgUp/PgDn
   scroll, PgUp at the top loads older messages, Ctrl+End jumps to the newest
   message, Ctrl+R replies to the newest message to you, F1 shows help, Ctrl+Q
-  quits.
+  quits. Tab and Shift+Tab switch between the common chat ("All") and one
+  conversation per agent, Alt+1..9 jump to a position in the bar, `/chat`
+  does the same by name; each conversation keeps its own draft, and a plain
+  message to an agent acknowledges what it sent you so far.
 - **One chat at a time:** a second chat exits with `owner_busy`. While a chat
   is open, one-shot `pairtask operator receive` and `ack` are refused; `send`
   and `history` still work.

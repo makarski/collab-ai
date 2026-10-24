@@ -133,7 +133,7 @@ func (m *Model) adopt(messages []protocol.Message, epoch string) ([]string, bool
 			return ids, false
 		}
 		e, inserted := m.upsert(fresh, epoch)
-		m.arrived(inserted)
+		m.arrived(e, inserted)
 		if e.receipt != ReceiptConfirmed {
 			e.receipt = ReceiptPending
 		}
@@ -142,6 +142,7 @@ func (m *Model) adopt(messages []protocol.Message, epoch string) ([]string, bool
 		}
 		ids = append(ids, msg.MessageID)
 	}
+	m.markShown()
 	return ids, true
 }
 
@@ -175,10 +176,11 @@ func (m *Model) upsert(fresh *entry, source string) (*entry, bool) {
 	return e, inserted
 }
 
-// arrived counts a new message as unread while the transcript is scrolled up.
-func (m *Model) arrived(inserted bool) {
-	if inserted && !m.view.following {
-		m.timeline.unread++
+// arrived marks a new message unread; rendering it while the selected
+// conversation follows the bottom clears the flag (markShown).
+func (m *Model) arrived(e *entry, inserted bool) {
+	if inserted {
+		e.unread = true
 	}
 }
 

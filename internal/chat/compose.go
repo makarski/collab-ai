@@ -71,6 +71,14 @@ func (c *composer) draftEmpty() bool {
 	return c.editor.Value() == ""
 }
 
+// setDraft replaces the text, keeping whether it was pasted: pasted text
+// stays literal wherever it moves.
+func (c *composer) setDraft(text string, pasted bool) {
+	c.editor.SetValue(text)
+	c.editor.CursorEnd()
+	c.pasted = pasted && text != ""
+}
+
 // resetDraft clears the draft and the metadata that belongs to it.
 func (c *composer) resetDraft() {
 	c.editor.Reset()
@@ -90,6 +98,14 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.enter()
 	case "esc":
 		return nil // a reply is cancelled only by /reply cancel
+	case "tab":
+		m.refreshDirectory()
+		m.cycleView(1)
+		return nil
+	case "shift+tab":
+		m.refreshDirectory()
+		m.cycleView(-1)
+		return nil
 	}
 	if msg.Text == "/" && c.draftEmpty() {
 		m.openCommandLine()
@@ -363,6 +379,9 @@ func (m *Model) globalKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return m.page(1), true
 	case "ctrl+end":
 		m.follow()
+	case "alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9":
+		m.refreshDirectory()
+		m.jumpView(int(msg.String()[4] - '0'))
 	default:
 		return nil, false
 	}
@@ -404,4 +423,7 @@ func (m *Model) manualRetry() tea.Cmd {
 func (m *Model) resize(size tea.WindowSizeMsg) {
 	m.width, m.height = size.Width, size.Height
 	m.compose.editor.SetWidth(max(10, size.Width))
+	for _, v := range m.conv.saved {
+		v.compose.editor.SetWidth(max(10, size.Width))
+	}
 }

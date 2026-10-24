@@ -57,6 +57,7 @@ func (m *Model) tooSmall() bool {
 // View renders the whole screen on the alternate screen: every view sets it,
 // so frames never scroll into the terminal's own history.
 func (m *Model) View() tea.View {
+	m.markShown()
 	view := tea.NewView(m.screen())
 	view.AltScreen = true
 	return view
@@ -70,6 +71,9 @@ func (m *Model) screen() string {
 	var rows []string
 	if l.header {
 		rows = append(rows, m.header())
+	}
+	if l.bar {
+		rows = append(rows, m.barRow())
 	}
 	if l.divider {
 		rows = append(rows, m.rule())
@@ -89,9 +93,9 @@ func (m *Model) screen() string {
 // under the header (only while the transcript keeps a row), the transcript,
 // more composer rows and the picker.
 type frameLayout struct {
-	header, divider, status bool
-	transcript              int
-	picker, composer        int
+	header, bar, divider, status bool
+	transcript                   int
+	picker, composer             int
 }
 
 func (m *Model) layout() frameLayout {
@@ -100,11 +104,19 @@ func (m *Model) layout() frameLayout {
 	if rest > 0 {
 		l.header, rest = true, rest-1
 	}
+	// Then the conversation bar, the status line and the rule under the bar.
+	// The bar and the rule are decoration: with a status line to show, they
+	// leave it and one transcript row their space.
+	need := 1
+	if m.statusLine() != "" {
+		need = 2
+	}
+	if rest > need {
+		l.bar, rest = true, rest-1
+	}
 	if rest > 0 && m.statusLine() != "" {
 		l.status, rest = true, rest-1
 	}
-	// The rule under the header is decoration: it never takes the last
-	// transcript row.
 	if rest > 1 {
 		l.divider, rest = true, rest-1
 	}
@@ -134,11 +146,11 @@ func (m *Model) header() string {
 	var h headerText
 	switch {
 	case m.width >= 76:
-		h = headerText{chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.timeline.unread, m.inbox.pending)}
+		h = headerText{chatTitle, fmt.Sprintf("  %s · %d online · unread %d · inbox %d", conn, online, m.unreadCount("", false), m.inbox.pending)}
 	case m.width >= 52:
-		h = headerText{"operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.timeline.unread)}
+		h = headerText{"operator chat", fmt.Sprintf("  %s · %d online · %d unread", conn, online, m.unreadCount("", false))}
 	default:
-		h = headerText{"", fmt.Sprintf("%s · %d on · %d new", conn, online, m.timeline.unread)}
+		h = headerText{"", fmt.Sprintf("%s · %d on · %d new", conn, online, m.unreadCount("", false))}
 	}
 	return m.band(h)
 }

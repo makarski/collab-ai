@@ -74,6 +74,9 @@ func (m *Model) scrollPage(direction int) tea.Cmd {
 	bottom := max(0, len(lines)-height)
 	if direction < 0 && start == 0 {
 		m.anchor(lines, 0)
+		if m.conv.selected != "" && m.history.run == nil {
+			m.history.run = &olderRun{key: m.conv.selected}
+		}
 		return m.loadOlder(nil)
 	}
 	next := start + direction*max(1, height-1)
@@ -94,10 +97,10 @@ func (m *Model) anchor(lines []renderLine, index int) {
 	m.view = viewport{anchorID: l.id, anchorSrc: l.src, anchorCol: l.col}
 }
 
-// follow returns to the newest message and clears the unread count.
+// follow returns to the newest message; what it shows is no longer unread.
 func (m *Model) follow() {
 	m.view = viewport{following: true}
-	m.timeline.unread = 0
+	m.markShown()
 }
 
 // scrollOffset is how many transcript lines are below the visible window.

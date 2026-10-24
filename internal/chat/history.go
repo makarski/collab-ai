@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"sort"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,10 +19,11 @@ type historyState struct {
 	scrollUpper  uint64
 	loadingOlder bool
 	olderDone    bool
+	run          *olderRun // a filtered conversation's PgUp paging through history
 }
 
 func (s *historyState) disconnected() {
-	s.catchup, s.catchupAgain, s.loadingOlder = false, false, false
+	s.catchup, s.catchupAgain, s.loadingOlder, s.run = false, false, false, nil
 }
 
 // startCatchup reads newest first until it overlaps known messages, bounded
@@ -117,9 +119,12 @@ func (m *Model) insertHistory(page *protocol.HistoryPage, arrivals bool) bool {
 		}
 		e, inserted := m.upsert(fresh, page.Watermark.Epoch)
 		if arrivals {
-			m.arrived(inserted)
+			m.arrived(e, inserted)
 		}
 		m.applyHistoryStages(e, h, page.Watermark)
+	}
+	if arrivals {
+		m.markShown()
 	}
 	return overlap
 }
@@ -163,13 +168,15 @@ func (m *Model) loadOlder(gap *entry) tea.Cmd {
 	return m.historyPage(kindOlder, before, upper)
 }
 
-func (m *Model) olderPage(req protocol.PageRequest, page *protocol.HistoryPage) {
+func (m *Model) olderPage(req protocol.PageRequest, page *protocol.HistoryPage) tea.Cmd {
 	m.history.loadingOlder = false
 	if err := validateHistory(req, page); err != nil {
 		m.status = err.Error()
-		return
+		m.history.run = nil
+		return nil
 	}
 	gapEntry := m.timeline.entries[seqID(m.timeline, req.BeforeSeq)]
+	before := len(m.timeline.order)
 	overlap := m.insertHistory(page, false)
 	filled := overlap || !page.More
 	if gapEntry != nil && filled {
@@ -178,6 +185,46 @@ func (m *Model) olderPage(req protocol.PageRequest, page *protocol.HistoryPage) 
 	if req.BeforeSeq <= m.timeline.oldestSeq() || !page.More {
 		m.history.olderDone = !page.More
 	}
+	return m.continueOlder(page, before)
+}
+
+// olderRun is one PgUp from the top of a filtered conversation: it keeps
+// paging global history through pages with nothing for that conversation,
+// bounded by the catch-up page bound, and reports where it ended.
+type olderRun struct {
+	key   string
+	pages int
+}
+
+// continueOlder requests the next page while a filtered run found nothing
+// yet, and reports the end state otherwise.
+func (m *Model) continueOlder(page *protocol.HistoryPage, before int) tea.Cmd {
+	run := m.history.run
+	if run == nil {
+		return nil
+	}
+	run.pages++
+	matched := false
+	for _, e := range m.timeline.order[:len(m.timeline.order)-before+min(before, len(m.timeline.order))] {
+		if m.inView(e, run.key) && e.msg.Seq < page.UpperSeq && e.msg.Seq >= page.NextBeforeSeq {
+			matched = true
+			break
+		}
+	}
+	switch {
+	case matched, m.history.olderDone, !page.More:
+		m.history.run = nil
+		if !matched && (m.history.olderDone || !page.More) {
+			m.status = "no older messages"
+		}
+		return nil
+	case run.pages >= m.opts.Bounds.CatchupPages:
+		m.history.run = nil
+		m.status = fmt.Sprintf("no older messages from %s in the last %d pages; PgUp continues", safe(run.key), run.pages)
+		return nil
+	}
+	m.status = fmt.Sprintf("loading older history (%d pages)", run.pages)
+	return m.loadOlder(nil)
 }
 
 func seqID(t timeline, seq uint64) string {

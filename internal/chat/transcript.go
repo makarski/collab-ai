@@ -39,7 +39,7 @@ func (m *Model) transcriptWidth() int {
 func (m *Model) transcript() []renderLine {
 	var lines []renderLine
 	for _, e := range m.timeline.order {
-		if e.msg.Seq <= m.cutoff {
+		if e.msg.Seq <= m.cutoff || !m.inView(e, m.conv.selected) {
 			continue
 		}
 		lines = append(lines, m.entryLines(e)...)

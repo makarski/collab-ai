@@ -32,6 +32,7 @@ type entry struct {
 	gapUpper        uint64 // the upper_seq of the catch-up that left the gap
 	size            int
 	epoch           string // the broker epoch this entry was last read in
+	unread          bool   // arrived and not yet shown while following the bottom
 }
 
 // stageState is a current delivery state with the watermark it was read at.
@@ -45,7 +46,6 @@ type timeline struct {
 	order    []*entry // ascending seq
 	bytes    int
 	selected int
-	unread   int
 	paused   bool
 }
 
