@@ -157,12 +157,11 @@ func (m *Model) catchupResponse(req pendingRequest, resp protocol.Message) tea.C
 
 func (m *Model) olderResponse(req pendingRequest, resp protocol.Message) tea.Cmd {
 	if resp.Type != protocol.TypeOperatorHistory {
-		m.history.loadingOlder = false
+		m.history.loadingOlder, m.history.run = false, nil
 		m.status = "history not loaded: " + brokerReason(resp)
 		return nil
 	}
-	m.olderPage(req.page, resp.History)
-	return nil
+	return m.olderPage(req.page, resp.History)
 }
 
 // snapshotLoaded installs the baseline: bodies stay, metadata resets, then

@@ -100,7 +100,7 @@ func (m *Model) replyCommand(arg argument) {
 		m.status = "reply cancelled"
 		return
 	}
-	e, reason := m.target(arg, m.newestReceived(anyEntry))
+	e, reason := m.target(arg, m.newestReceived(m.inSelected))
 	if reason == "" {
 		reason = m.replyRefusal(e)
 	}
@@ -108,8 +108,17 @@ func (m *Model) replyCommand(arg argument) {
 		m.status = reason
 		return
 	}
+	if !m.moveToSender(e.msg.From) {
+		return
+	}
 	m.compose.reply = &replyTarget{messageID: e.msg.MessageID, sender: e.msg.From, seq: e.msg.Seq}
 	m.status = ""
+}
+
+// inSelected restricts the default reply target to the selected 1:1's agent;
+// in All any received message qualifies.
+func (m *Model) inSelected(e *entry) bool {
+	return m.conv.selected.common() || e.msg.From == m.conv.selected.agent()
 }
 
 func (m *Model) replyRefusal(e *entry) string {
@@ -119,7 +128,45 @@ func (m *Model) replyRefusal(e *entry) string {
 	if m.compose.addressed() {
 		return "draft is already addressed; remove the mentions or /to first"
 	}
+	if m.conv.selected.agent() == e.msg.From {
+		return "" // the reply stays in this view
+	}
+	return m.switchRefusal(e.msg.From)
+}
+
+// switchRefusal is why a reply can't move into the sender's view: a draft
+// addressed to the current 1:1, or an unsent draft waiting there.
+func (m *Model) switchRefusal(sender string) string {
+	if !m.conv.selected.common() && !m.compose.draftEmpty() {
+		return "draft is already addressed; send or clear it first"
+	}
+	if m.savedDraft(viewKey(sender)) {
+		return safe(sender) + " has an unsent draft: switch to it to send or clear it first"
+	}
 	return ""
+}
+
+// moveToSender switches a reply into the sender's 1:1; an unaddressed draft
+// typed in All moves with it and All's draft becomes empty.
+func (m *Model) moveToSender(sender string) bool {
+	if m.conv.selected.agent() == sender {
+		return true
+	}
+	m.refreshDirectory()
+	text, pasted := m.compose.editor.Value(), m.compose.pasted
+	if m.conv.selected.common() {
+		m.compose.resetDraft()
+	}
+	if !m.selectView(viewKey(sender)) {
+		if m.conv.selected.common() {
+			m.compose.setDraft(text, pasted)
+		}
+		return false
+	}
+	if text != "" {
+		m.compose.setDraft(text, pasted)
+	}
+	return true
 }
 
 // addressed reports a draft with a /to audience or typed leading mentions.
@@ -166,6 +213,8 @@ func (m *Model) stagesCommand(arg argument) tea.Cmd {
 func (m *Model) toCommand(arg argument) tea.Cmd {
 	c := &m.compose
 	switch {
+	case !m.conv.selected.common():
+		m.status = "switch to All for an explicit audience"
 	case c.reply != nil:
 		m.status = "use /reply cancel first"
 	case arg.empty():

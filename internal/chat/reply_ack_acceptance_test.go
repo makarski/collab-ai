@@ -133,16 +133,16 @@ func TestChatReplyAckRejectedSendNeverAcknowledges(t *testing.T) {
 	chatEqual(t, "no ack request", h.m.State().InFlight, 0)
 }
 
-func TestChatReplyAckPlainDirectSendDoesNotAcknowledge(t *testing.T) {
+// Chat C extends plain direct sends to acknowledge their dispatch-time audience.
+func TestChatConversationPlainDirectSendAcknowledgesWithoutCorrelation(t *testing.T) {
 	h, _ := replyAckHarness(t, true)
 	v2Type(h, "@author plain message")
 	sent := v2Send(h)
 	chatEqual(t, "plain send has no correlation", sent.InReplyTo, "")
-	replyAckAccept(h, sent)
-	replyAckFinishHistory(h)
-	h.await(func() bool { return h.m.State().InFlight == 0 })
-	chatEqual(t, "plain send leaves target unacknowledged", h.m.State().Entries[0].Ack, chat.AckNeeded)
-	chatEqual(t, "no queued ack", len(h.m.State().QueuedAcks), 0)
+	audienceAckAccept(h, sent, "author")
+	audienceAckFinish(h, "target")
+	chatEqual(t, "plain accepted send acknowledges its audience", h.m.State().Entries[0].Ack, chat.AckDone)
+	chatEqual(t, "automatic acknowledgment stays quiet", h.m.State().Status, "")
 }
 
 func TestChatReplyAckUnknownSendWaitsForAcceptedRetry(t *testing.T) {

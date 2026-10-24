@@ -71,6 +71,14 @@ func (c *composer) draftEmpty() bool {
 	return c.editor.Value() == ""
 }
 
+// setDraft replaces the text, keeping whether it was pasted: pasted text
+// stays literal wherever it moves.
+func (c *composer) setDraft(text string, pasted bool) {
+	c.editor.SetValue(text)
+	c.editor.CursorEnd()
+	c.pasted = pasted && text != ""
+}
+
 // resetDraft clears the draft and the metadata that belongs to it.
 func (c *composer) resetDraft() {
 	c.editor.Reset()
@@ -90,6 +98,9 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.enter()
 	case "esc":
 		return nil // a reply is cancelled only by /reply cancel
+	case "tab", "shift+tab":
+		m.switchView(msg.String())
+		return nil
 	}
 	if msg.Text == "/" && c.draftEmpty() {
 		m.openCommandLine()
@@ -98,6 +109,17 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 	cmd := m.updateEditor(msg)
 	m.afterEdit()
 	return cmd
+}
+
+// switchView cycles the conversation bar from the editor: Tab forward,
+// Shift+Tab back. A picker owns these keys first.
+func (m *Model) switchView(key string) {
+	m.refreshDirectory()
+	if key == "tab" {
+		m.cycleView(1)
+		return
+	}
+	m.cycleView(-1)
 }
 
 // enter sends, or turns a trailing backslash into a line break.
@@ -347,26 +369,39 @@ func (m *Model) key(msg tea.KeyPressMsg) tea.Cmd {
 	return m.editorKey(msg)
 }
 
+// globalKeys act in every input mode.
+var globalKeys = map[string]func(*Model) tea.Cmd{
+	"ctrl+q":   (*Model).quit,
+	"ctrl+c":   (*Model).quit,
+	"f1":       func(m *Model) tea.Cmd { m.toggleHelp(); return nil },
+	"ctrl+k":   func(m *Model) tea.Cmd { m.ensureCommandLine(); return nil },
+	"ctrl+r":   (*Model).ctrlR,
+	"pgup":     func(m *Model) tea.Cmd { return m.page(-1) },
+	"pgdown":   func(m *Model) tea.Cmd { return m.page(1) },
+	"ctrl+end": func(m *Model) tea.Cmd { m.follow(); return nil },
+}
+
 func (m *Model) globalKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	switch msg.String() {
-	case "ctrl+q", "ctrl+c":
-		return m.quit(), true
-	case "f1":
-		m.toggleHelp()
-	case "ctrl+k":
-		m.ensureCommandLine()
-	case "ctrl+r":
-		return m.ctrlR(), true
-	case "pgup":
-		return m.page(-1), true
-	case "pgdown":
-		return m.page(1), true
-	case "ctrl+end":
-		m.follow()
-	default:
-		return nil, false
+	key := msg.String()
+	if handle := globalKeys[key]; handle != nil {
+		return handle(m), true
 	}
-	return nil, true
+	if position, ok := altDigit(key); ok {
+		m.refreshDirectory()
+		m.jumpView(position)
+		return nil, true
+	}
+	return nil, false
+}
+
+// altDigit reads Alt+1..9 as a bar position.
+func altDigit(key string) (int, bool) {
+	digit, ok := strings.CutPrefix(key, "alt+")
+	if !ok || len(digit) != 1 {
+		return 0, false
+	}
+	position := int(digit[0] - '0')
+	return position, position >= 1 && position <= 9
 }
 
 func (m *Model) ensureCommandLine() {
@@ -404,4 +439,7 @@ func (m *Model) manualRetry() tea.Cmd {
 func (m *Model) resize(size tea.WindowSizeMsg) {
 	m.width, m.height = size.Width, size.Height
 	m.compose.editor.SetWidth(max(10, size.Width))
+	for _, v := range m.conv.saved {
+		v.compose.editor.SetWidth(max(10, size.Width))
+	}
 }

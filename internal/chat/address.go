@@ -63,18 +63,20 @@ func parsePrefix(draft string) prefix {
 	return p
 }
 
-// resolveAudience applies the addressing rules to the composer.
+// resolveAudience applies the addressing rules to the composer. In All a
+// draft goes to everyone unless it mentions agents or carries a reply or /to
+// audience; in a 1:1 it goes to that agent, and mentions of anyone else block.
 func (m *Model) resolveAudience() audience {
 	c := &m.compose
 	if c.pasted {
-		return m.explicitAudience(nil)
+		return m.explicitAudience()
 	}
 	p := parsePrefix(c.editor.Value())
 	if p.partial != "" {
 		return audience{err: "not an agent mention: " + safe(p.partial) + " (use /to for other IDs, \\@ for a literal @)"}
 	}
 	if len(p.tokens) == 0 {
-		return m.explicitAudience(nil)
+		return m.explicitAudience()
 	}
 	if c.reply != nil {
 		return audience{err: "remove the mentions or /reply cancel"}
@@ -82,17 +84,35 @@ func (m *Model) resolveAudience() audience {
 	if c.to != nil {
 		return audience{err: "use either /to or @mentions, not both"}
 	}
+	if key := m.conv.selected; !key.common() {
+		return m.ownMentions(p.tokens, key.agent())
+	}
 	return m.mentionAudience(p.tokens)
 }
 
-// explicitAudience is the reply or /to audience, or everyone.
-func (m *Model) explicitAudience(_ []string) audience {
+// ownMentions allows mentions in a 1:1 only when they name that agent. The
+// broadcast keyword @all is never a name here, even for an agent literally
+// called all.
+func (m *Model) ownMentions(tokens []string, key string) audience {
+	for _, t := range tokens {
+		if t == "all" || t != key {
+			return audience{err: "mentions address other agents only in All (Tab)"}
+		}
+	}
+	return audience{ids: []string{key}, source: SourceMentions, notSeen: m.unseen([]string{key})}
+}
+
+// explicitAudience is the reply or /to audience, the 1:1's agent, or everyone.
+func (m *Model) explicitAudience() audience {
 	c := &m.compose
 	switch {
 	case c.reply != nil:
 		return audience{ids: []string{c.reply.sender}, source: SourceReply, notSeen: m.unseen([]string{c.reply.sender})}
 	case c.to != nil:
 		return audience{ids: c.to, source: SourceTo, notSeen: m.unseen(c.to)}
+	case !m.conv.selected.common():
+		id := m.conv.selected.agent()
+		return audience{ids: []string{id}, source: SourceConversation, notSeen: m.unseen([]string{id})}
 	}
 	return audience{everyone: true, source: SourceEveryone}
 }

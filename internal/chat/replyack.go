@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -37,6 +38,12 @@ func (m *Model) autoAck(in *intent) tea.Cmd {
 		return nil
 	}
 	in.Ack = nil
+	return m.ensureBound(b)
+}
+
+// ensureBound runs one binding: an ensure-ack for the bound message as it
+// stands, suspended when it changed, reported when it is gone.
+func (m *Model) ensureBound(b *ackBinding) tea.Cmd {
 	e := m.timeline.entries[b.id]
 	if e == nil || b.hash == "" {
 		m.status = fmt.Sprintf("automatic acknowledgment of #%d could not be completed", b.seq)
@@ -51,6 +58,58 @@ func (m *Model) autoAck(in *intent) tea.Cmd {
 		return nil
 	}
 	return m.ensureAck(e)
+}
+
+// bindAudience captures, for a plain direct or group send, the loaded,
+// adopted and unacknowledged messages from each intended recipient: a message
+// to X says the operator has seen what X sent so far. Replies bind only
+// their target and broadcasts bind nothing.
+func (m *Model) bindAudience(scope protocol.Message, inReplyTo string) []ackBinding {
+	if inReplyTo != "" || scope.To == protocol.Broadcast {
+		return nil
+	}
+	ids := scope.Group
+	if scope.To != "" {
+		ids = []string{scope.To}
+	}
+	var out []ackBinding
+	for _, e := range m.timeline.order {
+		if m.fromRecipient(e, ids) && m.adoptedForAck(e) {
+			out = append(out, ackBinding{id: e.msg.MessageID, seq: e.msg.Seq, hash: e.hash, epoch: e.epoch, sender: e.msg.From})
+		}
+	}
+	return out
+}
+
+// fromRecipient reports a received message from one of the intended recipients.
+func (m *Model) fromRecipient(e *entry, ids []string) bool {
+	return e.direction == "received" && slices.Contains(ids, e.msg.From)
+}
+
+// adoptedForAck reports a message the audience acknowledgment may bind: read
+// in the current epoch, adopted through the inbox (history and snapshot
+// reads are non-consuming and leave no receipt), with its body, and not yet
+// acknowledged, queued or on the wire.
+func (m *Model) adoptedForAck(e *entry) bool {
+	return m.targetable(e) && e.receipt != ReceiptNone && !e.omitted && m.ackState(e) == AckNeeded
+}
+
+// autoAckBatch consumes the audience bindings once, for the recipients the
+// broker actually accepted.
+func (m *Model) autoAckBatch(in *intent) tea.Cmd {
+	batch := in.AckBatch
+	in.AckBatch = nil
+	accepted := map[string]bool{}
+	for _, r := range in.Recipients {
+		accepted[r.AgentID] = true
+	}
+	var cmds []tea.Cmd
+	for i := range batch {
+		if accepted[batch[i].sender] {
+			cmds = append(cmds, m.ensureBound(&batch[i]))
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 // ackMismatch is why the bound message can't be acknowledged as it stands:

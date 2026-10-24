@@ -115,6 +115,7 @@ type Model struct {
 	agents  agentView
 
 	compose    composer
+	conv       conversations
 	panel      *panel
 	view       viewport
 	cutoff     uint64 // /clear: rows with seq <= cutoff are hidden
@@ -154,6 +155,7 @@ func New(opts Options) *Model {
 	m.inbox.queuedAcks = map[string]*queuedAck{}
 	m.inbox.quiet = map[string]bool{}
 	m.compose = newComposer()
+	m.conv.saved = map[viewKey]*view{}
 	m.view.following = true
 	m.resize(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	return m
@@ -404,6 +406,16 @@ func (m *Model) newEpoch(epoch string) {
 		m.inbox.suspendAll("broker restarted")
 	}
 	m.epoch, m.revision = epoch, 0
+	m.resetSequenceState()
+}
+
+// resetSequenceState drops what refers to the old epoch's sequence space in
+// every conversation: /clear cutoffs and /find cursors.
+func (m *Model) resetSequenceState() {
+	m.cutoff, m.found = 0, 0
+	for _, v := range m.conv.saved {
+		v.cutoff, v.found = 0, 0
+	}
 }
 
 // resync installs a new baseline: snapshot first, then inbox and history.

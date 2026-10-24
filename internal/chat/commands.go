@@ -107,6 +107,7 @@ var commands = []command{
 	{name: "reply", aliases: []string{"r"}, usage: "[#n|cancel]", help: "reply to a received message", check: replyArg, run: (*Model).replyRun, available: (*Model).hasReceived},
 	{name: "ack", usage: "[#n|all|from id]", help: "acknowledge: pick one, #n, all, or from one agent (received, not approval)", check: ackArg, run: (*Model).ackCommand, available: (*Model).hasReceived},
 	{name: "history", help: "load older messages", check: noArgs, run: (*Model).historyCommand},
+	{name: "chat", usage: `all|id|"id"`, help: "switch conversation: all, an agent, or a JSON string for any ID", check: chatArg, run: (*Model).chatCommand},
 	{name: "stages", usage: "#n", help: "delivery stages of a sent message", check: targetArg, run: (*Model).stagesCommand, available: (*Model).hasSent},
 	{name: "to", usage: `["id", …]`, help: "address IDs literally; /to alone clears", check: toArg, run: (*Model).toCommand},
 	{name: "find", usage: "[text]", help: "find a message; /find again continues", check: anyArg, run: (*Model).findCommand},

@@ -1284,11 +1284,13 @@ timeline, in order of first appearance in this session (a new agent
 appends). The directory is derived from presence and the timeline and is not
 bounded separately. Saved view state (anchor, badge, cutoff, draft, reply
 binding) is allocated only when a view is opened, and at most 64 views are
-saved. Opening a 65th evicts an eligible saved view: not selected, empty
-draft, no reply binding, regardless of presence. If every saved view is
-protected, opening another is refused with "conversation state limit
-reached; send or clear a saved draft first"; protected state is never
-discarded, and presence alone never allocates or pins a view. Evicting saved
+saved, All included: All is permanent and never evicted, so 63 slots remain
+for 1:1 views. Opening a 65th evicts an eligible saved view: not selected,
+empty draft, no reply binding or `/to` audience, regardless of presence. If
+every saved view is protected, opening another is refused with
+"conversation state limit reached; send or clear a saved draft first";
+protected state is never discarded, and presence alone never allocates or
+pins a view. Evicting saved
 state does not remove the directory entry: the two are separate structures,
 and the directory stays derived from the bounded presence list and loaded
 timeline. Numbers are displayed positions and are explicitly not stable
@@ -1340,8 +1342,9 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   ("Enter send · / commands · F1 help") moves to the header's right end when
   it fits.
 - **Degradation order** on small terminals: audience divider and one composer
-  row, header, conversation bar and its divider, status, transcript, extra
-  composer rows, picker. The minimum stays 4 rows by 20 columns.
+  row, header, conversation bar, status, the rule under the bar, transcript,
+  extra composer rows, picker; the bar and the rule never take the last
+  transcript row. The minimum stays 4 rows by 20 columns.
 
 ### Input sends to the selected conversation
 
@@ -1360,6 +1363,14 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   for the rest: `/chat all` is the common chat, `/chat <id>` takes an ID in
   the mention grammar, `/chat "id"` (a JSON string) addresses any other ID,
   including an agent literally named `all`; labels are escaped as everywhere.
+  `/chat` opens conversations in the directory, and any conversation with
+  saved state ("no conversation with <id>" otherwise). A view holding an
+  unsent draft or a reply binding stays in the directory even when its agent
+  left presence and the loaded timeline, so a protected draft is always
+  reachable. The state view names the common chat by a flag, never by the
+  string `all`, so an agent literally named `all` is never confused with it;
+  `@all` stays the broadcast keyword and is blocked in every 1:1, even one
+  with an agent literally named `all`.
 - **Replies stay put.** `/reply #n` and Ctrl+R switch to the sender's 1:1
   and freeze the reply there; after the send you stay. From All, an
   unaddressed draft's text moves with the reply into the sender's 1:1 and
@@ -1372,9 +1383,9 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   Ctrl+R in a
   1:1 replies to the newest message from that agent; in All, to the newest
   received message overall.
-- A plain message in a 1:1 (no `/reply`, no Ctrl+R) sets no `in_reply_to`
-  and acknowledges nothing: correlation stays explicit because agents read
-  it as a claim.
+- A plain message in a 1:1 (no `/reply`, no Ctrl+R) sets no `in_reply_to`:
+  correlation stays explicit because agents read it as a claim. It does
+  acknowledge, see "Addressing an agent acknowledges it" below.
 
 ### Acknowledgments
 
@@ -1396,6 +1407,16 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   status line; the row mark (`○ needs ack`, `◐ ack queued`, `● acknowledged`)
   is the single signal. The explicit `/ack` keeps its texts and the
   second-`/ack`-cancels rule: it is "seen, no reply needed".
+- **Addressing an agent acknowledges it** (operator request, 2026-10-23;
+  contract frozen 2026-10-24). A plain direct or group send, by `@X` in All
+  or from X's 1:1, binds at dispatch every message from each intended
+  recipient that is loaded, adopted and unacknowledged then (ID, content
+  hash, epoch). When the broker accepts the send, the bindings of the
+  recipients it actually accepted are consumed once and run the ensure-ack
+  above; messages that arrived after dispatch are never included, broadcasts
+  bind nothing, and no `in_reply_to` is invented. An explicit reply
+  acknowledges only its target: a reply to an older message must not
+  silently acknowledge newer ones the operator may not have read.
 
 ### Mouse and the last message
 
@@ -1423,8 +1444,9 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   the header band and title, the divider under the header. View only; no
   conversation bar, switching, acknowledgment or recall behaviour.
 - **B. Reply acknowledges**: the binding and the ensure-ack on acceptance.
-- **C. Conversations**: membership, bar, switching, per-view state and
-  drafts, sending to the selection, reply switching, `/chat`.
+- **C. Conversations** (shipped): membership, bar, switching, per-view state
+  and drafts, sending to the selection, reply switching, `/chat`, addressing
+  acknowledges.
 - **D. Mouse wheel and last-message recall.**
 
 Each slice: Codex writes the acceptance tests, Claude implements, Codex
