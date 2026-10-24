@@ -39,7 +39,14 @@ func (m *Model) wheel(msg tea.MouseWheelMsg) tea.Cmd {
 // overComposer reports a pointer on the composer rows while the draft has
 // more visual rows than the composer shows.
 func (m *Model) overComposer(y int, l frameLayout) bool {
-	if m.compose.cmd != nil || y < m.height-l.composer {
+	if m.compose.cmd != nil {
+		return false
+	}
+	bottom := m.height - 1 - l.picker // the footer and the picker sit below
+	if l.boxed {
+		bottom--
+	}
+	if y < bottom-l.composer || y >= bottom {
 		return false
 	}
 	return m.composerOverflows(l)

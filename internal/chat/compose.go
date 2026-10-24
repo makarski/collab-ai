@@ -371,15 +371,16 @@ func (m *Model) completeCommand() {
 	c.picker = nil
 }
 
-// runPicked completes the highlighted command and runs it when it takes no
-// argument; a command with an argument stays on the line waiting for it.
+// runPicked completes the highlighted command and runs it when it runs
+// without an argument; a command that needs one stays on the line, completed,
+// waiting for it.
 func (m *Model) runPicked() tea.Cmd {
 	if m.compose.cmd.pasted {
 		return m.runCommandLine() // refused: pasted text never runs
 	}
 	m.completeCommand()
 	name := strings.TrimSpace(m.compose.cmd.input.Value())
-	if byName(name).usage != "" {
+	if byName(name).check("") != nil {
 		return nil
 	}
 	return m.runCommand(argument(name), "")

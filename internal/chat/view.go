@@ -93,9 +93,13 @@ func (m *Model) screen() string {
 	return fitLines(strings.Join(rows, "\n"), m.width)
 }
 
+// entryRows is what one received message takes: its header line, a body
+// line and its acknowledgment mark.
+const entryRows = 3
+
 // frameLayout is how many rows each part gets. The audience divider, one
-// composer row and the footer come first, then one transcript row, which
-// outranks every decoration, then the title band, the conversation bar, the
+// composer row and the footer come first, then transcript rows for one
+// message, which outrank every decoration, then the title band, the conversation bar, the
 // rule under it, the box's bottom edge, more composer rows and the picker;
 // the transcript takes the rest.
 type frameLayout struct {
@@ -106,10 +110,9 @@ type frameLayout struct {
 
 func (m *Model) layout() frameLayout {
 	l := frameLayout{composer: 1}
-	rest := m.height - 3 // audience divider + one composer row + footer
-	if rest > 0 {
-		l.transcript, rest = 1, rest-1
-	}
+	rest := m.height - 3                        // audience divider + one composer row + footer
+	l.transcript = max(0, min(entryRows, rest)) // one whole message before any decoration
+	rest -= l.transcript
 	rest = m.layoutTop(&l, rest)
 	rest = m.layoutBottom(&l, rest)
 	l.transcript += max(0, rest)
@@ -177,7 +180,9 @@ func (m *Model) footer() string {
 	left, used := "", 0
 	for _, part := range parts {
 		width := ansi.StringWidth(part)
-		if left != "" {
+		if left == "" && width > m.width {
+			part, width = ansi.Truncate(part, m.width, "…"), m.width // the first part always shows
+		} else if left != "" {
 			width += 3
 		}
 		if used+width > m.width {

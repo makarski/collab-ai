@@ -31,7 +31,7 @@ def parser():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="session", required=True)
     shell = sub.add_parser("shell", help="SSH into the workspace as agent (ssh -F infra/incus/ssh/config workspace)")
-    shell.add_argument("--ssh-config", type=Path, default=SSH_CONFIG)
+    shell.add_argument("--config", "--ssh-config", dest="ssh_config", type=Path, default=SSH_CONFIG)
     shell.add_argument("command", nargs=argparse.REMAINDER, help="optional remote command")
     shell.set_defaults(build=shell_command)
     chat = sub.add_parser("chat", help="the operator chat in the secured runtime (incus exec -t … pairtask operator chat)")

@@ -54,8 +54,11 @@ def restore(state, fd, stdout):
     elif fd >= 0 and os.isatty(fd):
         subprocess.run(["stty", "sane"], stdin=fd, check=False)
     if is_tty(stdout):
-        stdout.write(RESTORE_SEQUENCE)
-        stdout.flush()
+        try:
+            stdout.write(RESTORE_SEQUENCE)
+            stdout.flush()
+        except (OSError, ValueError):
+            pass  # a closed or broken terminal; the child's status still counts
 
 
 def exit_status(returncode):
