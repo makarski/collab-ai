@@ -1086,9 +1086,11 @@ re-reads the composer, the picker or presence.
 **Grammar.** Commands are entered on a command line that never touches the
 draft: typing `/` into an empty draft, or Ctrl+K at any time, opens it. The
 command picker filters as you type. Tab completes and never runs. Enter with
-the picker open completes the highlighted command and runs it when it takes
-no argument (`/agents`, `/history`, `/clear`, `/help`, `/quit`); a command
-with an argument stays on the line, completed, waiting for it (#121; before,
+the picker open completes the highlighted command and runs it when it runs
+without an argument (`/agents`, `/history`, `/clear`, `/help`, `/quit`, and
+`/ack`, `/reply`, `/find`, whose argument is optional); a command that needs
+one (`/chat`, `/stages`, `/copy`, `/to`) stays on the line, completed,
+waiting for it (#121; before,
 Enter ran the typed fragment). With the picker closed Enter runs
 an exact command or alias, or a unique prefix; an ambiguous prefix stays and
 lists the candidates. Esc closes the command line and restores the draft
@@ -1360,11 +1362,13 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   near-bound warning in the warning colour, the connection facts
   ("connected · 2 online · unread 0 · inbox 3"; shorter under 76 and 52
   columns), then the key reminder ("Enter send · / commands · F1 help")
-  right-aligned when two cells remain. A status never hides the reminder, and
-  both are visible at 80 columns.
+  right-aligned when two cells remain and no status is set: a status replaces
+  the hints while it shows. A status never hides the ack reminder, and both
+  are visible at 80 columns.
 - **Degradation order** on small terminals, what gets a row first: the
-  audience divider, one input row and the footer; one transcript row, which
-  outranks every decoration; the title band; the conversation bar; the rule
+  audience divider, one input row and the footer; up to three transcript rows
+  (the newest message's header, first text line and mark), which outrank
+  every decoration; the title band; the conversation bar; the rule
   under the bar; the box's bottom edge; extra input rows (leaving two
   transcript rows); the picker (up to six, leaving one); the transcript takes
   the rest. At the 20×4 minimum the frame is one transcript row, the plain

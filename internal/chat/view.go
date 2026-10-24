@@ -194,8 +194,8 @@ func (m *Model) footer() string {
 		left, used = left+part, used+width
 	}
 	right := ""
-	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 {
-		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder)
+	if gap := m.width - used - ansi.StringWidth(keyReminder); gap >= 2 && m.statusLine() == "" {
+		right = bandStyle.Render(strings.Repeat(" ", gap) + keyReminder) // a status replaces the hints
 		used = m.width
 	}
 	return left + right + bandStyle.Render(strings.Repeat(" ", max(0, m.width-used)))
@@ -273,7 +273,7 @@ func (m *Model) composerRows(l frameLayout) []string {
 	c.setWidth(m.editorWidth(l.boxed))
 	var rows []string
 	if c.cmd != nil {
-		if want := c.width - 1; c.cmd.input.Width() != want { // the "/" prompt; a long command scrolls inside
+		if want := c.width - 2; c.cmd.input.Width() != want { // the "/" prompt and the cursor cell; a long command scrolls inside
 			c.cmd.input.SetWidth(want)
 			c.cmd.input.SetCursor(c.cmd.input.Position()) // re-places the visible window on the cursor
 		}

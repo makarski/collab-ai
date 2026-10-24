@@ -297,7 +297,7 @@ func (m *Model) pickLiteral(id string) {
 func (m *Model) openCommandLine() {
 	input := textinput.New()
 	input.Prompt = "/"
-	input.SetWidth(m.compose.width - 1)
+	input.SetWidth(m.compose.width - 2)
 	input.Focus()
 	m.compose.cmd = &commandLine{input: input}
 	m.compose.picker = nil
