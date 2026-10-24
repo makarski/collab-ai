@@ -28,13 +28,12 @@ func conversationOlderHarness(t *testing.T) *chatHarness {
 	return h
 }
 
-func conversationOlderPage(h *chatHarness, request protocol.Message, id, sender string, seq uint64, more bool) {
-	h.t.Helper()
+func conversationOlderPage(id, sender string, seq uint64, more bool) protocol.Message {
 	message := chatIncoming(id, seq)
 	message.From = sender
 	page := chatHistory(message)
 	page.History.UpperSeq, page.History.More = 10, more
-	h.reply(request, page)
+	return page
 }
 
 func TestChatConversationOlderHistorySkipsUnrelatedPagesWithinBound(t *testing.T) {
@@ -42,17 +41,17 @@ func TestChatConversationOlderHistorySkipsUnrelatedPagesWithinBound(t *testing.T
 	h.input(chatKey(tea.KeyPgUp, 0))
 	first := h.take(protocol.TypeOperatorHistory)
 	chatEqual(t, "first global cursor", first.PageRequest.BeforeSeq, uint64(10))
-	conversationOlderPage(h, first, "bob-nine", "bob", 9, true)
+	h.reply(first, conversationOlderPage("bob-nine", "bob", 9, true))
 	second := h.take(protocol.TypeOperatorHistory)
 	chatEqual(t, "unrelated page advances global cursor", second.PageRequest.BeforeSeq, uint64(9))
 	chatEqual(t, "history bound stays frozen", second.PageRequest.UpperSeq, uint64(10))
-	conversationOlderPage(h, second, "bob-eight", "bob", 8, true)
+	h.reply(second, conversationOlderPage("bob-eight", "bob", 8, true))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	v3Contains(t, h.m.State().Status, "no older messages from alice in the last 2 pages; PgUp continues")
 	h.input(chatKey(tea.KeyPgUp, 0))
 	third := h.take(protocol.TypeOperatorHistory)
 	chatEqual(t, "next key continues instead of restarting", third.PageRequest.BeforeSeq, uint64(8))
-	conversationOlderPage(h, third, "alice-older", "alice", 7, false)
+	h.reply(third, conversationOlderPage("alice-older", "alice", 7, false))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	v3Contains(t, ansi.Strip(h.m.View().Content), "body alice-older")
 	if strings.Contains(ansi.Strip(h.m.View().Content), "body bob-") {
@@ -68,7 +67,7 @@ func TestChatConversationOlderHistoryStopsAtFirstMatchingPage(t *testing.T) {
 	h := conversationOlderHarness(t)
 	h.input(chatKey(tea.KeyPgUp, 0))
 	request := h.take(protocol.TypeOperatorHistory)
-	conversationOlderPage(h, request, "alice-nine", "alice", 9, true)
+	h.reply(request, conversationOlderPage("alice-nine", "alice", 9, true))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	v3Contains(t, ansi.Strip(h.m.View().Content), "body alice-nine")
 	chatEqual(t, "matching page ends the automatic run", h.m.State().Queued, 0)
@@ -108,17 +107,17 @@ func TestChatConversationOlderHistoryFailureResetsNextKeyPageBudget(t *testing.T
 	h := conversationOlderHarness(t)
 	h.input(chatKey(tea.KeyPgUp, 0))
 	first := h.take(protocol.TypeOperatorHistory)
-	conversationOlderPage(h, first, "bob-nine", "bob", 9, true)
+	h.reply(first, conversationOlderPage("bob-nine", "bob", 9, true))
 	failed := h.take(protocol.TypeOperatorHistory)
 	h.reply(failed, protocol.Message{Type: protocol.TypeError, Code: protocol.ErrInternal, Detail: "history unavailable"})
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	h.input(chatKey(tea.KeyPgUp, 0))
 	retry := h.take(protocol.TypeOperatorHistory)
 	chatEqual(t, "retry starts at last successfully loaded cursor", retry.PageRequest.BeforeSeq, uint64(9))
-	conversationOlderPage(h, retry, "bob-eight", "bob", 8, true)
+	h.reply(retry, conversationOlderPage("bob-eight", "bob", 8, true))
 	next := h.take(protocol.TypeOperatorHistory)
 	chatEqual(t, "new key has a fresh two-page budget", next.PageRequest.BeforeSeq, uint64(8))
-	conversationOlderPage(h, next, "alice-seven", "alice", 7, false)
+	h.reply(next, conversationOlderPage("alice-seven", "alice", 7, false))
 	h.await(func() bool { return h.m.State().InFlight == 0 })
 	v3Contains(t, ansi.Strip(h.m.View().Content), "body alice-seven")
 }
