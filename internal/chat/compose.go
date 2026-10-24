@@ -98,13 +98,8 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.enter()
 	case "esc":
 		return nil // a reply is cancelled only by /reply cancel
-	case "tab":
-		m.refreshDirectory()
-		m.cycleView(1)
-		return nil
-	case "shift+tab":
-		m.refreshDirectory()
-		m.cycleView(-1)
+	case "tab", "shift+tab":
+		m.switchView(msg.String())
 		return nil
 	}
 	if msg.Text == "/" && c.draftEmpty() {
@@ -114,6 +109,17 @@ func (m *Model) editorKey(msg tea.KeyPressMsg) tea.Cmd {
 	cmd := m.updateEditor(msg)
 	m.afterEdit()
 	return cmd
+}
+
+// switchView cycles the conversation bar from the editor: Tab forward,
+// Shift+Tab back. A picker owns these keys first.
+func (m *Model) switchView(key string) {
+	m.refreshDirectory()
+	if key == "tab" {
+		m.cycleView(1)
+		return
+	}
+	m.cycleView(-1)
 }
 
 // enter sends, or turns a trailing backslash into a line break.

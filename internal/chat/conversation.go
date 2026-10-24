@@ -63,18 +63,30 @@ type ConversationView struct {
 // so they move only when an agent leaves.
 func (m *Model) refreshDirectory() {
 	live := m.liveAgents()
-	kept := m.conv.order[:0]
-	for _, id := range m.conv.order {
+	m.conv.order = pruneOrder(m.conv.order, live)
+	m.conv.order = appendUnseen(m.conv.order, live)
+}
+
+// pruneOrder keeps the directory entries that are still live.
+func pruneOrder(order []string, live agentSet) []string {
+	kept := order[:0]
+	for _, id := range order {
 		if live.has[id] {
 			kept = append(kept, id)
 		}
 	}
-	m.conv.order = kept
+	return kept
+}
+
+// appendUnseen adds live agents the directory doesn't list yet, in order of
+// first appearance.
+func appendUnseen(order []string, live agentSet) []string {
 	for _, id := range live.seen {
-		if !slices.Contains(m.conv.order, id) {
-			m.conv.order = append(m.conv.order, id)
+		if !slices.Contains(order, id) {
+			order = append(order, id)
 		}
 	}
+	return order
 }
 
 // agentSet is an ordered set of agent IDs.
@@ -84,11 +96,16 @@ type agentSet struct {
 }
 
 func (s *agentSet) add(id string) {
-	if id == "" || id == protocol.OperatorID || id == protocol.Broadcast || s.has[id] {
+	if reservedID(id) || s.has[id] {
 		return
 	}
 	s.has[id] = true
 	s.seen = append(s.seen, id)
+}
+
+// reservedID is an ID that never names a conversation.
+func reservedID(id string) bool {
+	return id == "" || id == protocol.OperatorID || id == protocol.Broadcast
 }
 
 // liveAgents are the agents the directory lists: in the loaded timeline, in

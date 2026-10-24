@@ -222,11 +222,16 @@ func (m *Model) continueOlder(page *protocol.HistoryPage, _ int) tea.Cmd {
 // pageMatches reports whether the page brought anything for the view.
 func (m *Model) pageMatches(key string, page *protocol.HistoryPage) bool {
 	for _, e := range m.timeline.order {
-		if e.msg.Seq < page.UpperSeq && e.msg.Seq >= page.NextBeforeSeq && m.inView(e, key) {
+		if inPage(e, page) && m.inView(e, key) {
 			return true
 		}
 	}
 	return false
+}
+
+// inPage reports an entry within the sequence window a page covered.
+func inPage(e *entry, page *protocol.HistoryPage) bool {
+	return e.msg.Seq < page.UpperSeq && e.msg.Seq >= page.NextBeforeSeq
 }
 
 // endOlderRun closes a run that found something or ran out of history.
