@@ -308,9 +308,10 @@ func (m *Model) commandLineRow() string {
 	if want := m.compose.width - 2; in.Width() != want {
 		in.SetWidth(want)
 		// The input re-places its window only when the cursor leaves it, so
-		// start the window over from the left and let the cursor pull it.
+		// a stale window survives a narrower width: anchor it at the end,
+		// which always recomputes, then let the cursor pull it back.
 		pos := in.Position()
-		in.SetCursor(0)
+		in.CursorEnd()
 		in.SetCursor(pos)
 	}
 	return in.View()
