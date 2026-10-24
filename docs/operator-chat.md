@@ -1208,14 +1208,33 @@ in `internal/host/proxy.go` for managed Codex threads), identically:
 What the harnesses add: both Claude Code and the Codex CLI wrap channel input
 with their own "not from the user" marking and may ask for approval before an
 agent acts on it or replies. pairtask setup can only remove its own tools from
-that path: a Claude Code settings file allowing the five pairtask tools
-(`send`, `acknowledge`, `receive`, `wait_reply`, `listener_status`) stops the
-auto-mode classifier judging those calls; it does not grant anything else.
+that path. For Claude Code that is a settings file allowing the five pairtask
+tools (`send`, `acknowledge`, `receive`, `wait_reply`, `listener_status`),
+shipped as `/etc/pairtask/claude-settings.json` and passed with `--settings`
+by the `claude` alias; it stops the auto-mode classifier judging those calls
+and grants nothing else. **Pending**: that file and alias change are not in
+the tree yet; Claude Code's harness refused to let the Claude agent author its
+own permission grant, so the change is for the operator to add (#116 stays
+open for it).
 For managed Codex threads the runtime tools are an injected `collab_runtime`
-MCP server governed by `approval_policy` in `/etc/codex/config.toml` and, where
-the pinned Codex version supports it, per-tool `approval_mode`; a trusted
-channel that makes operator frames count as the user is an upstream feature
-(#116) that signed identities (#115) would let them verify.
+MCP server; the launcher marks its five tools (`send`, `acknowledge`,
+`receive`, `wait_reply`, `listener_status`) with `approval_mode = "approve"`
+(no confirmation, verified against codex-cli 0.159.3's strict config), the
+server default stays Codex's own, and `approval_policy` in
+`/etc/codex/config.toml` keeps governing everything else.
+
+What is implemented versus what is not. Implemented: the broker-set origin,
+the adapter instructions above, the skill wording and the Codex per-tool
+approval. Pending: the Claude Code settings allowlist. Not provable by these: live
+behaviour of two harnesses reading the same text, which is checked by running
+the duo. Not ours: both harnesses still label channel input as not from the
+user; a trusted channel that makes operator frames count as the user is an
+upstream feature that signed identities (#115) would let them verify.
+
+Resumed managed Codex conversations keep the developer instructions they were
+saved with (resume and fork preserve them when the caller supplies none), so
+an old conversation can still carry the earlier blanket-distrust text; start
+a fresh managed conversation to get the current instructions.
 
 ## Chat v3: conversations (design, 2026-10-21)
 

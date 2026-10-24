@@ -56,12 +56,26 @@ func (e *runtimeMCP) requireReady(next mcp.MethodHandler) mcp.MethodHandler {
 	}
 }
 
+// runtimeTools are the collaboration tools the runtime MCP server serves.
+var runtimeTools = []string{"send", "acknowledge", "receive", "wait_reply", "listener_status"}
+
 func (e *runtimeMCP) config() (map[string]any, error) {
 	binary, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"command": binary, "args": []string{"--mcp-socket", e.ln.Addr().String()}, "required": true, "enabled": true}, nil
+	// The five runtime tools are this launcher's own channel to the broker; a
+	// Codex approval prompt for them would only ask the operator to approve
+	// sending, receiving or acknowledging a message. They are pre-approved
+	// ("approve": no confirmation), the counterpart of the pairtask tool
+	// allowlist planned for Claude Code (#116); the server default stays
+	// Codex's own, and every other approval (shell, files, network) stays as
+	// configured.
+	tools := map[string]any{}
+	for _, name := range runtimeTools {
+		tools[name] = map[string]any{"approval_mode": "approve"}
+	}
+	return map[string]any{"command": binary, "args": []string{"--mcp-socket", e.ln.Addr().String()}, "required": true, "enabled": true, "tools": tools}, nil
 }
 
 func (e *runtimeMCP) serve(ctx context.Context, server *mcp.Server) {
