@@ -31,11 +31,16 @@ func (m *Model) recallable() []*entry {
 	var out []*entry
 	for i := len(m.timeline.order) - 1; i >= 0; i-- {
 		e := m.timeline.order[i]
-		if e.direction == "sent" && !e.omitted && m.recallableHere(e) {
+		if e.sentIntact() && m.recallableHere(e) {
 			out = append(out, e)
 		}
 	}
 	return out
+}
+
+// sentIntact reports a message of yours whose text history still has.
+func (e *entry) sentIntact() bool {
+	return e.direction == "sent" && !e.omitted
 }
 
 func (m *Model) recallableHere(e *entry) bool {

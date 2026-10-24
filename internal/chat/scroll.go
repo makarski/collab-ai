@@ -258,6 +258,7 @@ func (m *Model) helpRows() []string {
 		"          pasted text is literal (mentions ignored) · /to [\"id\"] for IDs that aren't @-able",
 		"Keys      Enter send · Shift+Enter, Alt+Enter, Ctrl+J, \\ then Enter: new line",
 		"          PgUp/PgDn scroll · Ctrl+End newest · Ctrl+R reply to newest · Ctrl+K commands · Ctrl+Q quit",
+		"          mouse wheel scrolls (Shift, Option on macOS, selects text) · Up in an empty input recalls your last message",
 		"Commands",
 	}
 	for _, c := range commands {

@@ -1428,15 +1428,23 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   Shift (Option on macOS) held for native text selection; `/copy #n` remains
   the clipboard path. The wheel works over `incus exec -t` and SSH.
 - **Recall the last message.** Up in an empty draft loads your newest sent
-  message's text into the composer; a second Up walks older, Down forward;
-  emptying the draft or Esc leaves recall. Recall restores the sent scope,
-  not the historical recipient list: direct and group IDs exactly as sent, a
-  broadcast as a broadcast, which the audience divider shows as "to everyone
-  (N online)" in the warning colour before it is sent again. Recall never
-  moves or re-addresses a draft in a direct conversation. Sent messages are
-  immutable on the wire, so this is a new send and the transcript shows
-  both. PgUp/PgDn always page the transcript; Up/Down move the cursor inside
-  a nonempty draft as in v2.
+  message's text into the composer as pasted text (mentions and commands in
+  it stay literal); Up again walks older, Down newer, and Down past the
+  newest restores the empty draft. Esc, any edit or paste, a send, or a view
+  switch ends recall and leaves an ordinary draft where it is: a draft
+  recalled in All and left for another conversation is saved there with its
+  scope. Recall restores the sent scope, not the historical recipient list:
+  direct and group IDs exactly as sent, a broadcast as a broadcast, which the
+  audience divider shows as "to everyone (N online)" in the warning colour
+  before it is sent again. In a direct conversation with X only messages sent
+  to X alone are recallable, and they are sent to X again; recall never
+  moves or re-addresses a draft there. A recalled reply is a new message: the
+  old reply target is not restored and nothing is acknowledged by walking.
+  Messages whose body history omitted are skipped. Sent messages are
+  immutable on the wire, so this is a new send with a new ID and the
+  transcript shows both. Up never overwrites a nonempty draft: PgUp/PgDn
+  always page the transcript, and Up/Down move the cursor inside a nonempty
+  draft as in v2 except while a recall is active, when they walk.
 
 ### Slices
 
@@ -1447,7 +1455,9 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
 - **C. Conversations** (shipped): membership, bar, switching, per-view state
   and drafts, sending to the selection, reply switching, `/chat`, addressing
   acknowledges.
-- **D. Mouse wheel and last-message recall.**
+- **D. Mouse wheel and last-message recall** (shipped): the wheel over the
+  transcript, a panel and an overflowing composer; recall from an empty
+  draft with the sent scope.
 
 Each slice: Codex writes the acceptance tests, Claude implements, Codex
 reviews, merge on green CI for the exact head plus MERGE for that SHA. The
