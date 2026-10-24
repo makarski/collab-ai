@@ -396,10 +396,12 @@ func (m *Model) globalKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // altDigit reads Alt+1..9 as a bar position.
 func altDigit(key string) (int, bool) {
-	if len(key) != 5 || !strings.HasPrefix(key, "alt+") || key[4] < '1' || key[4] > '9' {
+	digit, ok := strings.CutPrefix(key, "alt+")
+	if !ok || len(digit) != 1 {
 		return 0, false
 	}
-	return int(key[4] - '0'), true
+	position := int(digit[0] - '0')
+	return position, position >= 1 && position <= 9
 }
 
 func (m *Model) ensureCommandLine() {
