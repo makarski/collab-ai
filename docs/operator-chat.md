@@ -1363,8 +1363,8 @@ entries, so viewing All clears what it showed and viewing a 1:1 lowers All's.
   ("connected · 2 online · unread 0 · inbox 3"; shorter under 76 and 52
   columns), then the key reminder ("Enter send · / commands · F1 help")
   right-aligned when two cells remain and no status is set: a status replaces
-  the hints while it shows. A status never hides the ack reminder, and both
-  are visible at 80 columns.
+  the hints while it shows. A short status and the ack reminder are both
+  visible at 80 columns; a status too long for the row takes priority.
 - **Degradation order** on small terminals, what gets a row first: the
   audience divider, one input row and the footer; up to three transcript rows
   (the newest message's header, first text line and mark), which outrank
