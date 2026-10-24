@@ -318,6 +318,9 @@ func (m *Model) commandControl(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "esc":
 		m.closeCommandLine()
 	case "enter":
+		if m.compose.picker != nil {
+			return m.runPicked(), true
+		}
 		return m.runCommandLine(), true
 	case "tab":
 		m.completeCommand()
@@ -366,6 +369,20 @@ func (m *Model) completeCommand() {
 	c.cmd.input.SetValue(c.picker.items[c.picker.selected] + " ")
 	c.cmd.input.CursorEnd()
 	c.picker = nil
+}
+
+// runPicked completes the highlighted command and runs it when it takes no
+// argument; a command with an argument stays on the line waiting for it.
+func (m *Model) runPicked() tea.Cmd {
+	if m.compose.cmd.pasted {
+		return m.runCommandLine() // refused: pasted text never runs
+	}
+	m.completeCommand()
+	name := strings.TrimSpace(m.compose.cmd.input.Value())
+	if byName(name).usage != "" {
+		return nil
+	}
+	return m.runCommand(argument(name), "")
 }
 
 // key routes a key press: global keys, then the help panel, then the
@@ -455,8 +472,8 @@ func (m *Model) manualRetry() tea.Cmd {
 
 func (m *Model) resize(size tea.WindowSizeMsg) {
 	m.width, m.height = size.Width, size.Height
-	m.compose.editor.SetWidth(max(10, size.Width))
+	m.compose.editor.SetWidth(m.editorWidth(m.width >= boxMinWidth))
 	for _, v := range m.conv.saved {
-		v.compose.editor.SetWidth(max(10, size.Width))
+		v.compose.editor.SetWidth(m.editorWidth(m.width >= boxMinWidth))
 	}
 }

@@ -42,18 +42,18 @@ func (m *Model) overComposer(y int, l frameLayout) bool {
 	if m.compose.cmd != nil || y < m.height-l.composer {
 		return false
 	}
-	return m.composerOverflows(l.composer)
+	return m.composerOverflows(l)
 }
 
 // composerOverflows measures the draft in an unbounded copy of the editor:
 // its own wrapping decides, soft wraps and the cursor row after an exactly
 // full row included.
-func (m *Model) composerOverflows(shown int) bool {
+func (m *Model) composerOverflows(l frameLayout) bool {
 	probe := newComposer().editor
 	probe.MaxHeight, probe.MaxContentHeight = 0, 0
-	probe.SetWidth(max(10, m.width))
+	probe.SetWidth(m.editorWidth(l.boxed))
 	probe.SetValue(m.compose.editor.Value())
-	return probe.Height() > shown
+	return probe.Height() > l.composer
 }
 
 // scrollComposer moves the cursor through the draft with the editor's own
