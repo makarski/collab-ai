@@ -1218,10 +1218,14 @@ own permission grant, so the change is for the operator to add (#116 stays
 open for it).
 For managed Codex threads the runtime tools are an injected `collab_runtime`
 MCP server; the launcher marks its five tools (`send`, `acknowledge`,
-`receive`, `wait_reply`, `listener_status`) with `approval_mode = "approve"`
-(no confirmation, verified against codex-cli 0.159.3's strict config), the
-server default stays Codex's own, and `approval_policy` in
-`/etc/codex/config.toml` keeps governing everything else.
+`receive`, `wait_reply`, `listener_status`) with `approval_mode = "approve"`.
+Evidence: codex-cli 0.159.3 accepts `tools.<tool>.approval_mode` under
+`--strict-config` while rejecting unknown keys (schema support), and the
+Codex MCP documentation defines `approve` as executing the tool without
+confirmation, `prompt` as always asking, and `auto`/`writes` as prompting for
+tools not marked read-only (semantics). The server default stays Codex's own,
+and `approval_policy` in `/etc/codex/config.toml` keeps governing everything
+else.
 
 What is implemented versus what is not. Implemented: the broker-set origin,
 the adapter instructions above, the skill wording and the Codex per-tool
