@@ -38,7 +38,12 @@ Directory `0750` and socket `0660` are owned by `broker:collab-clients`; `agent`
 belongs to the client group. Incus shifts the volume identities into each isolated
 container's mapping. Clients can send protocol requests, but cannot replace the
 socket or access the database. This does not authenticate agent IDs or isolate
-clients from other processes running as the same user.
+clients from other processes running as the same user. Within that trust in
+the broker and its control plane, the `origin` the broker stamps on a
+delivered message is reliable: the `operator` ID is reserved, so an agent's
+text claiming to be the operator is just text; `unknown` marks legacy or
+unlabeled history, not an authenticated origin (see "Trust model" in
+`operator-chat.md`).
 
 The only active collaboration database is
 `/var/lib/collab-ai-secured/broker/broker.db`. On upgrade, an existing control
