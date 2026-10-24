@@ -273,6 +273,7 @@ func (m *Model) composerRows(l frameLayout) []string {
 	c.setWidth(m.editorWidth(l.boxed))
 	var rows []string
 	if c.cmd != nil {
+		c.cmd.input.SetWidth(c.width - 1) // the "/" prompt; a long command scrolls inside
 		rows = []string{c.cmd.input.View()}
 	} else {
 		if c.editor.Height() != l.composer {
