@@ -116,6 +116,7 @@ type Model struct {
 
 	compose    composer
 	conv       conversations
+	recalling  *recall // Up in an empty draft walks sent messages back in
 	panel      *panel
 	view       viewport
 	cutoff     uint64 // /clear: rows with seq <= cutoff are hidden
@@ -291,6 +292,8 @@ func (m *Model) terminalUpdate(msg tea.Msg) tea.Cmd {
 		m.keyboard = msg.SupportsKeyDisambiguation()
 	case tea.PasteMsg:
 		return m.paste(msg)
+	case tea.MouseWheelMsg:
+		return m.wheel(msg)
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	}

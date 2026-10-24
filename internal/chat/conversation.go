@@ -207,6 +207,7 @@ func (m *Model) selectView(key viewKey) bool {
 	delete(m.conv.saved, key)
 	m.view, m.cutoff, m.find, m.found, m.compose = target.port, target.cutoff, target.find, target.found, target.compose
 	m.compose.picker = nil
+	m.recalling = nil   // recall is a mode of the draft being edited
 	m.history.run = nil // a filtered older-history run belongs to the view that started it
 	m.markShown()
 	return true

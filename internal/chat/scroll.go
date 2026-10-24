@@ -74,9 +74,7 @@ func (m *Model) scrollPage(direction int) tea.Cmd {
 	bottom := max(0, len(lines)-height)
 	if direction < 0 && start == 0 {
 		m.anchor(lines, 0)
-		if !m.conv.selected.common() && m.history.run == nil {
-			m.history.run = &olderRun{key: m.conv.selected}
-		}
+		m.startOlderRun()
 		return m.loadOlder(nil)
 	}
 	next := start + direction*max(1, height-1)
@@ -86,6 +84,13 @@ func (m *Model) scrollPage(direction int) tea.Cmd {
 	}
 	m.anchor(lines, max(0, next))
 	return nil
+}
+
+// startOlderRun begins paging global history for a filtered view.
+func (m *Model) startOlderRun() {
+	if !m.conv.selected.common() && m.history.run == nil {
+		m.history.run = &olderRun{key: m.conv.selected}
+	}
 }
 
 // anchor pins the view to the line at index.

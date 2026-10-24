@@ -60,6 +60,10 @@ func (m *Model) View() tea.View {
 	m.markShown()
 	view := tea.NewView(m.screen())
 	view.AltScreen = true
+	// Wheel events scroll the transcript; terminals then need Shift (Option
+	// on macOS) held for native text selection, and /copy stays the
+	// clipboard path.
+	view.MouseMode = tea.MouseModeCellMotion
 	return view
 }
 
