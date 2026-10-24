@@ -106,7 +106,7 @@ already in that state, run `reset`, or:
 ```sh
 printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l'
 ```
- It runs full screen: the
+The chat runs full screen: the
 conversation fills the window, newest at the bottom, and you type at the
 bottom. A hint line above the input always shows who your message will reach.
 
