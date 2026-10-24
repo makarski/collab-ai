@@ -307,7 +307,11 @@ func (m *Model) commandLineRow() string {
 	in := &m.compose.cmd.input
 	if want := m.compose.width - 2; in.Width() != want {
 		in.SetWidth(want)
-		in.SetCursor(in.Position()) // re-places the visible window on the cursor
+		// The input re-places its window only when the cursor leaves it, so
+		// start the window over from the left and let the cursor pull it.
+		pos := in.Position()
+		in.SetCursor(0)
+		in.SetCursor(pos)
 	}
 	return in.View()
 }
