@@ -57,28 +57,38 @@ func (m *Model) composerOverflows(shown int) bool {
 }
 
 // scrollComposer moves the cursor through the draft with the editor's own
-// line keys until its viewport has shifted by a notch, or the cursor can't
-// go further; the editor keeps its viewport on the cursor.
+// line keys until its viewport has shifted by a notch or the cursor stalls;
+// the editor keeps its viewport on the cursor.
 func (m *Model) scrollComposer(direction int) {
+	start := m.compose.editor.ScrollYOffset()
+	for range composerMaxContentLines {
+		if abs(m.compose.editor.ScrollYOffset()-start) >= wheelLines {
+			return
+		}
+		if !m.stepComposer(direction) {
+			return
+		}
+	}
+}
+
+// stepComposer moves the cursor one visual row and reports whether it moved.
+// A stalled step down jumps to the end of the draft: the row after an
+// exactly full row is only reached from there.
+func (m *Model) stepComposer(direction int) bool {
+	e := &m.compose.editor
 	key := tea.KeyPressMsg{Code: tea.KeyUp}
 	if direction > 0 {
 		key = tea.KeyPressMsg{Code: tea.KeyDown}
 	}
-	e := &m.compose.editor
-	start := e.ScrollYOffset()
-	for range composerMaxContentLines {
-		if abs(e.ScrollYOffset()-start) >= wheelLines {
-			return
-		}
-		line, row := e.Line(), e.LineInfo().RowOffset
-		m.updateEditor(key)
-		if e.Line() == line && e.LineInfo().RowOffset == row {
-			if direction > 0 {
-				e.MoveToEnd() // the row after an exactly full row is only reached from the end
-			}
-			return
-		}
+	line, row := e.Line(), e.LineInfo().RowOffset
+	m.updateEditor(key)
+	if e.Line() != line || e.LineInfo().RowOffset != row {
+		return true
 	}
+	if direction > 0 {
+		e.MoveToEnd()
+	}
+	return false
 }
 
 func abs(n int) int {
