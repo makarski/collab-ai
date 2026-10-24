@@ -184,7 +184,7 @@ func TestChatV2ReplyFreezesLiteralTargetAndRejectsAudienceChanges(t *testing.T) 
 	chatEqual(t, "late acceptance preserves newer draft", h.m.State().Draft, "new draft")
 }
 
-func TestChatV2ReplyCancelPreservesTextAndClearsScope(t *testing.T) {
+func TestChatConversationReplyCancelPreservesTextAndSelectedScope(t *testing.T) {
 	h := newChatHarness(t, chat.Bounds{})
 	v2History(h, chatIncoming("target", 7))
 	v2Type(h, "body")
@@ -193,7 +193,7 @@ func TestChatV2ReplyCancelPreservesTextAndClearsScope(t *testing.T) {
 	chatEqual(t, "reply cleared", h.m.State().InReplyTo, "")
 	chatEqual(t, "body retained", h.m.State().Draft, "body")
 	req := v2Send(h)
-	chatEqual(t, "explicitly cancelled audience", req.To, protocol.Broadcast)
+	chatEqual(t, "cancel keeps the selected direct conversation", req.To, "author")
 	chatEqual(t, "no stale correlation", req.InReplyTo, "")
 }
 
